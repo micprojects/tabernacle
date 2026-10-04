@@ -104,8 +104,7 @@ try {
   await expect(trigger).toBeFocused();
   await expect(page.locator('[data-key="group:work"]')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('treeitem', { name: /Nyhavn/ })).toBeVisible();
-  await page.locator('#more').click();
-  await page.getByRole('menuitem', { name: 'Recently closed', exact: true }).click();
+  await trigger.click();
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Reopen Restaurant Barr — Copenhagen');
 
