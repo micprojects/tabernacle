@@ -1,0 +1,25 @@
+node_modules/
+dist/
+test-results/
+/output/
+/firefox/
+.DS_Store
+*.log
+
+# Local credentials, agent state and retired design material.
+.env
+.env.*
+*.pem
+*.key
+/.npmrc
+/.aws/
+/.codex/
+/.agents/
+/mockups/
+/assets/mockups/
+/plans/
+
+# Share editor defaults and recommendations; ignore other local VS Code files.
+/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/settings.json

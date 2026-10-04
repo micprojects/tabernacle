@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Tabernacle",
+  "version": "0.1.0",
+  "description": "Organise your Firefox tabs with sidebar groups, nested tab trees and search.",
+  "permissions": ["tabs", "storage", "sessions", "tabGroups", "contextualIdentities", "cookies"],
+  "incognito": "not_allowed",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tabernacle@michaelprojects.com",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
+  "background": {
+    "scripts": ["src/background.js"],
+    "type": "module"
+  },
+  "sidebar_action": {
+    "default_title": "Tabernacle",
+    "default_panel": "sidebar.html",
+    "default_icon": "icons/tabernacle-toolbar-full.svg",
+    "open_at_install": true
+  },
+  "action": {
+    "default_title": "Show/hide Tabernacle",
+    "default_icon": "icons/tabernacle-toolbar-full.svg"
+  },
+  "icons": {
+    "16": "icons/tabernacle-toolbar-full.svg",
+    "32": "icons/tabernacle-toolbar-full.svg",
+    "48": "icons/tabernacle-toolbar-full.svg",
+    "64": "icons/tabernacle-toolbar-full.svg",
+    "96": "icons/tabernacle-toolbar-full.svg",
+    "128": "icons/tabernacle-toolbar-full.svg",
+    "256": "icons/tabernacle-toolbar-full.svg"
+  },
+  "commands": {
+    "_execute_sidebar_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
+      "description": "Open or close Tabernacle"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self' data: https: http: moz-extension: resource://usercontext-content/; connect-src 'none'"
+  },
+  "author": "Michael Projects",
+  "homepage_url": "https://michaelprojects.com/tabernacle/"
+}

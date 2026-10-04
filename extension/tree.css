@@ -1,0 +1,573 @@
+/* Tab tree layout and optional Appearance details. Sidebar chrome and colour modes
+   tokens live in sidebar.css. */
+.pinned-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 0;
+  max-height: min(144px, 25dvh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.pinned-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 0 28px;
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--control);
+  padding: 0;
+}
+.pinned-tab:hover {
+  background: var(--hover);
+}
+.pinned-tab.active {
+  color: var(--selected-text);
+  background: var(--selected);
+  border-color: var(--accent);
+}
+.pinned-tab.dragging {
+  cursor: grabbing;
+}
+.pinned-tab.drop-before::before,
+.pinned-tab.drop-after::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: var(--pin-drop-x);
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--focus);
+  pointer-events: none;
+}
+.pinned-tab .tab-icon,
+.pinned-tab .tab-icon img {
+  width: 16px;
+  height: 16px;
+}
+
+.tree {
+  --icon-slot: 22px;
+  --row-padding: 6px;
+  --row-height: 26px;
+  --tree-indent: 16px;
+  --branch-gap: 0px;
+  --group-gap: 0px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 0 8px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text) 30%, var(--background)) transparent;
+}
+.group-node + .group-node,
+.group-node:has(> .branch) + :is(.group-node, .tab-node),
+.tab-node:has(> .tab-branch) + :is(.group-node, .tab-node) {
+  margin-block-start: var(--branch-gap);
+}
+.tree > .group-node:has(> .branch) + :is(.group-node, .tab-node) {
+  margin-block-start: var(--group-gap);
+}
+.new-tab-item {
+  margin-block-start: var(--branch-gap);
+  border-radius: 6px;
+}
+.new-tab-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--row-height);
+  padding: 0 var(--row-padding);
+  border-radius: 6px;
+  color: var(--muted);
+  text-align: start;
+  font-size: 12.5px;
+}
+.new-tab-action .icon-slot > svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.5;
+}
+.new-tab-action:hover,
+.new-tab-action:focus-visible {
+  color: var(--text);
+  background: var(--hover);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--row-height);
+  position: relative;
+  padding: 0 var(--row-padding);
+  border-radius: 6px;
+  user-select: none;
+  cursor: default;
+  outline-offset: -2px;
+}
+.row:hover {
+  background: var(--hover);
+}
+.row.selected:not(.active) {
+  background: var(--hover);
+}
+.row.active {
+  color: var(--selected-text);
+  --muted: currentColor;
+  /* Leave room for the parent guide without shifting the icon or label. */
+  margin-inline-start: var(--row-padding);
+  padding-inline-start: 0;
+  background: var(--selected);
+  box-shadow: inset 0 0 0 1px var(--selected-border);
+}
+.row.active > .label,
+.row.contains-active > .label {
+  font-weight: 550;
+}
+.row .label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.group-row {
+  font-weight: 600;
+}
+.group-row .group {
+  width: 16px;
+  height: 16px;
+}
+svg.folder-icon {
+  color: var(--folder-color, light-dark(#858585, #adadad));
+  stroke-width: 1.5;
+}
+.folder-icon path:first-child {
+  fill: color-mix(in srgb, currentColor 24%, var(--background));
+}
+.folder-icon path:last-child {
+  fill: color-mix(in srgb, currentColor 10%, var(--background));
+}
+.group-row > .label {
+  font-size: 13px;
+}
+.icon-slot,
+.disclosure {
+  width: var(--icon-slot);
+  height: var(--icon-slot);
+  flex: 0 0 var(--icon-slot);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.row > .disclosure {
+  color: var(--muted);
+}
+.row .disclosure:hover {
+  background: color-mix(in srgb, var(--text) 12%, var(--background));
+}
+.tab-disclosure {
+  position: relative;
+}
+.tab-toggle-badge {
+  position: absolute;
+  inset-inline-end: -1px;
+  bottom: 0;
+  width: 11px;
+  height: 11px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--background);
+  pointer-events: none;
+}
+.tab-toggle-badge::before,
+.tab-toggle-badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 5px;
+  height: 1px;
+  background: currentColor;
+}
+.tab-toggle-badge::after {
+  width: 1px;
+  height: 5px;
+}
+.tab-disclosure[aria-expanded='true'] .tab-toggle-badge::after {
+  display: none;
+}
+.branch,
+.tab-branch {
+  margin-inline-start: var(--tree-indent);
+}
+.container-indicator {
+  position: absolute;
+  inset-inline: 0;
+  bottom: -4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--container-color, currentColor);
+  pointer-events: none;
+}
+.tab-icon {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+}
+.tab-icon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.tab-icon svg {
+  width: 15px;
+  height: 15px;
+  color: currentColor;
+}
+.tree .tab-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.tab-fallback {
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--subtle);
+  color: currentColor;
+}
+.row .close-tab {
+  width: 23px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
+  opacity: 0;
+  flex-shrink: 0;
+  margin-right: -3px;
+}
+.row .close-tab svg {
+  width: 13px;
+  height: 13px;
+  color: currentColor;
+}
+.row:hover .close-tab,
+.row:focus-within .close-tab,
+.row.active .close-tab {
+  opacity: 1;
+}
+.audio-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--icon);
+}
+.audio-indicator svg {
+  width: 13px;
+  height: 13px;
+}
+.row.active .audio-indicator {
+  color: inherit;
+}
+.pinned-tab .audio-indicator {
+  position: absolute;
+  top: 1px;
+  inset-inline-end: 1px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--background);
+}
+.pinned-tab .audio-indicator svg {
+  width: 11px;
+  height: 11px;
+}
+.pinned-tab.active .audio-indicator {
+  background: var(--selected);
+  color: var(--selected-text);
+}
+.audio-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 3px;
+  border-radius: 4px;
+}
+.audio-button svg {
+  width: 13px;
+  height: 13px;
+}
+.discarded:not(.active) {
+  color: var(--muted);
+}
+.empty-child {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 2px 0 7px;
+  padding: 9px 6px;
+  border-radius: 4px;
+}
+.empty-state {
+  padding: 42px 15px;
+  text-align: center;
+  color: var(--muted);
+  line-height: 1.65;
+  font-size: 12px;
+}
+.empty-state > svg {
+  color: var(--muted);
+  width: 35px;
+  height: 35px;
+  margin: 0 auto 15px;
+  stroke-width: 1.2;
+}
+.empty-state h2 {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+.empty-state p {
+  margin: 0 auto;
+  max-width: 230px;
+}
+.loading {
+  color: var(--muted);
+  padding: 12px;
+}
+
+.row.drop-inside,
+.empty-child.drop-inside {
+  background: var(--selected);
+  color: var(--selected-text);
+  outline: 1.5px dashed var(--focus);
+  outline-offset: -1px;
+}
+.row.drop-before::before,
+.row.drop-after::after {
+  content: '';
+  position: absolute;
+  height: 2px;
+  background: var(--focus);
+  left: 4px;
+  right: 4px;
+  z-index: 2;
+  border-radius: 1px;
+}
+.row.drop-before::before {
+  top: -1px;
+}
+.row.drop-after::after {
+  bottom: -1px;
+}
+.dragging {
+  opacity: 0.45;
+}
+.root-drop {
+  border: 1px dashed var(--focus);
+  color: var(--text);
+  padding: 10px;
+  border-radius: 5px;
+  text-align: center;
+  font-size: 11px;
+  margin: 15px 6px;
+}
+.root-drop.drop-inside {
+  color: var(--selected-text);
+  background: var(--selected);
+}
+@media (max-width: 270px) {
+  .tree {
+    --tree-indent: 14px;
+  }
+  .row {
+    gap: 5px;
+  }
+}
+@media (forced-colors: active) {
+  .tab-toggle-badge {
+    color: ButtonText;
+    background: Canvas;
+  }
+  .tab-toggle-badge::before,
+  .tab-toggle-badge::after {
+    background: ButtonText;
+  }
+  .container-indicator {
+    background: CanvasText;
+  }
+  svg.folder-icon {
+    color: CanvasText;
+  }
+  .folder-icon path:first-child,
+  .folder-icon path:last-child {
+    fill: Canvas;
+  }
+  .row.active,
+  .pinned-tab.active {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* Domains add a second line to every tab, including parents. Group rows keep
+   their compact height. */
+.tree {
+  --tab-height: var(--row-height);
+  --tab-icon-centre: calc(var(--row-height) / 2);
+}
+.tree.show-domains {
+  --tab-height: 38px;
+  --tab-title-height: 16px;
+  --tab-padding: 4px;
+  --tab-icon-offset: 2px;
+  --tab-icon-centre: calc(
+    var(--tab-padding) + var(--tab-icon-offset) + var(--tab-title-height) / 2
+  );
+  --branch-gap: 2px;
+  --group-gap: 6px;
+}
+.show-domains .tab-row {
+  align-items: flex-start;
+  min-height: var(--tab-height);
+  padding-block: var(--tab-padding);
+}
+/* Align favicons with the title's glyphs and actions with its line box. */
+.show-domains .tab-row > :is(.icon-slot, .disclosure) {
+  margin-block-start: calc(
+    (var(--tab-title-height) - var(--icon-slot)) / 2 + var(--tab-icon-offset)
+  );
+}
+.show-domains .tab-row > .close-tab {
+  margin-block-start: calc((var(--tab-title-height) - 24px) / 2);
+}
+.show-domains .tab-row > .audio-indicator {
+  margin-block-start: calc((var(--tab-title-height) - 18px) / 2);
+}
+.show-domains .tab-row > .audio-button {
+  margin-block-start: calc((var(--tab-title-height) - 19px) / 2);
+}
+.show-domains .row-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: var(--tab-title-height);
+}
+.show-domains .row-copy .label {
+  flex: none;
+}
+.show-domains .row-detail {
+  color: color-mix(in srgb, var(--text) 65%, var(--background));
+  font-size: 10px;
+  line-height: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.show-domains .row.active .label,
+.show-domains .row.contains-active .label {
+  font-weight: 550;
+}
+
+/* Connect the parent icon's bottom to each child icon's left edge. */
+.tree.show-connecting-lines {
+  --tree-guide: color-mix(in srgb, var(--text) 12%, var(--background));
+  --guide-x: calc(var(--row-padding) + var(--icon-slot) / 2);
+  --guide-gap: 2px;
+}
+.show-connecting-lines :is(.group-node, .tab-node, .new-tab-item) {
+  --node-height: var(--row-height);
+  --node-icon-size: 16px;
+  --node-icon-centre: calc(var(--node-height) / 2);
+  position: relative;
+}
+.show-connecting-lines .tab-node {
+  --node-height: var(--tab-height);
+  --node-icon-centre: var(--tab-icon-centre);
+}
+.show-connecting-lines :is(.branch, .tab-branch) {
+  position: relative;
+}
+.show-connecting-lines :is(.branch, .tab-branch)::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset-inline-start: calc(var(--guide-x) - var(--tree-indent));
+  top: calc(
+    var(--node-icon-centre) + var(--node-icon-size) / 2 + var(--guide-gap) - var(--node-height)
+  );
+  height: calc(
+    var(--node-height) - var(--node-icon-centre) - var(--node-icon-size) / 2 - var(--guide-gap)
+  );
+  border-inline-start: 1px solid var(--tree-guide);
+}
+.show-connecting-lines
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node, .new-tab-item)::before,
+.show-connecting-lines
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node, .new-tab-item)::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset-inline-start: calc(var(--guide-x) - var(--tree-indent));
+  border-inline-start: 1px solid var(--tree-guide);
+}
+.show-connecting-lines
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node, .new-tab-item)::before {
+  top: calc(-1 * var(--branch-gap));
+  bottom: 0;
+}
+.show-connecting-lines
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node, .new-tab-item)::after {
+  box-sizing: border-box;
+  top: 0;
+  width: calc(var(--tree-indent) - var(--node-icon-size) / 2 - var(--guide-gap));
+  height: var(--node-icon-centre);
+  border-bottom: 1px solid var(--tree-guide);
+  border-end-start-radius: 5px;
+}
+.show-connecting-lines :is(.branch, .tab-branch) > .tab-node:has(> .row.active)::after {
+  border-bottom-color: var(--selected-border);
+}
+.show-connecting-lines :is(.branch, .tab-branch) > :last-child::before {
+  bottom: auto;
+  height: var(--branch-gap);
+}
+@media (forced-colors: active) {
+  .tree.show-connecting-lines {
+    --tree-guide: GrayText;
+  }
+  .show-domains .row-detail {
+    color: CanvasText;
+  }
+}
