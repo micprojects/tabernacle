@@ -9,3 +9,15 @@ Tabernacle is a Firefox extension I made to help me navigate and organise my tab
 - Access pinned tabs, mute audio and reopen recently closed tabs.
 
 Requires Firefox 142 or newer.
+
+![Organise tabs into groups, subgroups and collapsible tab trees.](assets/screenshots/01-folders-and-tabs.png)
+
+![Open a group to focus on its tabs. Use the path above to go back.](assets/screenshots/02-focus-a-folder.png)
+
+![Find tabs inside collapsed groups by searching titles, URLs or group names.](assets/screenshots/03-search.png)
+
+![Give a group a default Firefox container for new tabs.](assets/screenshots/04-folder-containers.png)
+
+![Choose light or dark mode, with optional website domains and connecting lines.](assets/screenshots/05-dark-mode.png)
+
+![Pin frequently used sites. Pinned tabs stay visible as you move between groups.](assets/screenshots/06-pinned-tabs.png)
