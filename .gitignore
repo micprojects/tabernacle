@@ -1,0 +1,52 @@
+# Track only maintained extension sources, assets, fixtures, tests and tooling.
+# New top-level entries need an explicit decision to include them.
+/*
+!/.editorconfig
+!/.gitignore
+!/.nvmrc
+!/.prettierignore
+!/.prettierrc.json
+!/LICENSE
+!/README.md
+!/eslint.config.js
+!/package.json
+!/package-lock.json
+!/extension/
+!/assets/
+!/preview/
+!/scripts/
+!/test/
+
+# Generated output, browser profiles and local development material.
+node_modules/
+dist/
+test-results/
+playwright-report/
+coverage/
+output/
+outputs/
+firefox/
+design/
+mockups/
+plans/
+.agents/
+.codex/
+.vscode/
+.aws/
+AGENTS.md
+SKILL.md
+.DS_Store
+*.log
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+
+# Credentials and machine-local configuration.
+.env
+.env.*
+.npmrc
+*.pem
+*.key
+
+# Retired exploratory previews.
+/preview/activity-mockups.*

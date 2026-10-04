@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tabernacle</title>
+    <link rel="icon" href="icons/tabernacle-toolbar-full.svg" type="image/svg+xml" sizes="any" />
+    <link rel="stylesheet" href="sidebar.css" />
+    <link rel="stylesheet" href="tree.css" />
+    <script type="module" src="src/sidebar.js"></script>
+  </head>
+  <body>
+    <div class="sidebar">
+      <header>
+        <div
+          id="pinned-tabs"
+          class="pinned-tabs"
+          role="group"
+          aria-label="Pinned tabs"
+          hidden
+        ></div>
+        <div class="navigation-capsule" id="navigation-capsule">
+          <nav class="navigation" id="breadcrumbs" aria-label="Group path">
+            <button
+              class="crumb icon-button"
+              id="home"
+              title="Home — show all tabs"
+              aria-label="Home"
+            ></button>
+            <div id="group-path" class="breadcrumbs"></div>
+          </nav>
+          <div class="search-toggle-track">
+            <button
+              class="icon-button"
+              id="search-toggle"
+              aria-label="Search tabs and groups"
+              title="Search tabs and groups (⌘/Ctrl K)"
+              aria-controls="search-wrap"
+              aria-expanded="false"
+            ></button>
+          </div>
+          <div class="search-wrap" id="search-wrap" role="search" aria-hidden="true" inert>
+            <label class="sr-only" for="search">Search tabs and groups in this group</label>
+            <input
+              id="search"
+              type="search"
+              placeholder="Search tabs…"
+              autocomplete="off"
+              spellcheck="false"
+              aria-controls="tree"
+            />
+            <button
+              class="icon-button"
+              id="search-close"
+              aria-label="Close search"
+              title="Close search (Esc)"
+            ></button>
+          </div>
+        </div>
+      </header>
+      <main id="tree" class="tree" role="tree" aria-label="Tabs and groups" tabindex="0">
+        <p class="loading">Opening your tabs…</p>
+      </main>
+      <button id="reveal" class="reveal" hidden>Current tab is hidden <span>Show ↗</span></button>
+      <footer>
+        <div class="footer-actions" role="group" aria-label="Tab actions">
+          <button id="new-tab" aria-label="New tab" title="New tab" disabled></button>
+          <button id="new-group" aria-label="New group" title="New group" disabled></button>
+          <span class="dock-divider" aria-hidden="true"></span>
+          <button
+            id="tree-toggle"
+            aria-label="Expand or collapse groups and tabs"
+            title="Expand or collapse groups and tabs"
+            aria-controls="tree"
+            disabled
+          ></button>
+          <button
+            id="recently-closed-toggle"
+            aria-label="Recently closed tabs"
+            title="Recently closed tabs"
+            aria-haspopup="dialog"
+            aria-controls="recently-closed"
+            aria-expanded="false"
+            disabled
+          ></button>
+          <button
+            id="more"
+            aria-label="More options"
+            title="More options"
+            aria-haspopup="menu"
+            aria-controls="menu"
+            aria-expanded="false"
+          ></button>
+        </div>
+      </footer>
+    </div>
+    <div id="menu" class="menu" role="menu" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <dialog id="dialog" aria-labelledby="dialog-title">
+      <form id="dialog-form">
+        <button type="button" id="dialog-back" class="dialog-back" hidden></button>
+        <div class="dialog-heading">
+          <div class="dialog-icon" id="dialog-icon"></div>
+          <h2 id="dialog-title"></h2>
+        </div>
+        <p id="dialog-description"></p>
+        <label id="dialog-label" for="dialog-input">Group name</label
+        ><input id="dialog-input" maxlength="80" autocomplete="off" required /><select
+          id="dialog-select"
+          aria-label="Destination group"
+          hidden
+        ></select>
+        <div
+          id="dialog-options"
+          class="dialog-options"
+          role="radiogroup"
+          aria-label="Containers"
+          hidden
+        ></div>
+        <div id="dialog-content" hidden></div>
+        <div id="container-tools" class="container-tools" hidden>
+          <button type="button" id="create-container">New container…</button>
+          <button type="button" id="manage-containers">Manage containers…</button>
+        </div>
+        <p id="dialog-error" class="dialog-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" id="dialog-cancel">Cancel</button
+          ><button type="submit" id="dialog-submit" class="primary">Create group</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>
