@@ -1665,8 +1665,6 @@ $('more').addEventListener('click', () => {
         run: () => action('collapseAll', { collapsed: true }),
       },
       null,
-      { label: 'Recently closed', icon: 'history', run: () => recentlyClosed.open() },
-      null,
       { label: 'Appearance', icon: 'list', run: () => lookDialog() },
       null,
       { label: 'New container…', icon: 'plus', run: () => createContainerDialog() },

@@ -112,7 +112,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     const content = el('dl', 'about-details');
     const website = new URL(manifest.homepage_url);
     for (const [label, text, href] of [
-      ['Website', website.host + website.pathname, website.href],
+      ['Website', website.host + website.pathname.replace(/\/$/, ''), website.href],
       [
         'Source code',
         'github.com/micprojects/tabernacle',
