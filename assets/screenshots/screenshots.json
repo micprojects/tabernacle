@@ -1,0 +1,398 @@
+{
+  "version": 1,
+  "profile": "Tabernacle",
+  "window": {
+    "width": 1280,
+    "height": 844
+  },
+  "sidebarWidth": 390,
+  "activeTab": "nyhavn",
+  "containers": [
+    {
+      "key": "banking",
+      "name": "Banking",
+      "color": "green",
+      "icon": "dollar"
+    },
+    {
+      "key": "work",
+      "name": "Work",
+      "color": "orange",
+      "icon": "briefcase"
+    },
+    {
+      "key": "personal",
+      "name": "Personal",
+      "color": "blue",
+      "icon": "fingerprint"
+    },
+    {
+      "key": "shopping",
+      "name": "Shopping",
+      "color": "pink",
+      "icon": "cart"
+    }
+  ],
+  "groups": [
+    {
+      "key": "work",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e001",
+      "name": "Work",
+      "container": "work"
+    },
+    {
+      "key": "website",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e002",
+      "name": "Website refresh",
+      "parent": "work"
+    },
+    {
+      "key": "css",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e003",
+      "name": "CSS reference",
+      "parent": "website"
+    },
+    {
+      "key": "personal",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e004",
+      "name": "Personal",
+      "container": "personal"
+    },
+    {
+      "key": "trip",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e005",
+      "name": "Copenhagen weekend",
+      "parent": "personal"
+    },
+    {
+      "key": "food",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e006",
+      "name": "Places to eat",
+      "parent": "trip"
+    },
+    {
+      "key": "recipes",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e007",
+      "name": "Recipes",
+      "parent": "personal"
+    },
+    {
+      "key": "reading",
+      "id": "c7999750-3d73-4d2b-8daa-11fcd598e008",
+      "name": "Read later"
+    }
+  ],
+  "tabs": [
+    {
+      "key": "wikipedia",
+      "url": "https://www.wikipedia.org/",
+      "pinned": true
+    },
+    {
+      "key": "github",
+      "url": "https://github.com/",
+      "pinned": true,
+      "container": "work"
+    },
+    {
+      "key": "youtube",
+      "url": "https://www.youtube.com/",
+      "pinned": true
+    },
+    {
+      "key": "reddit",
+      "url": "https://www.reddit.com/",
+      "pinned": true
+    },
+    {
+      "key": "google-maps",
+      "url": "https://www.google.com/maps",
+      "pinned": true
+    },
+    {
+      "key": "bbc-news",
+      "url": "https://www.bbc.co.uk/news",
+      "pinned": true
+    },
+    {
+      "key": "mdn",
+      "url": "https://developer.mozilla.org/en-US/",
+      "group": "website",
+      "container": "work"
+    },
+    {
+      "key": "accessibility",
+      "url": "https://www.w3.org/WAI/tips/designing/",
+      "group": "website",
+      "container": "work"
+    },
+    {
+      "key": "grid",
+      "url": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Grids",
+      "group": "css",
+      "container": "work"
+    },
+    {
+      "key": "subgrid",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout/Subgrid",
+      "group": "css",
+      "parent": "grid",
+      "container": "work"
+    },
+    {
+      "key": "flexbox",
+      "url": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Flexbox",
+      "group": "css",
+      "container": "work"
+    },
+    {
+      "key": "copenhagen",
+      "url": "https://en.wikipedia.org/wiki/Copenhagen",
+      "group": "trip",
+      "container": "personal"
+    },
+    {
+      "key": "nyhavn",
+      "url": "https://en.wikipedia.org/wiki/Nyhavn",
+      "group": "trip",
+      "parent": "copenhagen",
+      "container": "personal"
+    },
+    {
+      "key": "tivoli",
+      "url": "https://en.wikipedia.org/wiki/Tivoli_Gardens",
+      "group": "trip",
+      "parent": "copenhagen",
+      "container": "personal"
+    },
+    {
+      "key": "louisiana",
+      "url": "https://louisiana.dk/en/",
+      "group": "trip",
+      "container": "personal"
+    },
+    {
+      "key": "metro",
+      "url": "https://m.dk/en/",
+      "group": "trip",
+      "container": "personal"
+    },
+    {
+      "key": "barr-review",
+      "url": "https://www.tripadvisor.co.uk/Restaurant_Review-g189541-d12624794-Reviews-Restaurant_Barr-Copenhagen_Zealand.html",
+      "group": "food",
+      "container": "personal"
+    },
+    {
+      "key": "host-review",
+      "url": "https://www.tripadvisor.co.uk/Restaurant_Review-g189541-d4106509-Reviews-Host-Copenhagen_Zealand.html",
+      "group": "food",
+      "container": "personal"
+    },
+    {
+      "key": "goodfood",
+      "url": "https://www.bbcgoodfood.com/recipes/collection/quick-and-easy-recipes",
+      "group": "recipes",
+      "container": "personal"
+    },
+    {
+      "key": "sourdough",
+      "url": "https://www.kingarthurbaking.com/recipes/rustic-sourdough-bread-recipe",
+      "group": "recipes",
+      "container": "personal"
+    },
+    {
+      "key": "seriouseats",
+      "url": "https://www.seriouseats.com/recipes",
+      "group": "recipes",
+      "container": "personal"
+    },
+    {
+      "key": "nasa",
+      "url": "https://science.nasa.gov/solar-system/",
+      "group": "reading"
+    },
+    {
+      "key": "openlibrary",
+      "url": "https://openlibrary.org/",
+      "group": "reading"
+    },
+    {
+      "key": "northern-lights",
+      "url": "https://www.rmg.co.uk/stories/space-astronomy/what-causes-northern-lights-aurora-borealis-explained",
+      "group": "reading"
+    },
+    {
+      "key": "sourdough-science",
+      "url": "https://www.smithsonianmag.com/science-nature/scientific-secrets-behind-making-great-sourdough-bread-180975568/",
+      "group": "reading"
+    },
+    {
+      "key": "underground-history",
+      "url": "https://www.londonmuseum.org.uk/collections/london-stories/building-victorian-underground-railway/",
+      "group": "reading"
+    }
+  ],
+  "shots": [
+    {
+      "file": "01-folders-and-tabs.png",
+      "caption": "Organise tabs into groups, subgroups and collapsible tab trees.",
+      "scope": null,
+      "collapsedGroups": ["work", "recipes", "reading"],
+      "colorScheme": "light",
+      "composition": {
+        "title": ["Keep related", "tabs together"],
+        "body": [
+          "Group tabs by project, activity or topic.",
+          "Add subgroups and nested tab trees."
+        ],
+        "feature": "GROUPS & TAB TREES",
+        "crop": {
+          "left": 41,
+          "top": 134,
+          "width": 388,
+          "height": 522
+        },
+        "image": {
+          "left": 660,
+          "top": 51,
+          "width": 518
+        },
+        "dark": false
+      }
+    },
+    {
+      "file": "02-focus-a-folder.png",
+      "caption": "Open a group to focus on its tabs. Use the path above to go back.",
+      "scope": "trip",
+      "collapsedGroups": [],
+      "colorScheme": "light",
+      "composition": {
+        "title": ["Focus on", "one group"],
+        "body": ["Open a group to see just its tabs.", "Use the path to move back up."],
+        "feature": "GROUP FOCUS",
+        "crop": {
+          "left": 41,
+          "top": 134,
+          "width": 388,
+          "height": 350
+        },
+        "image": {
+          "left": 644,
+          "top": 153,
+          "width": 548
+        },
+        "dark": false
+      }
+    },
+    {
+      "file": "03-search.png",
+      "caption": "Find tabs inside collapsed groups by searching titles, URLs or group names.",
+      "scope": null,
+      "search": "grid",
+      "colorScheme": "light",
+      "composition": {
+        "title": ["Find tabs in", "any group"],
+        "body": ["Search by title, URL or group name.", "Collapsed groups are searched too."],
+        "feature": "SEARCH",
+        "crop": {
+          "left": 41,
+          "top": 134,
+          "width": 388,
+          "height": 260
+        },
+        "image": {
+          "left": 644,
+          "top": 212,
+          "width": 548
+        },
+        "dark": false
+      }
+    },
+    {
+      "file": "04-folder-containers.png",
+      "caption": "Give a group a default Firefox container for new tabs.",
+      "scope": null,
+      "menu": "Default container",
+      "colorScheme": "light",
+      "menuGroup": "work",
+      "composition": {
+        "title": ["Keep sign-ins", "separate"],
+        "body": ["Choose a Firefox container for new tabs.", "Give each group its own default."],
+        "feature": "FIREFOX CONTAINERS",
+        "crop": {
+          "left": 65,
+          "top": 289,
+          "width": 340,
+          "height": 400
+        },
+        "image": {
+          "left": 644,
+          "top": 78,
+          "width": 548
+        },
+        "dark": false
+      }
+    },
+    {
+      "file": "05-dark-mode.png",
+      "caption": "Choose light or dark mode, with optional website domains and connecting lines.",
+      "scope": "trip",
+      "collapsedGroups": ["work", "recipes", "reading"],
+      "colorScheme": "dark",
+      "domains": true,
+      "composition": {
+        "title": ["Choose light", "or dark"],
+        "body": [
+          "Show website domains for more context.",
+          "Use connecting lines to follow tab trees."
+        ],
+        "feature": "APPEARANCE",
+        "crop": {
+          "left": 41,
+          "top": 168,
+          "width": 388,
+          "height": 415
+        },
+        "image": {
+          "left": 644,
+          "top": 124,
+          "width": 548
+        },
+        "dark": true
+      }
+    },
+    {
+      "file": "06-pinned-tabs.png",
+      "sourceFile": "02-focus-a-folder@2x.png",
+      "caption": "Pin frequently used sites. Pinned tabs stay visible as you move between groups.",
+      "scope": "trip",
+      "collapsedGroups": [],
+      "colorScheme": "light",
+      "composition": {
+        "title": ["Keep favourites", "in reach"],
+        "body": ["Pin the sites you use every day.", "Your pins stay visible in every group."],
+        "feature": "PINNED TABS",
+        "crop": {
+          "left": 41,
+          "top": 134,
+          "width": 388,
+          "height": 185
+        },
+        "image": {
+          "left": 610,
+          "top": 257,
+          "width": 600
+        },
+        "dark": false
+      }
+    }
+  ],
+  "capture": {
+    "width": 1280,
+    "height": 800,
+    "scale": 2
+  },
+  "browserTheme": "Default",
+  "browserAppearance": "Light for captures; Tabernacle dark mode for shot 5"
+}

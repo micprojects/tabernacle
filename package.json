@@ -1,0 +1,59 @@
+{
+  "name": "tabernacle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Organise your Firefox tabs with sidebar groups, nested tab trees and search.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:ui": "node scripts/run-ui-tests.js",
+    "test:audio": "node scripts/test-audio-ui.js",
+    "test:previews": "node scripts/test-previews-ui.js",
+    "test:containers": "node scripts/test-containers-ui.js",
+    "test:color-mode": "node scripts/test-color-mode-ui.js",
+    "test:performance": "node scripts/test-performance-ui.js",
+    "test:firefox": "node scripts/test-firefox.js",
+    "test:stress": "node scripts/stress-firefox.js",
+    "lint": "npm run lint:js && npm run lint:extension",
+    "lint:js": "eslint . --max-warnings 0",
+    "lint:extension": "web-ext lint --source-dir extension --warnings-as-errors",
+    "build": "node scripts/build.js",
+    "dev": "web-ext run --source-dir extension",
+    "preview": "node scripts/preview.js",
+    "screenshots:prepare": "node scripts/prepare-screenshots.js",
+    "format": "eslint . --fix && prettier --write .",
+    "test:ui:core": "node scripts/test-ui.js",
+    "check": "npm run format:check && npm run lint && npm test",
+    "format:check": "prettier --check .",
+    "screenshots:export": "node scripts/export-screenshots.js",
+    "icons:generate": "node scripts/generate-icons.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "eslint": "10.11.0",
+    "geckodriver": "7.0.0",
+    "prettier": "3.9.9",
+    "selenium-webdriver": "4.49.0",
+    "sharp": "0.35.4",
+    "web-ext": "10.7.0"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Michael Projects",
+    "email": "tabernacle@michaelprojects.com",
+    "url": "https://michaelprojects.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/micprojects/tabernacle.git"
+  },
+  "homepage": "https://michaelprojects.com/tabernacle/",
+  "bugs": {
+    "url": "https://github.com/micprojects/tabernacle/issues",
+    "email": "tabernacle@michaelprojects.com"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  }
+}

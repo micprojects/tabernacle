@@ -1,0 +1,7 @@
+The SVG files in this directory are Firefox container icons from Mozilla's
+browser/components/contextualidentity/content directory. They include explicit
+fill fallbacks so the icons render outside Firefox's privileged browser UI.
+
+Source: https://github.com/mozilla-firefox/firefox/tree/main/browser/components/contextualidentity/content
+These files retain their Mozilla Public License 2.0 notices. The license is
+available at https://mozilla.org/MPL/2.0/.
