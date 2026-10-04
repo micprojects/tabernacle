@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tabernacle · Development preview</title>
+    <link
+      rel="icon"
+      href="/extension/icons/tabernacle-toolbar-full.svg"
+      type="image/svg+xml"
+      sizes="any"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #efebf6;
+        color: #282232;
+        font-family: system-ui, sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+      h1 {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 20px;
+      }
+      h1 img {
+        width: 32px;
+        height: 32px;
+      }
+      p {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      a {
+        color: #6533b5;
+      }
+      iframe {
+        display: block;
+        width: min(100%, 360px);
+        height: max(360px, calc(100dvh - 200px));
+        border: 1px solid #c7bfd4;
+        border-radius: 8px;
+        background: white;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1><img src="/extension/icons/tabernacle-toolbar-full.svg" alt="" />Tabernacle preview</h1>
+      <p>
+        The current sidebar with sample tabs and an in-memory browser adapter. Changes reset on
+        reload and do not affect Firefox. <a href="/extension/sidebar.html?demo">Open sidebar</a>
+      </p>
+      <iframe src="/extension/sidebar.html?demo" title="Interactive Tabernacle sidebar"></iframe>
+    </main>
+  </body>
+</html>

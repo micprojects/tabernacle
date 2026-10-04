@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <defs>
+    <linearGradient id="tile" x1="2" y1="0" x2="14" y2="16" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fafcf8" />
+      <stop offset="1" stop-color="#e8ede5" />
+    </linearGradient>
+    <linearGradient id="frame" x1="3" y1="2" x2="13" y2="14" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#81998d" />
+      <stop offset="1" stop-color="#5d796c" />
+    </linearGradient>
+  </defs>
+  <!-- The green frame itself fills the slot, including its stroke, with no pale outer padding. -->
+  <rect width="16" height="16" rx="3.5" fill="url(#tile)" />
+  <g stroke="url(#frame)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0.75" y="0.75" width="14.5" height="14.5" rx="2.75" />
+    <path d="M0.75 5.25h14.5M6.25 5.25v10" />
+  </g>
+</svg>
