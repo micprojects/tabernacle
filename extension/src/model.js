@@ -18,7 +18,7 @@ export function groupById(model, id) {
 }
 
 export function requireGroup(model, id) {
-  if (id !== null && !groupById(model, id)) throw new Error('That group no longer exists.');
+  if (id !== null && !groupById(model, id)) throw new Error('That folder no longer exists.');
   return id;
 }
 
@@ -52,7 +52,7 @@ export function children(model, parentId) {
 
 export function cleanName(value) {
   const name = String(value ?? '').trim();
-  if (!name) throw new Error('Give your group a name.');
+  if (!name) throw new Error('Give your folder a name.');
   if (name.length > 80) throw new Error('Use a name of 80 characters or fewer.');
   return name;
 }
@@ -66,10 +66,10 @@ export function addGroup(model, name, parentId = null, id = crypto.randomUUID())
 
 export function moveGroup(model, id, parentId, beforeId = null) {
   const group = groupById(model, requireGroup(model, id));
-  if (!group) throw new Error('Choose a group to move.');
+  if (!group) throw new Error('Choose a folder to move.');
   requireGroup(model, parentId);
   if (isWithin(model, parentId, id))
-    throw new Error('A group cannot go inside itself or one of its subgroups.');
+    throw new Error('A folder cannot go inside itself or one of its subfolders.');
   if (beforeId === id) return;
   if (beforeId && groupById(model, beforeId)?.parentId !== parentId)
     throw new Error('The destination has changed. Try again.');
@@ -84,7 +84,7 @@ export function moveGroup(model, id, parentId, beforeId = null) {
 // Remove the complete subtree after the controller has closed its tabs.
 export function removeGroup(model, id) {
   const group = groupById(model, requireGroup(model, id));
-  if (!group) throw new Error('Choose a group to remove.');
+  if (!group) throw new Error('Choose a folder to remove.');
   model.groups = model.groups.filter((item) => !isWithin(model, item.id, id));
   return group.parentId;
 }

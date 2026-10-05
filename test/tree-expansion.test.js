@@ -127,7 +127,7 @@ test('flat tabs and pinned-only children offer no folding action; empty groups c
 test('invalid bulk requests fail without changing saved state', async () => {
   const { send } = await fixture();
   const before = await send('snapshot');
-  await assert.rejects(send('collapseTree', { scopeId: 'missing', collapsed: true }), /group/);
+  await assert.rejects(send('collapseTree', { scopeId: 'missing', collapsed: true }), /folder/);
   await assert.rejects(send('collapseTree', { scopeId: 'work' }), /tree state/);
   assert.deepEqual(await send('snapshot'), before);
 });

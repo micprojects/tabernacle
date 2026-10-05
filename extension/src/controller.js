@@ -312,7 +312,7 @@ export function createController(api, notify = () => {}) {
 
   async function groupContents(id) {
     const group = groupById(model, requireGroup(model, id));
-    if (!group) throw new Error('Choose a group.');
+    if (!group) throw new Error('Choose a folder.');
     const groupIds = model.groups.filter((item) => isWithin(model, item.id, id)).map((g) => g.id);
     const tabs = (await listTabs()).filter((tab) => groupIds.includes(tab.groupId));
     return {
@@ -325,10 +325,10 @@ export function createController(api, notify = () => {}) {
 
   async function moveGroupContents(id, destinationId) {
     const group = groupById(model, requireGroup(model, id));
-    if (!group) throw new Error('Choose a group to move contents from.');
+    if (!group) throw new Error('Choose a folder to move contents from.');
     requireGroup(model, destinationId);
     if (isWithin(model, destinationId, id))
-      throw new Error('Choose a destination outside this group and its subgroups.');
+      throw new Error('Choose a destination outside this folder and its subfolders.');
     const tabs = await listTabs();
     const windows = new Set(tabs.filter((tab) => tab.groupId === id).map((tab) => tab.windowId));
     const changes = [];
@@ -378,7 +378,7 @@ export function createController(api, notify = () => {}) {
     } catch (error) {
       if (explicitStore !== undefined) throw error;
       throw new Error(
-        'This group’s default container is unavailable. Choose another in Default container… or select No container.',
+        'This folder’s default container is unavailable. Choose another in Default container… or select No container.',
       );
     }
     return cookieStoreId;
@@ -598,7 +598,7 @@ export function createController(api, notify = () => {}) {
           typeof id !== 'string' ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
         )
-          throw new Error('Choose a valid group identifier.');
+          throw new Error('Choose a valid folder identifier.');
         extra.createdGroupId = id;
         if (groupById(model, id)) break;
         const parentId = requireGroup(model, message.parentId ?? null);
@@ -651,7 +651,7 @@ export function createController(api, notify = () => {}) {
       }
       case 'renameGroup': {
         requireGroup(model, message.id);
-        if (message.id === null) throw new Error('Choose a group to rename.');
+        if (message.id === null) throw new Error('Choose a folder to rename.');
         await changeModel((next) => {
           groupById(next, message.id).name = cleanName(message.name);
         });
@@ -659,7 +659,7 @@ export function createController(api, notify = () => {}) {
       }
       case 'setGroupContainer': {
         const group = groupById(model, requireGroup(model, message.id));
-        if (!group) throw new Error('Choose a group to set a default container.');
+        if (!group) throw new Error('Choose a folder to set a default container.');
         if (message.cookieStoreId !== null) await requireContainer(message.cookieStoreId);
         await changeModel((next) => {
           const target = groupById(next, group.id);
@@ -678,7 +678,7 @@ export function createController(api, notify = () => {}) {
         break;
       case 'removeGroup': {
         const group = groupById(model, requireGroup(model, message.id));
-        if (!group) throw new Error('Choose a group to delete.');
+        if (!group) throw new Error('Choose a folder to delete.');
         if (
           !Array.isArray(message.groupIds) ||
           !message.groupIds.every((id) => typeof id === 'string') ||
@@ -686,13 +686,13 @@ export function createController(api, notify = () => {}) {
           !Array.isArray(message.tabIds) ||
           !message.tabIds.every(Number.isInteger)
         )
-          throw new Error('Confirm the group and tabs to delete.');
+          throw new Error('Confirm the folder and tabs to delete.');
         const contents = await groupContents(group.id);
         if (
           contents.groupIds.some((id) => !message.groupIds.includes(id)) ||
           contents.tabIds.some((id) => !message.tabIds.includes(id))
         )
-          throw new Error('The group contents changed. Close this dialog and review them again.');
+          throw new Error('The folder contents changed. Close this dialog and review them again.');
         const windows = await api.windows.getAll();
         // Save views before closing tabs, which may close their browser windows.
         for (const item of windows.filter((item) => !item.incognito)) {
@@ -707,7 +707,7 @@ export function createController(api, notify = () => {}) {
         requestTabs.clear();
         if ((await groupContents(group.id)).tabIds.length)
           throw new Error(
-            'Some tabs are still open. Close them or try again before deleting the group.',
+            'Some tabs are still open. Close them or try again before deleting the folder.',
           );
         await changeModel((next) => removeGroup(next, group.id));
         break;
@@ -907,7 +907,7 @@ export function createController(api, notify = () => {}) {
       }
       case 'closeGroupTabs': {
         const group = groupById(model, requireGroup(model, message.id));
-        if (!group) throw new Error('Choose a group whose tabs you want to close.');
+        if (!group) throw new Error('Choose a folder whose tabs you want to close.');
         if (!Array.isArray(message.tabIds) || !message.tabIds.every(Number.isInteger))
           throw new Error('Choose the tabs to close.');
         // Only close tabs shown in the confirmation that still belong here.

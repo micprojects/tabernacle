@@ -236,17 +236,17 @@
   "shots": [
     {
       "file": "01-folders-and-tabs.png",
-      "caption": "Organise tabs into groups, subgroups and collapsible tab trees.",
+      "caption": "Keep related tabs together. Organise tabs into folders, subfolders and nested trees in your Firefox sidebar.",
       "scope": null,
       "collapsedGroups": ["work", "recipes", "reading"],
       "colorScheme": "light",
       "composition": {
         "title": ["Keep related", "tabs together"],
         "body": [
-          "Group tabs by project, activity or topic.",
-          "Add subgroups and nested tab trees."
+          "Organise tabs into folders, subfolders",
+          "and nested trees in your Firefox sidebar."
         ],
-        "feature": "GROUPS & TAB TREES",
+        "feature": "FOLDERS & TAB TREES",
         "crop": {
           "left": 41,
           "top": 134,
@@ -263,14 +263,14 @@
     },
     {
       "file": "02-focus-a-folder.png",
-      "caption": "Open a group to focus on its tabs. Use the path above to go back.",
+      "caption": "Focus on one folder. Open a folder to see just its tabs. Use the folder path to move back up.",
       "scope": "trip",
       "collapsedGroups": [],
       "colorScheme": "light",
       "composition": {
-        "title": ["Focus on", "one group"],
-        "body": ["Open a group to see just its tabs.", "Use the path to move back up."],
-        "feature": "GROUP FOCUS",
+        "title": ["Focus on", "one folder"],
+        "body": ["Open a folder to see just its tabs.", "Use the folder path to move back up."],
+        "feature": "FOLDER FOCUS",
         "crop": {
           "left": 41,
           "top": 134,
@@ -287,13 +287,13 @@
     },
     {
       "file": "03-search.png",
-      "caption": "Find tabs inside collapsed groups by searching titles, URLs or group names.",
+      "caption": "Find tabs in any folder. Search tab titles, URLs and folder names, including in collapsed folders.",
       "scope": null,
       "search": "grid",
       "colorScheme": "light",
       "composition": {
-        "title": ["Find tabs in", "any group"],
-        "body": ["Search by title, URL or group name.", "Collapsed groups are searched too."],
+        "title": ["Find tabs in", "any folder"],
+        "body": ["Search tab titles, URLs and folder names,", "including in collapsed folders."],
         "feature": "SEARCH",
         "crop": {
           "left": 41,
@@ -311,14 +311,17 @@
     },
     {
       "file": "04-folder-containers.png",
-      "caption": "Give a group a default Firefox container for new tabs.",
+      "caption": "Keep sign-ins separate. Choose a Firefox container for new tabs, or set a default container for each folder.",
       "scope": null,
       "menu": "Default container",
       "colorScheme": "light",
       "menuGroup": "work",
       "composition": {
         "title": ["Keep sign-ins", "separate"],
-        "body": ["Choose a Firefox container for new tabs.", "Give each group its own default."],
+        "body": [
+          "Choose a Firefox container for new tabs,",
+          "or set a default container for each folder."
+        ],
         "feature": "FIREFOX CONTAINERS",
         "crop": {
           "left": 65,
@@ -336,16 +339,17 @@
     },
     {
       "file": "05-dark-mode.png",
-      "caption": "Choose light or dark mode, with optional website domains and connecting lines.",
+      "caption": "Choose how the sidebar looks. Switch between light and dark themes. Show website domains and lines connecting nested tabs.",
       "scope": "trip",
       "collapsedGroups": ["work", "recipes", "reading"],
       "colorScheme": "dark",
       "domains": true,
       "composition": {
-        "title": ["Choose light", "or dark"],
+        "title": ["Choose how", "the sidebar looks"],
         "body": [
-          "Show website domains for more context.",
-          "Use connecting lines to follow tab trees."
+          "Switch between light and dark themes.",
+          "Show website domains and lines",
+          "connecting nested tabs."
         ],
         "feature": "APPEARANCE",
         "crop": {
@@ -365,13 +369,13 @@
     {
       "file": "06-pinned-tabs.png",
       "sourceFile": "02-focus-a-folder@2x.png",
-      "caption": "Pin frequently used sites. Pinned tabs stay visible as you move between groups.",
+      "caption": "Keep pinned tabs visible. Pin the sites you use most. They stay visible in every folder.",
       "scope": "trip",
       "collapsedGroups": [],
       "colorScheme": "light",
       "composition": {
-        "title": ["Keep favourites", "in reach"],
-        "body": ["Pin the sites you use every day.", "Your pins stay visible in every group."],
+        "title": ["Keep pinned", "tabs visible"],
+        "body": ["Pin the sites you use most.", "They stay visible in every folder."],
         "feature": "PINNED TABS",
         "crop": {
           "left": 41,

@@ -149,7 +149,7 @@ test('group close excludes new tabs and confirmed tabs moved outside its group o
 test('group close rejects invalid targets and confirmation data without closing tabs', async () => {
   const { send, api } = fixture();
   for (const id of [null, undefined, 'missing'])
-    await assert.rejects(send('closeGroupTabs', { id, tabIds: [1, 2, 3] }), /group/);
+    await assert.rejects(send('closeGroupTabs', { id, tabIds: [1, 2, 3] }), /folder/);
   for (const tabIds of [undefined, null, 'all', [1, '2']])
     await assert.rejects(send('closeGroupTabs', { id: 'work', tabIds }), /tabs to close/);
   await send('closeGroupTabs', { id: 'personal', tabIds: [1, 2] });

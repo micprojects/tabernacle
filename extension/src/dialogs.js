@@ -27,7 +27,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     choices,
     input = true,
     compact = false,
-    label = 'Group name',
+    label = 'Folder name',
     cancel = 'Cancel',
     content,
     onSubmit,
@@ -61,7 +61,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     $('dialog-input').required = input && !choices;
     $('dialog-input').value = value;
     $('dialog-select').hidden = !choices;
-    $('dialog-select').setAttribute('aria-label', 'Destination group');
+    $('dialog-select').setAttribute('aria-label', 'Destination folder');
     $('dialog-select').replaceChildren();
     if (choices)
       choices.forEach((choice) => {
@@ -240,7 +240,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     const group = groupById(getState(), groupId);
     return containerPicker({
       title: 'Default container',
-      description: `New tabs created through Tabernacle in “${group.name}” use this container. Subgroups inherit this default.`,
+      description: `New tabs created through Tabernacle in “${group.name}” use this container. Subfolders inherit this default.`,
       submit: 'Save',
 
       load: async () => {
@@ -249,7 +249,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
           warning: error.message,
         }));
         const current = groupById(getState(), groupId);
-        if (!current) throw new Error('That group no longer exists.');
+        if (!current) throw new Error('That folder no longer exists.');
         const inherited = groupContainer(getState(), current.parentId) ?? 'firefox-default';
         const name =
           inherited === 'firefox-default'
@@ -363,7 +363,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
 
   function renameDialog(id) {
     showDialog({
-      title: 'Rename group',
+      title: 'Rename folder',
       value: groupById(getState(), id).name,
 
       onSubmit: async (name) => {
@@ -378,9 +378,9 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     let contents;
     const context = showDialog({
       title: `Delete “${group.name}”?`,
-      description: 'Counting tabs and subgroups across all Firefox windows…',
+      description: 'Counting tabs and subfolders across all Firefox windows…',
       input: false,
-      submit: 'Delete group',
+      submit: 'Delete folder',
 
       onSubmit: async () => {
         onChange(await request('removeGroup', { id, ...contents }));
@@ -396,7 +396,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
       const tabs = contents.tabIds.length;
       const pinned = contents.pinnedCount;
       $('dialog-description').textContent =
-        `Delete this group${subgroups ? ` and its ${subgroups} ${subgroups === 1 ? 'subgroup' : 'subgroups'}` : ''}, and close ${tabs} ${tabs === 1 ? 'tab' : 'tabs'} across all Firefox windows.${pinned ? ` This includes ${pinned} pinned ${pinned === 1 ? 'tab' : 'tabs'}.` : ''}`;
+        `Delete this folder${subgroups ? ` and its ${subgroups} ${subgroups === 1 ? 'subfolder' : 'subfolders'}` : ''}, and close ${tabs} ${tabs === 1 ? 'tab' : 'tabs'} across all Firefox windows.${pinned ? ` This includes ${pinned} pinned ${pinned === 1 ? 'tab' : 'tabs'}.` : ''}`;
       $('dialog-submit').disabled = false;
     } catch (error) {
       if (dialogContext !== context || !$('dialog').open) return;
@@ -414,7 +414,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     const count = `${tabs.length} ${tabs.length === 1 ? 'tab' : 'tabs'}`;
     showDialog({
       title: `Close all tabs in “${group.name}”?`,
-      description: `Close ${count} in this group and its subgroups in this window.${pinned ? ` This includes ${pinned} pinned ${pinned === 1 ? 'tab' : 'tabs'}.` : ''} The groups will stay.`,
+      description: `Close ${count} in this folder and its subfolders in this window.${pinned ? ` This includes ${pinned} pinned ${pinned === 1 ? 'tab' : 'tabs'}.` : ''} The folders will stay.`,
       input: false,
       submit: `Close ${count}`,
 
@@ -467,10 +467,14 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     walk(null, 0);
     showDialog({
       title:
-        kind === 'contents' ? 'Move group contents' : kind === 'group' ? 'Move group' : 'Move tab',
+        kind === 'contents'
+          ? 'Move folder contents'
+          : kind === 'group'
+            ? 'Move folder'
+            : 'Move tab',
       description:
         kind === 'contents'
-          ? `Move all tabs and subgroups in “${groupById(getState(), id).name}” into the destination, across all Firefox windows. Subgroups keep their contents and this group stays empty.`
+          ? `Move all tabs and subfolders in “${groupById(getState(), id).name}” into the destination, across all Firefox windows. Subfolders keep their contents and this folder stays empty.`
           : kind === 'tab'
             ? 'The tab and its children will move together.'
             : 'Choose a destination.',

@@ -8,10 +8,10 @@ const { page, close, base } = await startUiTest({
 });
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
-const name = page.getByLabel('Group name', { exact: true });
+const name = page.getByLabel('Folder name', { exact: true });
 const destination = page.getByLabel('Create in', { exact: true });
-const search = page.getByRole('searchbox', { name: 'Find a group' });
-const tree = page.getByRole('tree', { name: 'Destination groups' });
+const search = page.getByRole('searchbox', { name: 'Find a folder' });
+const tree = page.getByRole('tree', { name: 'Destination folders' });
 const folder = (label) => tree.getByRole('treeitem', { name: label, exact: true });
 
 try {
@@ -42,7 +42,7 @@ try {
   await expect(destination).toBeFocused();
   await expect(tree).toBeHidden();
   await expect(name).toHaveValue('Reading');
-  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   expect(
     await page.evaluate(
       () => window.pickerTest.getState().groups.find((g) => g.name === 'Reading').parentId,
@@ -59,7 +59,7 @@ try {
   await destination.press('ArrowDown');
   await expect(search).toBeFocused();
   await search.fill('not a folder');
-  await expect(page.getByText('No groups found.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No folders found.', { exact: true })).toBeVisible();
   await search.press('Enter');
   await expect(page.locator('#dialog')).toBeVisible();
   expect(
@@ -90,7 +90,7 @@ try {
   await search.fill('Home');
   await search.press('Enter');
   await expect(destination).toHaveText('Home');
-  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   expect(
     await page.evaluate(
       () => window.pickerTest.getState().groups.find((g) => g.name === 'Keyboard group').parentId,
@@ -146,7 +146,7 @@ try {
     (id) => window.pickerTest.request('removeGroup', { id, groupIds: [id], tabIds: [] }),
     duplicate,
   );
-  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   await expect(page.locator('#dialog-error')).toContainText('no longer exists');
   await expect(name).toHaveValue('Keep this name');
   await destination.click();
@@ -176,7 +176,7 @@ try {
   await page.setViewportSize({ width: 360, height: 720 });
   await page.locator('#home').click();
   await page.locator('[data-key="group:design"]').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Rename group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Rename folder', exact: true }).click();
   await expect(destination).toHaveCount(0);
   await expect(name).toHaveValue('Design');
   await page.keyboard.press('Escape');

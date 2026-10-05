@@ -20,7 +20,7 @@
           hidden
         ></div>
         <div class="navigation-capsule" id="navigation-capsule">
-          <nav class="navigation" id="breadcrumbs" aria-label="Group path">
+          <nav class="navigation" id="breadcrumbs" aria-label="Folder path">
             <button
               class="crumb icon-button"
               id="home"
@@ -33,14 +33,14 @@
             <button
               class="icon-button"
               id="search-toggle"
-              aria-label="Search tabs and groups"
-              title="Search tabs and groups (⌘/Ctrl K)"
+              aria-label="Search tabs and folders"
+              title="Search tabs and folders (⌘/Ctrl K)"
               aria-controls="search-wrap"
               aria-expanded="false"
             ></button>
           </div>
           <div class="search-wrap" id="search-wrap" role="search" aria-hidden="true" inert>
-            <label class="sr-only" for="search">Search tabs and groups in this group</label>
+            <label class="sr-only" for="search">Search tabs and folders in this folder</label>
             <input
               id="search"
               type="search"
@@ -58,19 +58,19 @@
           </div>
         </div>
       </header>
-      <main id="tree" class="tree" role="tree" aria-label="Tabs and groups" tabindex="0">
+      <main id="tree" class="tree" role="tree" aria-label="Tabs and folders" tabindex="0">
         <p class="loading">Opening your tabs…</p>
       </main>
       <button id="reveal" class="reveal" hidden>Current tab is hidden <span>Show ↗</span></button>
       <footer>
         <div class="footer-actions" role="group" aria-label="Tab actions">
           <button id="new-tab" aria-label="New tab" title="New tab" disabled></button>
-          <button id="new-group" aria-label="New group" title="New group" disabled></button>
+          <button id="new-group" aria-label="New folder" title="New folder" disabled></button>
           <span class="dock-divider" aria-hidden="true"></span>
           <button
             id="tree-toggle"
-            aria-label="Expand or collapse groups and tabs"
-            title="Expand or collapse groups and tabs"
+            aria-label="Expand or collapse folders and tabs"
+            title="Expand or collapse folders and tabs"
             aria-controls="tree"
             disabled
           ></button>
@@ -104,10 +104,10 @@
           <h2 id="dialog-title"></h2>
         </div>
         <p id="dialog-description"></p>
-        <label id="dialog-label" for="dialog-input">Group name</label
+        <label id="dialog-label" for="dialog-input">Folder name</label
         ><input id="dialog-input" maxlength="80" autocomplete="off" required /><select
           id="dialog-select"
-          aria-label="Destination group"
+          aria-label="Destination folder"
           hidden
         ></select>
         <div
@@ -125,7 +125,7 @@
         <p id="dialog-error" class="dialog-error" role="alert" hidden></p>
         <div class="dialog-actions">
           <button type="button" id="dialog-cancel">Cancel</button
-          ><button type="submit" id="dialog-submit" class="primary">Create group</button>
+          ><button type="submit" id="dialog-submit" class="primary">Create folder</button>
         </div>
       </form>
     </dialog>

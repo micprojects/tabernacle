@@ -135,7 +135,7 @@ try {
   const longName = 'Design references and inspiration for the next website';
   await page.locator('[data-key="group:design"]').focus();
   await page.keyboard.press('F2');
-  await page.getByLabel('Group name', { exact: true }).fill(longName);
+  await page.getByLabel('Folder name', { exact: true }).fill(longName);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.locator('[data-key="group:design"]').dblclick();
   await settleNavigation();

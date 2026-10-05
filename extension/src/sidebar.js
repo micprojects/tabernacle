@@ -128,7 +128,7 @@ function breadcrumbMenuButton(label, iconName, handler, className) {
 
 function folderChevron(parentId, parentName) {
   return breadcrumbMenuButton(
-    `Show groups in ${parentName}`,
+    `Show folders in ${parentName}`,
     'chevron',
     (event) => toggleFolderMenu(event.currentTarget, parentId),
     'crumb-children',
@@ -136,7 +136,7 @@ function folderChevron(parentId, parentName) {
 }
 
 const pathOverflow = breadcrumbMenuButton(
-  'Show full group path',
+  'Show full folder path',
   null,
   togglePathMenu,
   'crumb crumb-overflow',
@@ -451,7 +451,7 @@ function createGroupRow(group, container) {
   row.title = `${group.name}\nClick to expand/collapse · Double-click to enter · Right-click for options`;
   describeContainer(row, { container }, 'Default container');
   const playing = audioInGroups.get(group.id) || 0;
-  const audio = playingLabel(playing, 'in this group');
+  const audio = playingLabel(playing, 'in this folder');
   if (playing) describeAudio(row, audio);
   const disclosure = button(
     `Expand ${group.name}`,
@@ -816,14 +816,14 @@ function updateTreeToggle(query) {
   const scope = groupById(state, state.view.scopeId)?.name || 'Home';
   const label = hasBranches
     ? `${branches.expanded ? 'Collapse' : 'Expand'} all in ${scope}`
-    : 'Expand or collapse groups and tabs';
+    : 'Expand or collapse folders and tabs';
   toggle.disabled = changingTree || Boolean(query) || !hasBranches;
   setAttribute(toggle, 'aria-label', label);
   setAttribute(toggle, 'aria-busy', String(changingTree));
   toggle.title = query
-    ? 'Clear search to expand or collapse groups and tabs'
+    ? 'Clear search to expand or collapse folders and tabs'
     : hasBranches
-      ? `${label} — groups and nested tabs`
+      ? `${label} — folders and nested tabs`
       : 'Nothing to expand or collapse here';
   const iconName = branches.expanded ? 'fold' : 'collapse';
   if (toggle.dataset.icon !== iconName) {
@@ -909,7 +909,7 @@ function toggleFolderMenu(trigger, parentId) {
   const rect = trigger.getBoundingClientRect();
   menu(items, rect.left, rect.bottom + 8, {
     path: true,
-    label: `Groups in ${parentName}`,
+    label: `Folders in ${parentName}`,
     trigger,
   });
   trigger.setAttribute('aria-expanded', 'true');
@@ -968,7 +968,7 @@ function render() {
         crumb.setAttribute('aria-current', 'location');
         if (scopeContainer) crumb.title = `Default container: ${scopeContainer.name}`;
         crumb.append(el('span', 'crumb-label', group.name));
-        if (scopeAudio) crumb.append(audioIndicator(playingLabel(scopeAudio, 'in this group')));
+        if (scopeAudio) crumb.append(audioIndicator(playingLabel(scopeAudio, 'in this folder')));
       } else crumb.append(el('span', 'crumb-label', group.name));
       dropTarget(crumb, 'inside', group.id);
       return [folderChevron(group.parentId, crumbs[index - 1]?.name || 'Home'), crumb];
@@ -1134,7 +1134,7 @@ function menu(
     above = false,
     alignRight = false,
     path = false,
-    label = path ? 'Full group path' : null,
+    label = path ? 'Full folder path' : null,
     trigger = document.activeElement,
   } = {},
 ) {
@@ -1209,7 +1209,7 @@ function newTabMenu(event, groupId) {
   menu(
     [
       { label: 'New tab', icon: 'plus', run: () => blankAreaAction('newTab', { groupId }) },
-      { label: 'New group…', icon: 'groupPlus', run: () => createDialog(groupId) },
+      { label: 'New folder…', icon: 'groupPlus', run: () => createDialog(groupId) },
     ],
     keyboard ? rect.left : event.clientX,
     keyboard ? rect.bottom : event.clientY,
@@ -1227,7 +1227,7 @@ function blankAreaMenu(x, y) {
         icon: 'container',
         run: () => newContainerDialog(groupId),
       },
-      { label: 'New group…', icon: 'groupPlus', run: () => createDialog(groupId) },
+      { label: 'New folder…', icon: 'groupPlus', run: () => createDialog(groupId) },
       ...(groupId !== null
         ? [
             {
@@ -1252,13 +1252,13 @@ function blankAreaMenu(x, y) {
       },
       null,
       {
-        label: 'Expand all groups',
+        label: 'Expand all folders',
         icon: 'group',
         disabled: !state.groups.length,
         run: () => action('collapseAll', { collapsed: false }),
       },
       {
-        label: 'Collapse all groups',
+        label: 'Collapse all folders',
         icon: 'collapse',
         disabled: !state.groups.length,
         run: () => action('collapseAll', { collapsed: true }),
@@ -1304,7 +1304,7 @@ async function copyUrls(kind, id) {
       : state.tabs.filter((tab) => tab.id === id);
   const urls = tabs.map((tab) => tab.url).filter((url) => typeof url === 'string' && url.trim());
   if (!urls.length) {
-    announce(kind === 'group' ? 'No URLs to copy in this group.' : 'This tab has no URL to copy.');
+    announce(kind === 'group' ? 'No URLs to copy in this folder.' : 'This tab has no URL to copy.');
     return;
   }
   try {
@@ -1320,23 +1320,23 @@ function contextMenu(kind, id, x, y) {
   if (kind === 'group')
     menu(
       [
-        { label: 'Go into group', icon: 'enter', run: () => enter(id) },
+        { label: 'Go into folder', icon: 'enter', run: () => enter(id) },
         {
           label: 'New tab here',
           icon: 'plus',
           run: () => action('newTab', { groupId: id }),
         },
         {
-          label: 'New subgroup',
+          label: 'New subfolder',
           icon: 'groupPlus',
           run: () => createDialog(id),
         },
         null,
         { label: 'Copy URLs', icon: 'copy', run: () => copyUrls(kind, id) },
-        { label: 'Rename group', icon: 'rename', run: () => renameDialog(id) },
+        { label: 'Rename folder', icon: 'rename', run: () => renameDialog(id) },
         { label: 'Default container…', icon: 'container', run: () => groupContainerDialog(id) },
         {
-          label: 'Move group…',
+          label: 'Move folder…',
           icon: 'group',
           run: () => moveDialog(kind, id),
         },
@@ -1354,7 +1354,7 @@ function contextMenu(kind, id, x, y) {
           danger: true,
         },
         {
-          label: 'Delete group…',
+          label: 'Delete folder…',
           icon: 'trash',
           run: () => removeDialog(id),
           danger: true,
@@ -1383,7 +1383,7 @@ function contextMenu(kind, id, x, y) {
           : []),
         null,
         {
-          label: 'Move to group…',
+          label: 'Move to folder…',
           icon: 'group',
           run: () => moveDialog(kind, id),
         },
@@ -1535,7 +1535,7 @@ function dropTarget(node, kind, id) {
     if (source.kind === kind && source.id === id) return;
     if (kind === 'tab' && position === 'inside') {
       if (source.kind !== 'tab') {
-        announce('Groups cannot be nested under tabs. Drop onto a group or Home instead.', true);
+        announce('Folders cannot be nested under tabs. Drop onto a folder or Home instead.', true);
         return;
       }
       await action('nestTab', { id: source.id, parentTabId: id });
@@ -1655,12 +1655,12 @@ $('more').addEventListener('click', () => {
   menu(
     [
       {
-        label: 'Expand all groups',
+        label: 'Expand all folders',
         icon: 'group',
         run: () => action('collapseAll', { collapsed: false }),
       },
       {
-        label: 'Collapse all groups',
+        label: 'Collapse all folders',
         icon: 'collapse',
         run: () => action('collapseAll', { collapsed: true }),
       },

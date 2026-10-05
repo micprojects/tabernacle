@@ -347,7 +347,7 @@ try {
     window.containerTest.delayList = false;
     window.containerTest.finishList();
   });
-  await expect(page.locator('#dialog-title')).toHaveText('New group');
+  await expect(page.locator('#dialog-title')).toHaveText('New folder');
   await expect(page.locator('#dialog-options')).toBeHidden();
   await page.locator('#dialog-cancel').click();
   check('A delayed container lookup cannot overwrite a different dialog after cancellation');

@@ -31,12 +31,12 @@ try {
 
   // Folding all through the old group-only menu leaves hidden tab branches open.
   await page.locator('#more').click();
-  await page.getByRole('menuitem', { name: 'Collapse all groups', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Collapse all folders', exact: true }).click();
   await expect(toggle).toHaveAccessibleName('Expand all in Home');
   await work.getByRole('button', { name: 'Expand Work', exact: true }).click();
   await expect(toggle).toHaveAccessibleName('Collapse all in Home');
   await work.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Go into group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
   await expect(toggle).toHaveAccessibleName('Expand all in Work');
   await toggle.click();
   await expect(design).toHaveAttribute('aria-expanded', 'true');
@@ -53,7 +53,7 @@ try {
   );
 
   await design.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Go into group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
   await expect(toggle).toHaveAccessibleName('Expand all in Design');
   await toggle.click();
   await expect(page.locator('.tab-row')).toHaveCount(4);
@@ -74,7 +74,7 @@ try {
   await expect(toggle).toBeDisabled();
   await expect(toggle).toHaveAttribute(
     'title',
-    'Clear search to expand or collapse groups and tabs',
+    'Clear search to expand or collapse folders and tabs',
   );
   await page.keyboard.press('Escape');
   await expect(toggle).toBeEnabled();
@@ -84,7 +84,7 @@ try {
 
   await page.locator('#home').click();
   await page.locator('[data-key="group:later"]').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Go into group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
   await expect(toggle).toBeDisabled();
   await expect(toggle).toHaveAttribute('title', 'Nothing to expand or collapse here');
   await page.locator('#home').click();

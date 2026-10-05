@@ -78,7 +78,7 @@ try {
       await page.keyboard.press('Enter');
     } else {
       await group.click({ button: 'right' });
-      await page.getByRole('menuitem', { name: 'Go into group', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
     }
     await closed();
     await expect(page.locator('#scope-heading')).toHaveText('Research');
@@ -130,7 +130,7 @@ try {
       await expect(page.locator('.tab-row.active .label')).toHaveText('New tab');
     else if (id === 'new-group') {
       await expect(page.getByRole('dialog')).toBeVisible();
-      await expect(page.getByLabel('Group name', { exact: true })).toBeFocused();
+      await expect(page.getByLabel('Folder name', { exact: true })).toBeFocused();
     } else if (id === 'more') {
       await expect(page.getByRole('menu')).toBeVisible();
       await expect(page.getByRole('menuitem').first()).toBeFocused();

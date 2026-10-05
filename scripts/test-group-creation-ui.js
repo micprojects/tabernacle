@@ -7,7 +7,7 @@ const { page, base, close } = await startUiTest({
 });
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
-const name = page.getByLabel('Group name', { exact: true });
+const name = page.getByLabel('Folder name', { exact: true });
 const change = page.getByRole('button', { name: 'Change default container' });
 const snapshot = () => page.evaluate(() => window.groupCreationTest.send('snapshot'));
 const button = (name) => page.getByRole('button', { name, exact: true });
@@ -94,7 +94,7 @@ try {
   await expect(name).toHaveValue('Client project');
   await expect(page.getByLabel('Create in', { exact: true })).toHaveText('Home / Work');
   await expect(change).toBeFocused();
-  await button('Create group').click();
+  await button('Create folder').click();
   await expect(page.getByRole('dialog')).toBeHidden();
   let state = await snapshot();
   expect(state.groups.find((group) => group.name === 'Client project')).toMatchObject({
@@ -155,7 +155,7 @@ try {
   await page.evaluate(() => {
     window.groupCreationTest.failCreate = true;
   });
-  await button('Create group').click();
+  await button('Create folder').click();
   await expect(page.getByRole('alert')).toContainText('Firefox refused');
   await expect(name).toHaveValue('Accounts');
   await expect(change).toBeEnabled();
@@ -164,7 +164,7 @@ try {
   await page.evaluate(() => {
     window.groupCreationTest.failCreate = false;
   });
-  await button('Create group').click();
+  await button('Create folder').click();
   await expect(page.getByRole('dialog')).toBeHidden();
   state = await snapshot();
   const identity = state.containers.find((item) => item.name === 'Accounts');
@@ -183,11 +183,11 @@ try {
   await page.evaluate(() =>
     window.groupCreationTest.send('removeContainer', { cookieStoreId: 'firefox-container-2' }),
   );
-  await button('Create group').click();
+  await button('Create folder').click();
   await expect(page.getByRole('alert')).toContainText('no longer exists');
   await change.click();
   await button('No container').click();
-  await button('Create group').click();
+  await button('Create folder').click();
   state = await snapshot();
   expect(
     state.groups.find((group) => group.name === 'Unavailable selection').defaultCookieStoreId,
@@ -202,7 +202,7 @@ try {
   await expect(page.getByRole('alert')).toContainText('unavailable');
   await expect(button('Create new container…')).toBeDisabled();
   await button('No container').click();
-  await button('Create group').click();
+  await button('Create folder').click();
   await expect(page.getByRole('dialog')).toBeHidden();
   await page.evaluate(() => {
     window.groupCreationTest.failList = false;
@@ -231,12 +231,12 @@ try {
     window.groupCreationTest.delayList = true;
   });
   await change.click();
-  await button('← Back to group').click();
+  await button('← Back to folder').click();
   await page.evaluate(() => {
     window.groupCreationTest.delayList = false;
     window.groupCreationTest.finishList();
   });
-  await expect(page.locator('#dialog-title')).toHaveText('New group');
+  await expect(page.locator('#dialog-title')).toHaveText('New folder');
   await expect(name).toHaveValue('A longer client folder name');
   await button('Cancel').click();
   await page.locator('#new-group').click();

@@ -332,7 +332,7 @@ try {
   await page.keyboard.press('ArrowRight');
   await expect(child).toBeVisible();
   await group.click({ button: 'right' });
-  await expect(page.getByRole('menuitem', { name: 'Rename group', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Rename folder', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.locator('#search-toggle').click();
   await page.locator('#search').fill('Typography');
@@ -428,7 +428,7 @@ try {
   await add.hover();
   await expect(add).toHaveCSS('background-color', tabHover);
   await add.click({ button: 'right' });
-  await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New group…']);
+  await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New folder…']);
   await page.keyboard.press('Escape');
   await expect(add).toBeFocused();
 

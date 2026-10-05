@@ -57,7 +57,7 @@ design experiments (`output/`) are local, ignored files.
 ## Stress testing
 
 `npm run test:stress` exercises 100, 500 and 1,000 real Firefox tabs, including search,
-nested branches, live page updates, containers, group closure and extension reload.
+nested branches, live page updates, containers, folder closure and extension reload.
 It records diagnostic timings in `test-results/firefox-stress.json`; timings are not
 machine-dependent pass thresholds. Most tabs stay unloaded, with up to 20 local pages
 generating title updates.
@@ -73,6 +73,6 @@ FIREFOX_STRESS_PROFILE='/absolute/path/to/test-profile' npm run test:stress
 Find the actual profile directory in `about:support`; names in Firefox's newer profile
 picker may differ from the legacy command-line names. The script verifies the directory
 before installing the extension temporarily. It uses a separate test window and removes
-its own groups, tabs and container afterward. Existing profile data is kept.
+its own folders, tabs and container afterward. Existing profile data is kept.
 Set `FIREFOX_STRESS_SIZES=100,500,2000` to change the workload. Quit Firefox afterward to
 end the automation session; the temporary extension installation ends at browser restart.
