@@ -368,7 +368,7 @@
     },
     {
       "file": "06-pinned-tabs.png",
-      "sourceFile": "02-focus-a-folder@2x.png",
+      "sourceFile": "02-focus-a-folder@5x.png",
       "caption": "Keep pinned tabs visible. Pin the sites you use most. They stay visible in every folder.",
       "scope": "trip",
       "collapsedGroups": [],
@@ -395,7 +395,16 @@
   "capture": {
     "width": 1280,
     "height": 800,
-    "scale": 2
+    "scale": 5,
+    "outputScale": 3,
+    "sourceSize": {
+      "width": 388,
+      "height": 711
+    },
+    "sourceOrigin": {
+      "left": 41,
+      "top": 134
+    }
   },
   "browserTheme": "Default",
   "browserAppearance": "Light for captures; Tabernacle dark mode for shot 5"

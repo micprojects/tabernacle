@@ -53,21 +53,29 @@ async function setup(fixture) {
       });
   }
   const existing = new Map();
+  const windowTabs = await browser.tabs.query({ windowId: win.id });
   // Keep earlier demo sessions usable when the canonical examples change.
   const legacyKeys = {
     music: 'youtube',
     torvehallerne: 'barr-review',
     smorrebrod: 'host-review',
   };
-  for (const tab of await browser.tabs.query({ windowId: win.id })) {
+  for (const tab of windowTabs) {
     const savedKey = await browser.sessions.getTabValue(tab.id, marker);
     const key = legacyKeys[savedKey] || savedKey;
     if (key) existing.set(key, tab);
   }
+  const claimed = new Set([...existing.values()].map((tab) => tab.id));
+  const sameUrl = (a, b) => a.replace(/\/$/, '') === b.replace(/\/$/, '');
   const tabs = {};
   for (const item of fixture.tabs) {
-    const tab =
+    // Temporary add-on reloads can lose session markers while pinned tabs survive.
+    const reusable =
       existing.get(item.key) ||
+      (item.pinned &&
+        windowTabs.find((tab) => tab.pinned && !claimed.has(tab.id) && sameUrl(tab.url, item.url)));
+    const tab =
+      reusable ||
       (await browser.tabs.create({
         windowId: win.id,
         url: item.url,
@@ -75,12 +83,13 @@ async function setup(fixture) {
         pinned: Boolean(item.pinned),
         ...(item.container ? { cookieStoreId: containers[item.container] } : {}),
       }));
-    if (existing.has(item.key)) {
+    if (reusable) {
       const changes = {};
       if (tab.url !== item.url) changes.url = item.url;
       if (tab.pinned !== Boolean(item.pinned)) changes.pinned = Boolean(item.pinned);
       if (Object.keys(changes).length) await browser.tabs.update(tab.id, changes);
     }
+    claimed.add(tab.id);
     tabs[item.key] = tab.id;
     await browser.sessions.setTabValue(tab.id, marker, item.key);
     await send('moveTab', { id: tab.id, groupId: groups[item.group] || null });
