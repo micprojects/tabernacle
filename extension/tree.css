@@ -93,11 +93,6 @@
   text-align: start;
   font-size: 12.5px;
 }
-.new-tab-action .icon-slot > svg {
-  width: 16px;
-  height: 16px;
-  stroke-width: 1.5;
-}
 .new-tab-action:hover,
 .new-tab-action:focus-visible {
   color: var(--text);
@@ -151,13 +146,6 @@
 }
 svg.folder-icon {
   color: var(--folder-color, light-dark(#858585, #adadad));
-  stroke-width: 1.5;
-}
-.folder-icon path:first-child {
-  fill: color-mix(in srgb, currentColor 24%, var(--background));
-}
-.folder-icon path:last-child {
-  fill: color-mix(in srgb, currentColor 10%, var(--background));
 }
 .group-row > .label {
   font-size: 13px;
@@ -186,30 +174,12 @@ svg.folder-icon {
   position: absolute;
   inset-inline-end: -1px;
   bottom: 0;
-  width: 11px;
-  height: 11px;
-  border: 1px solid currentColor;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   color: var(--muted);
   background: var(--background);
   pointer-events: none;
-}
-.tab-toggle-badge::before,
-.tab-toggle-badge::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 5px;
-  height: 1px;
-  background: currentColor;
-}
-.tab-toggle-badge::after {
-  width: 1px;
-  height: 5px;
-}
-.tab-disclosure[aria-expanded='true'] .tab-toggle-badge::after {
-  display: none;
 }
 .branch,
 .tab-branch {
@@ -240,13 +210,7 @@ svg.folder-icon {
   object-fit: contain;
 }
 .tab-icon svg {
-  width: 15px;
-  height: 15px;
   color: currentColor;
-}
-.tree .tab-icon svg {
-  width: 16px;
-  height: 16px;
 }
 .tab-fallback {
   font-size: 10px;
@@ -267,8 +231,6 @@ svg.folder-icon {
   margin-right: -3px;
 }
 .row .close-tab svg {
-  width: 13px;
-  height: 13px;
   color: currentColor;
 }
 .row:hover .close-tab,
@@ -285,10 +247,6 @@ svg.folder-icon {
   height: 18px;
   color: var(--icon);
 }
-.audio-indicator svg {
-  width: 13px;
-  height: 13px;
-}
 .row.active .audio-indicator {
   color: inherit;
 }
@@ -302,10 +260,6 @@ svg.folder-icon {
   border: 1px solid var(--line);
   background: var(--background);
 }
-.pinned-tab .audio-indicator svg {
-  width: 11px;
-  height: 11px;
-}
 .pinned-tab.active .audio-indicator {
   background: var(--selected);
   color: var(--selected-text);
@@ -317,10 +271,6 @@ svg.folder-icon {
   flex-shrink: 0;
   padding: 3px;
   border-radius: 4px;
-}
-.audio-button svg {
-  width: 13px;
-  height: 13px;
 }
 .discarded:not(.active) {
   color: var(--muted);
@@ -341,10 +291,7 @@ svg.folder-icon {
 }
 .empty-state > svg {
   color: var(--muted);
-  width: 35px;
-  height: 35px;
   margin: 0 auto 15px;
-  stroke-width: 1.2;
 }
 .empty-state h2 {
   font-size: 14px;
@@ -414,19 +361,11 @@ svg.folder-icon {
     color: ButtonText;
     background: Canvas;
   }
-  .tab-toggle-badge::before,
-  .tab-toggle-badge::after {
-    background: ButtonText;
-  }
   .container-indicator {
     background: CanvasText;
   }
   svg.folder-icon {
     color: CanvasText;
-  }
-  .folder-icon path:first-child,
-  .folder-icon path:last-child {
-    fill: Canvas;
   }
   .row.active,
   .pinned-tab.active {

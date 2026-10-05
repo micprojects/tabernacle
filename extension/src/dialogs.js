@@ -45,7 +45,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     $('dialog').classList.toggle('compact-container-dialog', compact);
     $('dialog-icon').replaceChildren(icon('groupPlus'));
     $('dialog-back').hidden = !onBack;
-    $('dialog-back').textContent = `← ${backLabel}`;
+    $('dialog-back').replaceChildren(icon('back'), document.createTextNode(backLabel));
     $('dialog-back').onclick = onBack;
     $('dialog-options').hidden = true;
     $('dialog-options').replaceChildren();

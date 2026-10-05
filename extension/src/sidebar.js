@@ -137,12 +137,11 @@ function folderChevron(parentId, parentName) {
 
 const pathOverflow = breadcrumbMenuButton(
   'Show full folder path',
-  null,
+  'more',
   togglePathMenu,
   'crumb crumb-overflow',
 );
 pathOverflow.id = 'path-overflow';
-pathOverflow.textContent = '…';
 const pathOverflowSeparator = folderChevron(null, 'Home');
 
 function announce(message, error = false) {
@@ -417,7 +416,7 @@ function audioIndicator(description, iconName = 'speaker') {
   marker.title = description;
   marker.setAttribute('role', 'img');
   marker.setAttribute('aria-label', description);
-  marker.append(icon(iconName));
+  marker.append(icon(`${iconName}Small`));
   return marker;
 }
 
@@ -698,6 +697,7 @@ function createTabRow(tab, expanded, stats) {
     disclosure.setAttribute('aria-expanded', String(expanded));
     const badge = el('span', 'tab-toggle-badge');
     badge.setAttribute('aria-hidden', 'true');
+    badge.append(icon(expanded ? 'subtractCircle' : 'addCircle'));
     disclosure.append(favicon, badge);
     row.append(disclosure);
   } else {
@@ -712,13 +712,13 @@ function createTabRow(tab, expanded, stats) {
     row.append(
       button(
         tab.mutedInfo?.muted ? 'Unmute tab' : 'Mute tab',
-        tab.mutedInfo?.muted ? 'muted' : 'speaker',
+        tab.mutedInfo?.muted ? 'mutedSmall' : 'speakerSmall',
         () => action('muteTab', { id: tab.id }),
         'audio-button',
       ),
     );
   row.append(
-    button(`Close ${tab.title || 'New tab'}`, 'close', () => closeTab(tab.id), 'close-tab'),
+    button(`Close ${tab.title || 'New tab'}`, 'closeSmall', () => closeTab(tab.id), 'close-tab'),
   );
   let toggleOnClick;
   row.addEventListener('pointerdown', (event) => {
@@ -825,7 +825,7 @@ function updateTreeToggle(query) {
     : hasBranches
       ? `${label} — folders and nested tabs`
       : 'Nothing to expand or collapse here';
-  const iconName = branches.expanded ? 'fold' : 'collapse';
+  const iconName = branches.expanded ? 'collapse' : 'expand';
   if (toggle.dataset.icon !== iconName) {
     toggle.dataset.icon = iconName;
     toggle.replaceChildren(icon(iconName));
@@ -986,7 +986,7 @@ function render() {
     const empty = el('div', 'empty-state');
     empty.setAttribute('role', 'none');
     empty.append(
-      icon('search'),
+      icon('searchLarge'),
       el('h2', '', 'Nothing found'),
       el('p', '', 'Try another name or website address.'),
     );
@@ -1253,7 +1253,7 @@ function blankAreaMenu(x, y) {
       null,
       {
         label: 'Expand all folders',
-        icon: 'group',
+        icon: 'expand',
         disabled: !state.groups.length,
         run: () => action('collapseAll', { collapsed: false }),
       },
@@ -1376,7 +1376,7 @@ function contextMenu(kind, id, x, y) {
           ? [
               {
                 label: tab.collapsed ? 'Expand child tabs' : 'Collapse child tabs',
-                icon: 'collapse',
+                icon: tab.collapsed ? 'expand' : 'collapse',
                 run: () => action('toggleTab', { id }),
               },
             ]
@@ -1582,6 +1582,7 @@ $('home').append(icon('home'));
 $('search-toggle').append(icon('search'));
 $('more').append(icon('more'));
 $('search-close').append(icon('close'));
+$('reveal').querySelector('span').append(icon('enter'));
 $('dialog-icon').append(icon('groupPlus'));
 $('new-tab').append(icon('plus'));
 $('new-group').append(icon('groupPlus'));
@@ -1656,7 +1657,7 @@ $('more').addEventListener('click', () => {
     [
       {
         label: 'Expand all folders',
-        icon: 'group',
+        icon: 'expand',
         run: () => action('collapseAll', { collapsed: false }),
       },
       {
