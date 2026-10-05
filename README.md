@@ -10,14 +10,38 @@ Tabernacle is a Firefox extension I made to help me navigate and organise my tab
 
 Requires Firefox 142 or newer.
 
-![Keep related tabs together. Organise tabs into folders, subfolders and nested trees in your Firefox sidebar.](assets/screenshots/01-folders-and-tabs.png)
+## Keep related tabs together
 
-![Focus on one folder. Open a folder to see just its tabs. Use the folder path to move back up.](assets/screenshots/02-focus-a-folder.png)
+Organise tabs into folders, subfolders and nested trees in your Firefox sidebar.
 
-![Find tabs in any folder. Search tab titles, URLs and folder names, including in collapsed folders.](assets/screenshots/03-search.png)
+![Tabernacle sidebar showing folders, subfolders and nested tabs.](assets/screenshots/01-folders-and-tabs-ui.png)
 
-![Keep sign-ins separate. Choose a Firefox container for new tabs, or set a default container for each folder.](assets/screenshots/04-folder-containers.png)
+## Focus on one folder
 
-![Choose how the sidebar looks. Switch between light and dark themes. Show website domains and lines connecting nested tabs.](assets/screenshots/05-dark-mode.png)
+Open a folder to see just its tabs. Use the folder path to move back up.
 
-![Keep pinned tabs visible. Pin the sites you use most. They stay visible in every folder.](assets/screenshots/06-pinned-tabs.png)
+![The Copenhagen weekend folder with its tabs and folder path.](assets/screenshots/02-focus-a-folder-ui.png)
+
+## Find tabs in any folder
+
+Search tab titles, URLs and folder names, including in collapsed folders.
+
+![Search results for grid, showing matching tabs within their folders.](assets/screenshots/03-search-ui.png)
+
+## Keep sign-ins separate
+
+Choose a Firefox container for new tabs, or set a default container for each folder.
+
+![The default container dialog with Work selected.](assets/screenshots/04-folder-containers-ui.png)
+
+## Choose how the sidebar looks
+
+Switch between light and dark themes. Show website domains and lines connecting nested tabs.
+
+![The sidebar in dark mode with website domains and connecting lines.](assets/screenshots/05-dark-mode-ui.png)
+
+## Keep pinned tabs visible
+
+Pin the sites you use most. They stay visible in every folder.
+
+![Pinned sites above the folder path and tabs.](assets/screenshots/06-pinned-tabs-ui.png)
