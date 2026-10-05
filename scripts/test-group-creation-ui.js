@@ -143,7 +143,7 @@ try {
   await name.fill('Accounts');
   await change.click();
   await button('Create new container…').click();
-  await button('← Back to containers').click();
+  await button('Back to containers').click();
   await expect(page.locator('#dialog-title')).toHaveText('Default container');
   await page.keyboard.press('Escape');
   await expect(name).toHaveValue('Accounts');
@@ -231,7 +231,7 @@ try {
     window.groupCreationTest.delayList = true;
   });
   await change.click();
-  await button('← Back to folder').click();
+  await button('Back to folder').click();
   await page.evaluate(() => {
     window.groupCreationTest.delayList = false;
     window.groupCreationTest.finishList();

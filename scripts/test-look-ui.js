@@ -136,11 +136,8 @@ try {
   await expect(child.locator('.disclosure')).toHaveCount(0);
   await expect(child.locator('.tab-toggle-badge')).toHaveCount(0);
   await expect(parent.locator('.tab-disclosure')).toHaveCSS('width', '22px');
-  const toggleStroke = () =>
-    parent
-      .locator('.tab-toggle-badge')
-      .evaluate((node) => getComputedStyle(node, '::after').display);
-  expect(await toggleStroke()).toBe('none');
+  const toggleGlyph = () => parent.locator('.tab-toggle-badge svg');
+  await expect(toggleGlyph()).toHaveAttribute('data-icon', 'subtract-circle-12');
 
   // Leaf icons activate tabs; parent icons activate and fold in one click.
   await child.locator('.tab-icon').click();
@@ -150,7 +147,7 @@ try {
   await expect(parent).toBeFocused();
   await expect(parent.locator('.tab-toggle-badge')).toBeVisible();
   await expect(parent.locator('.child-count')).toHaveCount(0);
-  expect(await toggleStroke()).not.toBe('none');
+  await expect(toggleGlyph()).toHaveAttribute('data-icon', 'add-circle-12');
   await page.screenshot({ path: 'test-results/icon-toggle-collapsed.png' });
   await expect(parent.locator('.tab-disclosure')).toHaveAttribute(
     'title',
@@ -162,7 +159,7 @@ try {
   await expect(parent).toHaveAttribute('aria-expanded', 'true');
   await expect(child).toBeVisible();
   await expect(parent.locator('.child-count')).toHaveCount(0);
-  expect(await toggleStroke()).toBe('none');
+  await expect(toggleGlyph()).toHaveAttribute('data-icon', 'subtract-circle-12');
   await page.screenshot({ path: 'test-results/icon-toggle-expanded.png' });
   await expect(parent.locator('.tab-disclosure')).toHaveAttribute(
     'title',
@@ -189,6 +186,8 @@ try {
   await parent.locator('.tab-icon img').dragTo(group);
   await expect(group.locator('..').locator('[data-key="tab:1"]')).toBeVisible();
   await research.locator('.group').click();
+  // Folder clicks wait for a possible double-click before changing the tree.
+  await expect(research).toHaveAttribute('aria-expanded', 'false');
 
   // Unreadable favicons fall back to a globe with the same working toggle.
   await page.evaluate(async () => {

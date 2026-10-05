@@ -149,7 +149,7 @@ try {
   await page.locator('#home').click();
   for (const name of ['General', 'Other', 'Robocop', 'Star Trek']) await createFolder(name);
   const fullPath = ['Home', 'General', 'Other', 'Robocop', 'Star Trek'];
-  await expect(crumbs).toHaveText(['', '…', 'Star Trek']);
+  await expect(crumbs).toHaveText(['', '', 'Star Trek']);
   const robocopFolders = page.getByRole('button', { name: 'Show folders in Robocop', exact: true });
   await robocopFolders.click();
   const robocopMenu = page.getByRole('menu', { name: 'Folders in Robocop', exact: true });
@@ -229,7 +229,7 @@ try {
   await page.setViewportSize({ width: threshold + 2, height: 660 });
   await expect(crumbs).toHaveText(['', ...fullPath.slice(1)]);
   await page.setViewportSize({ width: threshold - 2, height: 660 });
-  await expect(crumbs).toHaveText(['', '…', 'Star Trek']);
+  await expect(crumbs).toHaveText(['', '', 'Star Trek']);
   await overflow.click();
   await page.setViewportSize({ width: 900, height: 660 });
   await expect(menu).toBeHidden();
@@ -245,7 +245,7 @@ try {
   await expect(menu).toBeHidden();
   await expect(page.getByRole('searchbox')).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(crumbs).toHaveText(['', '…', 'Star Trek']);
+  await expect(crumbs).toHaveText(['', '', 'Star Trek']);
   await overflow.click();
   await menu.getByRole('menuitem', { name: 'Other', exact: true }).click();
   await expect(crumbs).toHaveText(['', 'General', 'Other']);

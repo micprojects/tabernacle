@@ -1,0 +1,22 @@
+Acorn desktop UI icons from Mozilla's FirefoxUX/acorn-icons repository.
+These assets are licensed under the Mozilla Public License 2.0 (LICENSE.txt).
+
+Source: https://github.com/FirefoxUX/acorn-icons/tree/2d10f723d7636aaec82bada5c697e283ffa05307/icons/desktop
+Revision: 2d10f723d7636aaec82bada5c697e283ffa05307
+
+acorn.svg combines the original paths into SVG symbols. Each symbol's name
+matches icons/desktop/<size>/<name>.svg at the revision above. Original path
+geometry, fill rules and native view boxes are preserved. Firefox's privileged
+context-fill/context-fill-opacity attributes are omitted so the inline SVG
+can inherit currentColor and work in ordinary extension pages.
+
+The following Tabernacle adaptations are not official Acorn assets:
+- folder-add-16 combines folder-16 with an unscaled add-12 translated by (6, 6).
+  A clip leaves space at the folder's lower right for the plus.
+- add-circle-12 converts add-circle-fill-12 to an outlined circle, preserving
+  its plus glyph. subtract-circle-12 uses the same circle and a horizontal
+  bar with the same 1.25px weight and rounded ends.
+
+All UI icons render at their native 12, 16 or 20 CSS pixel size. The registry
+in ../../src/icons.js maps Tabernacle actions to these symbols. The existing
+Firefox container artwork and Tabernacle extension logo are separate assets.
