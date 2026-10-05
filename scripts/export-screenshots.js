@@ -7,6 +7,11 @@ const fixture = JSON.parse(await readFile('assets/screenshots/screenshots.json',
 const source = process.argv[2] || 'output/promo';
 const destination = process.argv[3] || 'assets/screenshots';
 const { width, height, scale } = fixture.capture;
+const sourceSize = fixture.capture.sourceSize || fixture.window;
+const sourceOrigin = fixture.capture.sourceOrigin || { left: 0, top: 0 };
+const outputScale = fixture.capture.outputScale || 1;
+const px = (value) => Math.round(value * outputScale);
+const pngOptions = { compressionLevel: 9, adaptiveFiltering: true };
 await mkdir(destination, { recursive: true });
 
 function escapeXml(text) {
@@ -21,22 +26,28 @@ function textLines(lines, x, y, lineHeight, attributes) {
     .join('')}</text>`;
 }
 
-const logo = await sharp('assets/tabernacle-1024.png').resize(52, 52).png().toBuffer();
+const logo = await sharp('assets/tabernacle-1024.png').resize(px(52), px(52)).png().toBuffer();
 for (const [index, shot] of fixture.shots.entries()) {
-  const input = join(source, shot.sourceFile || shot.file.replace('.png', '@2x.png'));
+  const input = join(source, shot.sourceFile || shot.file.replace('.png', `@${scale}x.png`));
   const metadata = await sharp(input).metadata();
-  assert.equal(metadata.width, fixture.window.width * scale, `${input}: wrong window width`);
-  assert.equal(metadata.height, fixture.window.height * scale, `${input}: wrong window height`);
+  assert.equal(metadata.width, sourceSize.width * scale, `${input}: wrong capture width`);
+  assert.equal(metadata.height, sourceSize.height * scale, `${input}: wrong capture height`);
   const { crop, image, title, body, feature, dark } = shot.composition;
   const imageHeight = Math.round((crop.height / crop.width) * image.width);
   assert(image.left + image.width <= width - 40 && image.top + imageHeight <= height - 40);
+  assert(crop.width * scale >= px(image.width), `${input}: capture would need upscaling`);
   const pixels = await sharp(input)
-    .extract(Object.fromEntries(Object.entries(crop).map(([key, value]) => [key, value * scale])))
-    .resize(image.width, imageHeight)
+    .extract({
+      left: (crop.left - sourceOrigin.left) * scale,
+      top: (crop.top - sourceOrigin.top) * scale,
+      width: crop.width * scale,
+      height: crop.height * scale,
+    })
+    .resize(px(image.width), px(imageHeight))
     .composite([
       {
         input: Buffer.from(
-          `<svg width="${image.width}" height="${imageHeight}"><rect width="100%" height="100%" rx="17" fill="white"/></svg>`,
+          `<svg width="${px(image.width)}" height="${px(imageHeight)}"><rect width="100%" height="100%" rx="${px(17)}" fill="white"/></svg>`,
         ),
         blend: 'dest-in',
       },
@@ -47,7 +58,7 @@ for (const [index, shot] of fixture.shots.entries()) {
   const muted = dark ? '#cbc0dc' : '#62566f';
   const accent = dark ? '#c4a1ff' : '#7542cc';
   const background = dark ? '#211a2d' : '#efebf6';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px(width)}" height="${px(height)}" viewBox="0 0 ${width} ${height}">
     <defs>
       <radialGradient id="glow"><stop stop-color="${dark ? '#503967' : '#dfd3f0'}"/><stop offset="1" stop-color="${background}"/></radialGradient>
       <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feGaussianBlur stdDeviation="17"/></filter>
@@ -65,12 +76,37 @@ for (const [index, shot] of fixture.shots.entries()) {
       <text x="493" y="730" font-size="14" fill="${muted}">${String(index + 1).padStart(2, '0')} / ${String(fixture.shots.length).padStart(2, '0')}</text>
     </g>
   </svg>`;
-  await sharp(Buffer.from(svg))
+  const composition = await sharp(Buffer.from(svg))
     .composite([
-      { input: pixels, left: image.left, top: image.top },
-      { input: logo, left: 72, top: 55 },
+      { input: pixels, left: px(image.left), top: px(image.top) },
+      { input: logo, left: px(72), top: px(55) },
     ])
-    .png()
-    .toFile(join(destination, shot.file));
-  console.log(`${shot.file}: ${width} × ${height} PNG`);
+    .png(pngOptions)
+    .toBuffer();
+  await sharp(composition).png(pngOptions).toFile(join(destination, shot.file));
+  await sharp(composition)
+    .webp({ lossless: true, effort: 6 })
+    .toFile(join(destination, shot.file.replace('.png', '.webp')));
+
+  // Retain the existing one-pixel green frame on standalone website images.
+  const uiWidth = px(image.width + 2);
+  const uiHeight = px(imageHeight + 2);
+  const frame = Buffer.from(
+    `<svg width="${uiWidth}" height="${uiHeight}"><rect x="${outputScale / 2}" y="${outputScale / 2}" width="${uiWidth - outputScale}" height="${uiHeight - outputScale}" rx="${px(17.5)}" fill="none" stroke="#81998d" stroke-width="${outputScale}"/></svg>`,
+  );
+  const standalone = await sharp({
+    create: { width: uiWidth, height: uiHeight, channels: 4, background: '#00000000' },
+  })
+    .composite([
+      { input: pixels, left: px(1), top: px(1) },
+      { input: frame, left: 0, top: 0 },
+    ])
+    .png(pngOptions)
+    .toBuffer();
+  const uiFile = shot.file.replace('.png', '-ui.png');
+  await sharp(standalone).png(pngOptions).toFile(join(destination, uiFile));
+  await sharp(standalone)
+    .webp({ lossless: true, effort: 6 })
+    .toFile(join(destination, uiFile.replace('.png', '.webp')));
+  console.log(`${shot.file}: ${px(width)} × ${px(height)}; UI: ${uiWidth} × ${uiHeight}`);
 }
