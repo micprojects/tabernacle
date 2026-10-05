@@ -106,7 +106,7 @@ try {
   await expect(inlineTab.locator('../..')).toHaveAttribute('id', 'tree');
   await expect(homeAdd).toBeFocused();
   await page.locator('[data-key="group:design"]').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Go into group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
   await expect(page.locator('#scope-heading')).toHaveText('Design');
   await expect(inlineActions).toHaveText(['']);
   await designAdd.focus();
@@ -131,7 +131,7 @@ try {
     await expect(trigger).toBeVisible();
     const count = await page.locator('.tab-row').count();
     await trigger.click({ button: 'right' });
-    await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New group…']);
+    await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New folder…']);
     await expect(page.locator('.tab-row')).toHaveCount(count);
     await page.keyboard.press('Escape');
     await expect(trigger).toBeFocused();
@@ -143,18 +143,18 @@ try {
       'New tab',
     );
     await trigger.click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'New group…', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'New folder…', exact: true }).click();
     await expect(page.getByLabel('Create in', { exact: true })).toHaveText(
       destination === 'Home' ? 'Home' : `Home / Work / ${destination}`,
     );
-    await page.getByLabel('Group name', { exact: true }).fill('From the plus menu');
-    await page.getByRole('button', { name: 'Create group', exact: true }).click();
+    await page.getByLabel('Folder name', { exact: true }).fill('From the plus menu');
+    await page.getByRole('button', { name: 'Create folder', exact: true }).click();
     await expect(target.locator(':scope > .group-node > .group-row > .label')).toContainText([
       'From the plus menu',
     ]);
     await trigger.focus();
     await trigger.press('ContextMenu');
-    await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New group…']);
+    await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New folder…']);
     await page.screenshot({ path: `test-results/new-tab-menu-${scope || destination}.png` });
     await page.keyboard.press('Escape');
     await expect(trigger).toBeFocused();
@@ -247,7 +247,7 @@ try {
   const pinnedNames = await page
     .locator('.pinned-tab')
     .evaluateAll((pins) => pins.map((pin) => pin.getAttribute('aria-label')));
-  await page.getByRole('button', { name: 'Search tabs and groups', exact: true }).click();
+  await page.getByRole('button', { name: 'Search tabs and folders', exact: true }).click();
   await page.getByRole('searchbox').fill('Copenhagen');
   await expect(inlineActions).toHaveCount(0);
   await expect(page.locator('.tab-row')).toHaveCount(0);
@@ -264,9 +264,9 @@ try {
   await page.keyboard.press('Escape');
   await expect(page.locator('.pinned-tab')).toHaveCount(pinnedNames.length);
   check('Home search leaves every pinned tab visible and excludes pins from search results');
-  await page.getByRole('button', { name: 'New group', exact: true }).click();
-  await page.getByLabel('Group name', { exact: true }).fill('Project Z');
-  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'New folder', exact: true }).click();
+  await page.getByLabel('Folder name', { exact: true }).fill('Project Z');
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   let project = page
     .locator('.group-row')
     .filter({ has: page.locator('.label', { hasText: 'Project Z' }) });
@@ -274,12 +274,12 @@ try {
   const copyCount = await page.evaluate(() => window.clipboardTest.writes.length);
   await project.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Copy URLs', exact: true }).click();
-  await expect(page.locator('#toast')).toHaveText('No URLs to copy in this group.');
+  await expect(page.locator('#toast')).toHaveText('No URLs to copy in this folder.');
   expect(await page.evaluate(() => window.clipboardTest.writes.length)).toBe(copyCount);
   check('Copying an empty group leaves the clipboard unchanged');
   await project.focus();
   await page.keyboard.press('F2');
-  await page.getByLabel('Group name', { exact: true }).fill('Project Zero');
+  await page.getByLabel('Folder name', { exact: true }).fill('Project Zero');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   project = page
     .locator('.group-row')
@@ -291,7 +291,7 @@ try {
   await expect(page.getByRole('button', { name: 'New tab in Project Z', exact: true })).toHaveCount(
     0,
   );
-  check('Create group and keyboard rename work');
+  check('Create folder and keyboard rename work');
   await page.locator('[data-key="tab:2"]').dragTo(project);
   await expect(project.locator('..').locator('.tab-row')).toHaveCount(1);
   await project.dblclick();
@@ -302,15 +302,15 @@ try {
   await expect(page.locator('.tab-row')).toHaveCount(2);
   check('New tab is created inside the focused group');
   await page.locator('[data-key="tab:2"]').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Move to group…' }).click();
-  await page.getByLabel('Destination group').selectOption('design');
+  await page.getByRole('menuitem', { name: 'Move to folder…' }).click();
+  await page.getByLabel('Destination folder').selectOption('design');
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.locator('.tab-row')).toHaveCount(1);
   check('Accessible move menu offers an alternative to dragging');
   await page.locator('#breadcrumbs').getByRole('button', { name: 'Home', exact: true }).click();
   await project.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Delete group…' }).click();
-  await page.getByRole('button', { name: 'Delete group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete folder…' }).click();
+  await page.getByRole('button', { name: 'Delete folder', exact: true }).click();
   await expect(project).toHaveCount(0);
   await expect(
     page.locator('.tab-row').filter({ has: page.locator('.label', { hasText: 'New tab' }) }),
@@ -495,7 +495,7 @@ try {
   await expect(page.locator('.tab-row')).toHaveCount(6);
   await blankMenu();
   await expect(page.getByRole('menuitem', { name: 'Undo last closed tab' })).toBeDisabled();
-  await page.getByRole('menuitem', { name: 'New group…', exact: true }).focus();
+  await page.getByRole('menuitem', { name: 'New folder…', exact: true }).focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Show current tab' })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -535,7 +535,7 @@ try {
   await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click();
   await page.locator('#home').click();
   await blankMenu();
-  await page.getByRole('menuitem', { name: 'Collapse all groups' }).click();
+  await page.getByRole('menuitem', { name: 'Collapse all folders' }).click();
   await expect(page.locator('[data-key="tab:1"]')).toHaveCount(0);
   await blankMenu();
   await page.getByRole('menuitem', { name: 'Undo last closed tab' }).click();
@@ -552,9 +552,9 @@ try {
   await page.locator('[data-key="group:design"]').dblclick();
   await page.locator('#tree').focus();
   await page.keyboard.press('Shift+F10');
-  await page.getByRole('menuitem', { name: 'New group…', exact: true }).click();
-  await page.getByLabel('Group name', { exact: true }).fill('Empty test group');
-  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New folder…', exact: true }).click();
+  await page.getByLabel('Folder name', { exact: true }).fill('Empty test group');
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   await page.locator('.group-row').filter({ hasText: 'Empty test group' }).dblclick();
   await expect(page.locator('.empty-state')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/sidebar-empty-folder.png' });
@@ -564,7 +564,7 @@ try {
   await expect(page.locator('.tab-row')).toHaveCount(0);
   await blankClick({ clickCount: 2 });
   await expect(page.locator('.tab-row')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Search tabs and groups', exact: true }).click();
+  await page.getByRole('button', { name: 'Search tabs and folders', exact: true }).click();
   await page.getByRole('searchbox').fill('no matching pages');
   await expect(page.locator('.empty-state h2')).toHaveText('Nothing found');
   await blankMenu();
@@ -644,7 +644,7 @@ try {
   await openGroupClose(work);
   await expect(page.locator('#dialog-title')).toHaveText('Close all tabs in “Work”?');
   await expect(page.locator('#dialog-description')).toContainText('Close 9 tabs');
-  await expect(page.locator('#dialog-description')).toContainText('subgroups in this window');
+  await expect(page.locator('#dialog-description')).toContainText('subfolders in this window');
   await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
   await page.screenshot({ path: 'test-results/close-group-tabs.png' });
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();

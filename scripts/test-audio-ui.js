@@ -96,11 +96,11 @@ try {
   const pin = page.locator('.pinned-tab');
   await expect(work.locator('.audio-indicator')).toHaveAttribute(
     'title',
-    '2 tabs playing audio in this group',
+    '2 tabs playing audio in this folder',
   );
   await expect(media.locator('.audio-indicator')).toHaveAttribute(
     'title',
-    '2 tabs playing audio in this group',
+    '2 tabs playing audio in this folder',
   );
   await expect(parent.locator('.audio-indicator')).toHaveAttribute(
     'title',
@@ -127,7 +127,7 @@ try {
   await page.evaluate(() => window.audioTest.update(2, { audible: false }));
   await expect(work.locator('.audio-indicator')).toHaveAttribute(
     'title',
-    '1 tab playing audio in this group',
+    '1 tab playing audio in this folder',
   );
   await pin.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Mute tab', exact: true }).click();
@@ -138,7 +138,7 @@ try {
   await page.evaluate(() => window.audioTest.update(3, { muted: false }));
   await expect(work.locator('.audio-indicator')).toHaveAttribute(
     'title',
-    '1 tab playing audio in this group',
+    '1 tab playing audio in this folder',
   );
   await work.getByRole('button', { name: 'Expand Work', exact: true }).click();
   await parent.getByRole('button', { name: 'Expand child tabs of Parent page' }).click();
@@ -171,13 +171,13 @@ try {
   await expect(parent).toHaveCount(0);
   await expect(media.locator('.audio-indicator')).toHaveAttribute(
     'title',
-    '1 tab playing audio in this group',
+    '1 tab playing audio in this folder',
   );
   await page.keyboard.press('Escape');
   await media.dblclick();
   await expect(page.locator('#scope-heading .audio-indicator')).toHaveAttribute(
     'title',
-    '1 tab playing audio in this group',
+    '1 tab playing audio in this folder',
   );
   await page.locator('#home').click();
   check('Group audio survives search filtering and is shown in the focused group heading');
@@ -189,7 +189,7 @@ try {
   await expect(work.locator('.audio-indicator')).toHaveCount(0);
   await expect(personal.locator('.audio-indicator')).toHaveAttribute(
     'title',
-    '1 tab playing audio in this group',
+    '1 tab playing audio in this folder',
   );
   await expect(parent.locator('.audio-indicator')).toHaveCount(0);
   await page.evaluate(() => window.audioTest.send('closeTab', { id: 3 }));

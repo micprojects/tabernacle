@@ -11,8 +11,8 @@ page.on('pageerror', (error) => errors.push(error.message));
 
 const createFolder = async (name) => {
   await page.locator('#new-group').click();
-  await page.getByLabel('Group name', { exact: true }).fill(name);
-  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByLabel('Folder name', { exact: true }).fill(name);
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   await page.locator('.group-row').filter({ hasText: name }).dblclick();
   await expect(page.locator('#scope-heading')).toHaveText(name);
 };
@@ -29,16 +29,16 @@ try {
   await page.goto(`${base}/extension/sidebar.html?demo`);
   const crumbs = page.locator('#breadcrumbs .crumb');
   const overflow = page.locator('#path-overflow');
-  const menu = page.getByRole('menu', { name: 'Full group path' });
+  const menu = page.getByRole('menu', { name: 'Full folder path' });
   const current = page.locator('#scope-heading');
   await expect(crumbs).toHaveText(['']);
   await page.locator('[data-key="group:design"]').dblclick();
   await expect(crumbs).toHaveText(['', 'Work', 'Design']);
   await expect(overflow).toHaveCount(0);
-  const homeFolders = page.getByRole('button', { name: 'Show groups in Home', exact: true });
-  const workFolders = page.getByRole('button', { name: 'Show groups in Work', exact: true });
-  const workMenu = page.getByRole('menu', { name: 'Groups in Work', exact: true });
-  const homeMenu = page.getByRole('menu', { name: 'Groups in Home', exact: true });
+  const homeFolders = page.getByRole('button', { name: 'Show folders in Home', exact: true });
+  const workFolders = page.getByRole('button', { name: 'Show folders in Work', exact: true });
+  const workMenu = page.getByRole('menu', { name: 'Folders in Work', exact: true });
+  const homeMenu = page.getByRole('menu', { name: 'Folders in Home', exact: true });
   await workFolders.click();
   await expect(workFolders).toHaveAttribute('aria-expanded', 'true');
   await expect(workMenu.getByRole('menuitem')).toHaveText(['Design', 'Research']);
@@ -150,9 +150,9 @@ try {
   for (const name of ['General', 'Other', 'Robocop', 'Star Trek']) await createFolder(name);
   const fullPath = ['Home', 'General', 'Other', 'Robocop', 'Star Trek'];
   await expect(crumbs).toHaveText(['', '…', 'Star Trek']);
-  const robocopFolders = page.getByRole('button', { name: 'Show groups in Robocop', exact: true });
+  const robocopFolders = page.getByRole('button', { name: 'Show folders in Robocop', exact: true });
   await robocopFolders.click();
-  const robocopMenu = page.getByRole('menu', { name: 'Groups in Robocop', exact: true });
+  const robocopMenu = page.getByRole('menu', { name: 'Folders in Robocop', exact: true });
   await expect(robocopMenu.getByRole('menuitem')).toHaveText(['Star Trek']);
   await homeFolders.click();
   await expect(robocopFolders).toHaveAttribute('aria-expanded', 'false');
@@ -273,8 +273,8 @@ try {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(220);
   await page.screenshot({ path: 'test-results/breadcrumbs-narrow-menu.png' });
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Show groups in Other', exact: true }).click();
-  const otherMenu = page.getByRole('menu', { name: 'Groups in Other', exact: true });
+  await page.getByRole('button', { name: 'Show folders in Other', exact: true }).click();
+  const otherMenu = page.getByRole('menu', { name: 'Folders in Other', exact: true });
   await expect(otherMenu.getByRole('menuitem')).toHaveText(['Robocop', 'Star Trek', longName]);
   const childItem = otherMenu.getByRole('menuitem', { name: longName, exact: true });
   await expect(childItem).toHaveAttribute('aria-current', 'location');

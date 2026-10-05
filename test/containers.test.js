@@ -472,7 +472,7 @@ test('invalid settings and failed saves leave the saved default unchanged', asyn
   for (const cookieStoreId of ['', undefined, 42, 'firefox-private', 'firefox-container-deleted'])
     await assert.rejects(send('setGroupContainer', { id: 'project', cookieStoreId }), /container/);
   for (const id of [null, undefined, 'missing'])
-    await assert.rejects(send('setGroupContainer', { id, cookieStoreId: null }), /group/);
+    await assert.rejects(send('setGroupContainer', { id, cookieStoreId: null }), /folder/);
   api.storage.local.set = async () => {
     throw new Error('Save failed');
   };

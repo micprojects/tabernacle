@@ -16,7 +16,7 @@ export async function createDemo(notify) {
     ['Brand guidelines', 'design', 'https://notion.so/brand'],
     ['Launch checklist', 'design', 'https://docs.google.com'],
     ['Sidebar patterns', 'research', 'https://developer.mozilla.org'],
-    ['Group navigation', 'research', 'https://support.apple.com'],
+    ['Folder navigation', 'research', 'https://support.apple.com'],
     ['Browser extensions', 'research', 'https://developer.mozilla.org'],
     ['Roadmap', 'work', 'https://linear.app'],
     ['Sprint notes', 'work', 'https://notion.so'],

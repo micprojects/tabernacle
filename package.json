@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Organise your Firefox tabs with sidebar groups, nested tab trees and search.",
+  "description": "Organise your Firefox tabs with sidebar folders, nested tab trees and search.",
   "scripts": {
     "test": "node --test test/*.test.js",
     "test:ui": "node scripts/run-ui-tests.js",

@@ -86,7 +86,7 @@ test('deletion rejects missing confirmation and newly added contents without clo
     const { api, send } = await fixture();
     await assert.rejects(send('removeGroup', { id: 'source' }), /Confirm/);
     for (const id of [null, 'missing'])
-      await assert.rejects(send('getGroupContents', { id }), /group/);
+      await assert.rejects(send('getGroupContents', { id }), /folder/);
     const contents = await send('getGroupContents', { id: 'source' });
     if (addition === 'tab') await send('newTab', { groupId: 'deep' });
     else await send('createGroup', { name: 'New child', parentId: 'child' });
@@ -179,7 +179,7 @@ test('contents can move to the parent or Home and invalid destinations change no
     );
   await assert.rejects(
     send('moveGroupContents', { id: null, groupId: 'target' }),
-    /Choose a group/,
+    /Choose a folder/,
   );
   assert.deepEqual((await send('snapshot')).groups, before.groups);
   assert.equal((await api.sessions.getTabValue(1, TAB_KEY)).groupId, 'source');

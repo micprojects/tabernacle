@@ -97,10 +97,10 @@ export function createGroupCreation({
         showPicker();
       });
       showDialog({
-        title: 'New group',
+        title: 'New folder',
         description: 'Choose a name, location and default container.',
         value: draft.name,
-        submit: 'Create group',
+        submit: 'Create folder',
         content,
         cleanup: destination.destroy,
 
@@ -159,7 +159,7 @@ export function createGroupCreation({
         cancel: '',
         content,
         onBack: () => showGroup(true),
-        backLabel: 'Back to group',
+        backLabel: 'Back to folder',
         onCancel: () => showGroup(true),
       });
       $('dialog-icon').replaceChildren(icon('container'));

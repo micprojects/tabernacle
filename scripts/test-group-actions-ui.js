@@ -70,17 +70,17 @@ try {
   await page.goto(`${base}/extension/sidebar.html`);
   const work = page.locator('[data-key="group:work"]');
   const dialog = page.getByRole('dialog');
-  const remove = page.getByRole('button', { name: 'Delete group', exact: true });
+  const remove = page.getByRole('button', { name: 'Delete folder', exact: true });
   const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
 
   const openDelete = async () => {
     await work.click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Delete group…', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Delete folder…', exact: true }).click();
   };
 
   await openDelete();
   await expect(remove).toBeEnabled();
-  await expect(dialog).toContainText('2 subgroups');
+  await expect(dialog).toContainText('2 subfolders');
   await expect(dialog).toContainText('close 4 tabs across all Firefox windows');
   await expect(dialog).toContainText('1 pinned tab');
   await expect(cancel).toBeFocused();
@@ -105,15 +105,15 @@ try {
     groupTest.delayCount = false;
     groupTest.releaseCount();
   });
-  await expect(dialog).toHaveAccessibleName('Rename group');
-  await expect(page.getByLabel('Group name', { exact: true })).toHaveValue('Work');
+  await expect(dialog).toHaveAccessibleName('Rename folder');
+  await expect(page.getByLabel('Folder name', { exact: true })).toHaveValue('Work');
   await cancel.click();
 
   await work.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move contents…', exact: true }).click();
-  await expect(dialog).toHaveAccessibleName('Move group contents');
-  await expect(dialog).toContainText('this group stays empty');
-  const destination = page.getByLabel('Destination group');
+  await expect(dialog).toHaveAccessibleName('Move folder contents');
+  await expect(dialog).toContainText('this folder stays empty');
+  const destination = page.getByLabel('Destination folder');
   expect(
     await destination.locator('option').evaluateAll((options) => options.map((o) => o.value)),
   ).toEqual(['', 'personal']);

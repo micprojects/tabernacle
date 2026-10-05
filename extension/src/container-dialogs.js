@@ -69,7 +69,7 @@ export function createContainerManagement({ showDialog, request, onChange, isCur
     const context = showDialog({
       title: identity ? 'Edit container' : 'New container',
       description: draft
-        ? 'Available throughout Firefox. Created when you save the group.'
+        ? 'Available throughout Firefox. Created when you save the folder.'
         : 'Use this container throughout Firefox.',
       label: 'Container name',
       value: current?.name || '',
@@ -130,7 +130,7 @@ export function createContainerManagement({ showDialog, request, onChange, isCur
     showDialog({
       title: `Remove “${identity.name}”?`,
       description:
-        'This deletes the container and its cookies and site data from Firefox. Close its tabs in all windows first. Groups using it will need a new default container. This cannot be undone.',
+        'This deletes the container and its cookies and site data from Firefox. Close its tabs in all windows first. Folders using it will need a new default container. This cannot be undone.',
       input: false,
       submit: 'Remove container',
       onCancel: back,
