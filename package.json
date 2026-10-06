@@ -8,7 +8,6 @@
     "test": "node --test test/*.test.js",
     "test:ui": "node scripts/run-ui-tests.js",
     "test:audio": "node scripts/test-audio-ui.js",
-    "test:previews": "node scripts/test-previews-ui.js",
     "test:containers": "node scripts/test-containers-ui.js",
     "test:color-mode": "node scripts/test-color-mode-ui.js",
     "test:performance": "node scripts/test-performance-ui.js",

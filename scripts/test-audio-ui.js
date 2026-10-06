@@ -156,14 +156,12 @@ try {
     '1 tab playing audio in this tab’s children',
   );
   await expect(grandchild.getByRole('button', { name: 'Mute tab', exact: true })).toBeVisible();
-  await page.mouse.move(2, 2);
-  await parent.hover();
-  await expect(page.locator('.preview-audio')).toHaveText(
-    'This tab is muted · 1 tab playing audio in this tab’s children',
+  await expect(parent).toHaveAccessibleName(
+    'Parent page, This tab is muted · 1 tab playing audio in this tab’s children, 2 nested tabs',
   );
-  await page.keyboard.press('Escape');
+  await expect(parent).not.toHaveAttribute('title');
   check(
-    'Muting a parent affects only that page; child audio stays visible and the hover card explains both states',
+    'Muting a parent affects only that page; child audio stays visible and the accessible label describes both states',
   );
 
   await page.locator('#search-toggle').click();

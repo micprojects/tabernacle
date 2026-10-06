@@ -2,7 +2,6 @@ import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createDialogs } from './dialogs.js';
-import { createTabPreviews } from './previews.js';
 import { createRecentlyClosed } from './recently-closed.js';
 import {
   groupById,
@@ -55,7 +54,7 @@ function markSelected(row) {
 
 let audioInTabs = new Map(),
   audioInGroups = new Map();
-let previews, recentlyClosed;
+let recentlyClosed;
 let state, request, windowId, selected, drag, refreshTimer, toastTimer, menuReturnFocus;
 let confirmedState;
 let actionQueue = Promise.resolve();
@@ -422,7 +421,7 @@ function audioIndicator(description, iconName = 'speaker') {
 
 function describeAudio(node, description) {
   if (!description) return;
-  node.title += `\n${description}`;
+  if (node.hasAttribute('title')) node.title += `\n${description}`;
   node.setAttribute('aria-label', `${node.getAttribute('aria-label')}, ${description}`);
 }
 
@@ -579,7 +578,7 @@ function groupContainerDetails(group) {
 function describeContainer(node, { container }, label = 'Container') {
   if (!container) return;
   const name = container.name || 'Unnamed container';
-  node.title += `\n${label}: ${name}`;
+  if (node.hasAttribute('title')) node.title += `\n${label}: ${name}`;
   node.setAttribute(
     'aria-label',
     `${node.getAttribute('aria-label')}, ${label.toLowerCase()}: ${name}`,
@@ -608,7 +607,7 @@ function createPinnedTab(tab) {
   const label = `${tab.title || 'New tab'}, pinned`;
   const node = button(label, null, () => action('activateTab', { id: tab.id }), 'pinned-tab');
   node.dataset.key = `tab:${tab.id}`;
-  node.title = `${tab.title || 'New tab'}\n${tab.url || ''}`;
+  node.removeAttribute('title');
   node.setAttribute('aria-pressed', String(Boolean(tab.active)));
   node.classList.toggle('active', Boolean(tab.active));
   node.draggable = true;
@@ -631,7 +630,6 @@ function createPinnedTab(tab) {
   const audio = audioDescription(tab);
   describeAudio(node, audio);
   if (audio) node.append(audioIndicator(audio, audioInTabs.get(tab.id) ? 'speaker' : 'muted'));
-  previews?.bind(node, tab);
   node.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     node.focus();
@@ -675,14 +673,11 @@ function createTabRow(tab, expanded, stats) {
   row.classList.toggle('discarded', Boolean(tab.discarded));
   row.setAttribute('aria-selected', String(Boolean(tab.active)));
   row.setAttribute('aria-label', tab.title || 'New tab');
-  row.title = `${tab.title || 'New tab'}\n${tab.url || ''}`;
   describeContainer(row, tab);
   describeAudio(row, audioDescription(tab));
-  previews?.bind(row, tab);
   if (stats.descendants) {
     row.setAttribute('aria-expanded', String(expanded));
     const count = `${stats.descendants} nested ${stats.descendants === 1 ? 'tab' : 'tabs'}`;
-    row.title += `\n${count}`;
     row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${count}`);
     const disclosure = button(
       `${expanded ? 'Collapse' : 'Expand'} child tabs of ${tab.title || 'New tab'}`,
@@ -934,7 +929,6 @@ function render() {
   recentlyClosed?.render();
   tree.classList.toggle('show-connecting-lines', state.look.connectingLines);
   tree.classList.toggle('show-domains', state.look.domains);
-  previews?.hide();
   const focusedKey = document.activeElement?.closest('[data-key]')?.dataset.key;
   const scroll = tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
@@ -1008,10 +1002,7 @@ function render() {
 
 function showSearch(show = true, { restoreFocus = true } = {}) {
   if (show || restoreFocus) cancelGroupClick();
-  if (show) {
-    closeMenu();
-    previews?.hide();
-  }
+  if (show) closeMenu();
   searchOpen = show;
   $('navigation-capsule').classList.toggle('search-open', show);
   $('breadcrumbs').inert = show;
@@ -1139,7 +1130,6 @@ function menu(
     trigger = document.activeElement,
   } = {},
 ) {
-  previews?.hide();
   closeMenu();
   menuReturnFocus = trigger;
   const container = $('menu');
@@ -1594,7 +1584,6 @@ recentlyClosed = createRecentlyClosed({
   restore: (sessionId) => blankAreaAction('restoreClosedTab', { sessionId }),
 
   beforeOpen() {
-    previews?.hide();
     closeMenu();
     renderPending = true;
     scheduleRefresh();
@@ -1789,17 +1778,6 @@ async function start() {
     });
   } else
     throw new Error('Load Tabernacle as a Firefox extension, or open the interactive preview.');
-  previews = createTabPreviews({
-    getBottom: () => tree.getBoundingClientRect().bottom,
-
-    getTab: (id) => {
-      const tab = state?.tabs.find((tab) => tab.id === id);
-      return tab && { ...tab, audioDescription: audioDescription(tab) };
-    },
-
-    canShow: () =>
-      !drag && !pointerHeld && $('menu').hidden && !recentlyClosed.isOpen() && !$('dialog').open,
-  });
   await refresh();
 }
 
