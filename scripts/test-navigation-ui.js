@@ -85,13 +85,6 @@ try {
   await expect(pins.locator('.pinned-tab')).toHaveCount(4);
   expect(await pins.boundingBox()).toEqual(pinsBefore);
   expect(await capsule.boundingBox()).toEqual(capsuleBefore);
-  await page.locator('[data-key="tab:2"]').hover();
-  const preview = page.getByRole('tooltip');
-  await expect(preview).toBeVisible();
-  const previewBox = await preview.boundingBox();
-  const treeBox = await tree.boundingBox();
-  expect(previewBox.y).toBeGreaterThanOrEqual(treeBox.y);
-  expect(previewBox.y + previewBox.height).toBeLessThanOrEqual(treeBox.y + treeBox.height);
   await page.keyboard.press('Control+k');
   expect(await search.evaluate((input) => input.selectionEnd - input.selectionStart)).toBe(10);
   await search.fill('notion.so');

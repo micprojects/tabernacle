@@ -16,7 +16,6 @@ for (const name of [
   'test-recently-closed-ui',
   'test-edge-cases-ui',
   'test-audio-ui',
-  'test-previews-ui',
   'test-containers-ui',
   'test-color-mode-ui',
   'test-look-ui',

@@ -239,7 +239,7 @@ try {
     'background-color',
     'rgb(0, 167, 224)',
   );
-  await expect(parent).toHaveAttribute('title', /Container: Work/);
+  await expect(parent).not.toHaveAttribute('title');
   await expect(parent).toHaveAccessibleName('Parent page, container: Work, 1 nested tab');
   await expect(page.locator('[data-key="tab:2"] .container-indicator')).toHaveCount(0);
   await expect(page.locator('.group-row .container-indicator')).toHaveCount(0);
@@ -260,7 +260,7 @@ try {
   parent = page.locator(`[data-key="tab:${source.id}"]`);
   await expect(parent.locator('.container-indicator')).toHaveCount(0);
   await expect(parent).toHaveAccessibleName('Parent page, 1 nested tab');
-  await expect(parent).not.toHaveAttribute('title', /Container:/);
+  await expect(parent).not.toHaveAttribute('title');
   await parent.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Pin tab', exact: true }).click();
   let pin = page.locator('.pinned-tab').first();
@@ -278,7 +278,7 @@ try {
     'rgb(248, 156, 36)',
   );
   await expect(pin).toHaveAccessibleName('Parent page, pinned, container: Personal');
-  await expect(pin).toHaveAttribute('title', /Container: Personal/);
+  await expect(pin).not.toHaveAttribute('title');
   await expectFaviconUnderline(pin);
   check(
     'No container removes the container and pinned tabs use the same picker while staying pinned',
@@ -308,7 +308,7 @@ try {
     'rgb(175, 81, 245)',
   );
   await expect(pin).toHaveAccessibleName('Parent page, pinned, container: Shopping');
-  await expect(pin).toHaveAttribute('title', /Container: Shopping/);
+  await expect(pin).not.toHaveAttribute('title');
   check('Container colour and name changes refresh existing pin indicators without a tab event');
 
   await openPicker(pin);
