@@ -73,7 +73,7 @@ try {
   const inlineActions = page.locator('#tree .new-tab-action');
   const homeAdd = page.locator('#tree > .new-tab-item .new-tab-action');
   const designAdd = page.getByRole('button', { name: 'New tab in Design', exact: true });
-  await expect(inlineActions).toHaveText(['', '', '']);
+  await expect(inlineActions).toHaveText(['', '', '', '', '']);
   await expect(homeAdd).toHaveAccessibleName('New tab');
   await designAdd.click();
   await expect(page.locator('.tab-row')).toHaveCount(7);
@@ -108,7 +108,7 @@ try {
   await page.locator('[data-key="group:design"]').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
   await expect(page.locator('#scope-heading')).toHaveText('Design');
-  await expect(inlineActions).toHaveText(['']);
+  await expect(inlineActions).toHaveText(['', '', '']);
   await designAdd.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.tab-row')).toHaveCount(6);

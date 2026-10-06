@@ -757,6 +757,7 @@ function tabNode(tab, query, ancestorMatch = false) {
     const nodes = (index.children.get(tab.id) || [])
       .map((child) => tabNode(child, query, matchAll))
       .filter(Boolean);
+    if (!query) nodes.push(newTabItem(tab.groupId, tab));
     reconcileChildren(branch, nodes);
     reconcileChildren(node, [row, branch]);
   } else {
@@ -766,31 +767,45 @@ function tabNode(tab, query, ancestorMatch = false) {
   return node;
 }
 
-function newTabItem(groupId) {
+function newTabItem(groupId, parentTab = null) {
   const group = groupById(state, groupId);
-  const label = group ? `New tab in ${group.name}` : 'New tab';
-  const key = `new-tab:${groupId}`;
+  const parentTabId = parentTab?.id ?? null;
+  const label = parentTab
+    ? `New child tab of ${parentTab.title || 'New tab'}`
+    : group
+      ? `New tab in ${group.name}`
+      : 'New tab';
+  const key = parentTab ? `new-child-tab:${parentTabId}` : `new-tab:${groupId}`;
   return rowCache.get(key, [label], () => {
     const item = el('div', 'new-tab-item');
     item.setAttribute('role', 'treeitem');
     item.setAttribute('aria-label', label);
-    const add = button(label, null, () => blankAreaAction('newTab', { groupId }), 'new-tab-action');
+    const add = button(
+      label,
+      null,
+      () =>
+        parentTabId !== null
+          ? blankAreaAction('newChildTab', { id: parentTabId })
+          : blankAreaAction('newTab', { groupId }),
+      'new-tab-action',
+    );
     add.dataset.key = key;
     const slot = el('span', 'icon-slot');
     slot.append(icon('plus'));
     add.append(slot);
-    add.addEventListener('contextmenu', (event) => newTabMenu(event, groupId));
+    add.addEventListener('contextmenu', (event) => newTabMenu(event, groupId, parentTabId));
     add.addEventListener('keydown', (event) => {
-      if (newTabMenu(event, groupId) || moveTreeFocus(event, add)) return;
+      if (newTabMenu(event, groupId, parentTabId) || moveTreeFocus(event, add)) return;
       if (event.key === 'ArrowLeft' && !event.altKey) {
         event.preventDefault();
-        const groupRow = tree.querySelector(`[data-key="group:${groupId}"]`);
-        if (groupRow) selectRow(groupRow);
+        const parentKey = parentTabId !== null ? `tab:${parentTabId}` : `group:${groupId}`;
+        const parentRow = tree.querySelector(`[data-key="${parentKey}"]`);
+        if (parentRow) selectRow(parentRow);
         else parent();
       }
     });
     item.append(add);
-    dropTarget(item, 'inside', groupId);
+    dropTarget(item, parentTab ? 'tab' : 'inside', parentTabId ?? groupId);
     return item;
   });
 }
@@ -1185,7 +1200,7 @@ async function blankAreaAction(type, args = {}) {
     tree.querySelector(`[data-key="tab:${id}"]`)?.scrollIntoView({ block: 'nearest' });
 }
 
-function newTabMenu(event, groupId) {
+function newTabMenu(event, groupId, parentTabId = null) {
   const keyboard = event.type === 'keydown';
   if (
     !state ||
@@ -1198,10 +1213,18 @@ function newTabMenu(event, groupId) {
   event.currentTarget.focus({ preventScroll: true });
   const rect = event.currentTarget.getBoundingClientRect();
   menu(
-    [
-      { label: 'New tab', icon: 'plus', run: () => blankAreaAction('newTab', { groupId }) },
-      { label: 'New folder…', icon: 'groupPlus', run: () => createDialog(groupId) },
-    ],
+    parentTabId !== null
+      ? [
+          {
+            label: 'New child tab',
+            icon: 'plus',
+            run: () => blankAreaAction('newChildTab', { id: parentTabId }),
+          },
+        ]
+      : [
+          { label: 'New tab', icon: 'plus', run: () => blankAreaAction('newTab', { groupId }) },
+          { label: 'New folder…', icon: 'groupPlus', run: () => createDialog(groupId) },
+        ],
     keyboard ? rect.left : event.clientX,
     keyboard ? rect.bottom : event.clientY,
   );
@@ -1484,7 +1507,7 @@ $('pinned-tabs').addEventListener('drop', async (event) => {
 });
 
 function dropPosition(event, node, kind) {
-  if (kind === 'inside') return 'inside';
+  if (kind === 'inside' || node.classList.contains('new-tab-item')) return 'inside';
   const rect = node.getBoundingClientRect(),
     fraction = (event.clientY - rect.top) / rect.height;
   return (kind === 'group' || kind === 'tab') && fraction > 0.25 && fraction < 0.75
