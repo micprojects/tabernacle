@@ -5,6 +5,7 @@
   --background: light-dark(#f7f6fa, #211d2b);
   --text: light-dark(#24202d, #f3eff9);
   --icon: var(--text);
+  --toolbar-icon: light-dark(#5b5b66, #fbfbfe);
   --muted: color-mix(in srgb, var(--text) 72%, var(--background));
   --line: color-mix(in srgb, var(--text) 14%, var(--background));
   --subtle: color-mix(in srgb, var(--text) 7%, var(--background));
@@ -225,7 +226,7 @@ header {
   height: 28px;
   padding: 0;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--toolbar-icon);
 }
 .search-toggle-track {
   position: absolute;
@@ -247,13 +248,15 @@ header {
   padding: 0;
   border-radius: 6px;
 }
+#home {
+  color: var(--toolbar-icon);
+}
 #home[aria-current] {
-  color: var(--text);
   background: transparent;
 }
 #search-toggle {
   pointer-events: auto;
-  color: var(--text);
+  color: var(--toolbar-icon);
   background: transparent;
   transition:
     color 200ms ease-out,
@@ -262,6 +265,8 @@ header {
 #search-toggle:hover,
 #search-close:hover {
   background: color-mix(in srgb, var(--capsule-accent) 20%, var(--background));
+}
+#search-close:hover {
   color: var(--text);
 }
 .search-open #search-toggle {
@@ -355,6 +360,7 @@ footer {
   height: 28px;
   padding: 4px;
   border-radius: 6px;
+  color: var(--toolbar-icon);
 }
 .footer-actions > button[aria-expanded='true'] {
   color: var(--selected-text);
@@ -1121,6 +1127,7 @@ input::placeholder {
     --background: Canvas;
     --text: CanvasText;
     --icon: CanvasText;
+    --toolbar-icon: CanvasText;
     --muted: CanvasText;
     --line: ButtonBorder;
     --subtle: Canvas;
