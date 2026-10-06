@@ -3,6 +3,7 @@
 const assets = {
   home: 'home-16',
   group: 'folder-16',
+  groupOpen: 'folder-open-16',
   groupPlus: 'folder-add-16',
   chevron: 'chevron-right-12',
   back: 'back-16',
@@ -48,7 +49,7 @@ export function icon(name, className = '') {
   svg.setAttribute('focusable', 'false');
   svg.dataset.icon = asset;
   if (className) svg.setAttribute('class', className);
-  if (name === 'group') svg.classList.add('folder-icon');
+  if (name === 'group' || name === 'groupOpen') svg.classList.add('folder-icon');
   const use = document.createElementNS(ns, 'use');
   use.setAttribute('href', `${sprite}#${asset}`);
   svg.append(use);

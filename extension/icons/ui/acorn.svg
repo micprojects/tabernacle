@@ -17,6 +17,23 @@
       clip-rule="evenodd"
     />
   </symbol>
+  <!-- Tabernacle adaptation: open folder matching folder-16, with a 1.5px outline. -->
+  <symbol id="folder-open-16" viewBox="0 0 16 16">
+    <g
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path
+        d="M12.75 6.4V5.87c0-1.025-.772-1.88-1.79-1.975A52 52 0 0 0 8 3.75L6.795 2.412a2 2 0 0 0-1.486-.662H2.75a2 2 0 0 0-2 2v8.224c0 1.024.78 1.885 1.81 1.992"
+      />
+      <path
+        d="M2.56 13.966a52.9 52.9 0 0 0 9.106.138c.847-.06 1.57-.64 1.803-1.456l1.719-4.855c.24-.68-.262-1.393-.983-1.393H5.837a2 2 0 0 0-1.923 1.45L2.56 13.966Z"
+      />
+    </g>
+  </symbol>
   <symbol id="chevron-right-12" viewBox="0 0 12 12">
     <path
       d="M4.369 2.183a.626.626 0 0 1 .884 0l3.345 3.345c.26.26.403.605.403.972s-.143.712-.403.972l-3.345 3.345a.62.62 0 0 1-.442.183.623.623 0 0 1-.442-1.066l3.345-3.345c.042-.042.042-.135 0-.177L4.37 3.067a.626.626 0 0 1 0-.884"

@@ -11,6 +11,8 @@ context-fill/context-fill-opacity attributes are omitted so the inline SVG
 can inherit currentColor and work in ordinary extension pages.
 
 The following Tabernacle adaptations are not official Acorn assets:
+- folder-open-16 adds a slanted front panel for expanded folders, matching
+  folder-16's tab shape, rounded corners and 1.5px outline weight.
 - folder-add-16 combines folder-16 with an unscaled add-12 translated by (6, 6).
   A clip leaves space at the folder's lower right for the plus.
 - add-circle-12 converts add-circle-fill-12 to an outlined circle, preserving
