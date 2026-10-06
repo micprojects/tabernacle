@@ -115,6 +115,7 @@ export function createFolderPicker({ getState, parentId, dialog, onChange }) {
     visit({ id: null, name: 'Home' }, 0, []);
     rows = [];
     for (const entry of entries) {
+      const open = !query && entry.hasChildren && expanded.has(entry.id);
       const row = el('div', 'folder-picker-row');
       row.setAttribute('role', 'treeitem');
       row.setAttribute('aria-label', entry.name);
@@ -128,7 +129,6 @@ export function createFolderPicker({ getState, parentId, dialog, onChange }) {
         'folder-picker-toggle',
       );
       if (entry.hasChildren && !query) {
-        const open = expanded.has(entry.id);
         row.setAttribute('aria-expanded', String(open));
         disclosure.type = 'button';
         disclosure.tabIndex = -1;
@@ -144,7 +144,7 @@ export function createFolderPicker({ getState, parentId, dialog, onChange }) {
       const text = el('span', 'folder-picker-text');
       text.append(el('span', 'folder-picker-name', entry.name));
       if (query) text.append(el('span', 'folder-picker-path', entry.path));
-      row.append(disclosure, icon('group'), text);
+      row.append(disclosure, icon(open ? 'groupOpen' : 'group'), text);
       if (entry.id === selectedId) row.append(icon('check', 'folder-picker-check'));
       row.addEventListener('click', () => choose(entry.id));
       row.addEventListener('keydown', (event) => {

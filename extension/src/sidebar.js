@@ -462,7 +462,6 @@ function createGroupRow(group, container) {
     'disclosure',
   );
   disclosure.tabIndex = -1;
-  disclosure.append(groupIcon(container, 'group'));
   row.append(
     disclosure,
     el('span', 'label', group.name),
@@ -497,6 +496,8 @@ function groupNode(group, query, ancestorMatch = false) {
   setAttribute(row, 'aria-expanded', expanded);
   const disclosure = row.querySelector('.disclosure');
   const label = `${expanded ? 'Collapse' : 'Expand'} ${group.name}`;
+  if (disclosure.getAttribute('aria-expanded') !== String(expanded))
+    disclosure.replaceChildren(groupIcon(container, 'group', expanded));
   setAttribute(disclosure, 'aria-expanded', expanded);
   setAttribute(disclosure, 'aria-label', label);
   setAttribute(disclosure, 'title', label);
@@ -550,8 +551,8 @@ function containerColor(container) {
   return color && CSS.supports('color', color) ? color : null;
 }
 
-function groupIcon(container, className = '') {
-  const folder = icon('group', className);
+function groupIcon(container, className = '', expanded = false) {
+  const folder = icon(expanded ? 'groupOpen' : 'group', className);
   const color = containerColor(container);
   if (color) folder.style.setProperty('--folder-color', color);
   return folder;
