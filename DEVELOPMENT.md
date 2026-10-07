@@ -54,6 +54,61 @@ Run `npm run icons:generate` to regenerate the PNG exports in `extension/icons/`
 Build packages (`dist/`), test output (`test-results/`) and
 design experiments (`output/`) are local, ignored files.
 
+## Refreshing screenshots
+
+After changing the UI, run:
+
+```sh
+npm run screenshots:refresh
+```
+
+This refreshes all six promotional screenshots and their transparent `-ui` variants in
+`assets/screenshots/`, in PNG and lossless WebP. It preserves the existing copy, rounded
+corners, fine green border and output widths used by the README and website. To inspect
+the result before replacing tracked images:
+
+```sh
+npm run screenshots:refresh -- --preview
+```
+
+Your normal Firefox can stay open and in use. The command launches its own headless
+Firefox process with a new temporary profile and app-data directory. It never attaches
+to an existing browser, uses the mouse or clipboard, or changes your personal tabs,
+containers, extensions or settings. It quits its own browser and removes the temporary
+profile when finished, including on failure. Firefox must be installed; GeckoDriver is
+downloaded on the first run. `FIREFOX_BINARY` and `GECKODRIVER_BINARY` can override them.
+
+The command installs the current `extension/` directory and captures its actual sidebar
+through Firefox's native rendering API. It creates real tabs, containers and folder trees
+using the shared demo setup. Page titles and original website favicons are saved in
+[`assets/screenshots/screenshots.json`](assets/screenshots/screenshots.json) and
+[`assets/screenshots/favicons/`](assets/screenshots/favicons/). WebDriver serves these demo
+page responses at their original URLs, so captures do not depend on live websites,
+cookie prompts or anti-bot pages. This fixtures website metadata, not the extension UI:
+no extension markup, styles or rendering code are replaced.
+
+Each run saves native 5× captures, exported 3× images, a contact sheet, promotional
+previews, the measured crop configuration, a verification report and a GeckoDriver log
+under `output/screenshots/run-*/`. The command prints the paths;
+`output/screenshots/latest.json` points to the last successful run. These files are ignored
+by Git. Crop bounds follow the elements specified by each shot's `framing` selectors, so
+row-height changes are picked up automatically. A tall UI is fitted inside its promotional
+composition; the standalone UI keeps its configured width. If content no longer fits the
+sidebar, capture fails instead of silently cutting it off. Increase the fixture's window
+and capture height or revise the scene if necessary.
+
+Before publishing any images, the runner checks stable frames, source dimensions, crop
+bounds, transparent corners, the green border, lossless WebP pixels and that the UI
+interior matches the native capture after downsampling. It also rejects inputs edited
+during capture. Failed captures or exports leave the current images in place. Captures
+are repeatable with the same Firefox version, OS and installed fonts; platform or browser
+updates can change text rendering. The native sidebar capture uses Firefox's internal
+DevTools API, verified with Firefox 157, and may need adapting after a Firefox update.
+
+The older manual tools remain available: `npm run screenshots:prepare` writes the demo
+setup snippet to `output/promo/setup-console.js`, and `npm run screenshots:export --
+<sources> <destination> [resolved-fixture.json]` exports existing 5× source captures.
+
 ## Stress testing
 
 `npm run test:stress` exercises 100, 500 and 1,000 real Firefox tabs, including search,

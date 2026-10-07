@@ -86,151 +86,229 @@
     {
       "key": "wikipedia",
       "url": "https://www.wikipedia.org/",
-      "pinned": true
+      "pinned": true,
+      "title": "Wikipedia",
+      "favicon": "favicons/wikipedia.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "github",
       "url": "https://github.com/",
       "pinned": true,
-      "container": "work"
+      "container": "work",
+      "title": "GitHub · Change is constant. GitHub keeps you ahead. · GitHub · GitHub",
+      "favicon": "favicons/github.svg",
+      "faviconType": "image/svg+xml"
     },
     {
       "key": "youtube",
       "url": "https://www.youtube.com/",
-      "pinned": true
+      "pinned": true,
+      "title": "YouTube",
+      "favicon": "favicons/youtube.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "reddit",
       "url": "https://www.reddit.com/",
-      "pinned": true
+      "pinned": true,
+      "title": "Reddit - The heart of the internet",
+      "favicon": "favicons/reddit.png",
+      "faviconType": "image/png"
     },
     {
       "key": "google-maps",
       "url": "https://www.google.com/maps",
-      "pinned": true
+      "pinned": true,
+      "title": "Google Maps",
+      "favicon": "favicons/google-maps.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "bbc-news",
       "url": "https://www.bbc.co.uk/news",
-      "pinned": true
+      "pinned": true,
+      "title": "Home - BBC News",
+      "favicon": "favicons/bbc-news.png",
+      "faviconType": "image/png"
     },
     {
       "key": "mdn",
       "url": "https://developer.mozilla.org/en-US/",
       "group": "website",
-      "container": "work"
+      "container": "work",
+      "title": "MDN Web Docs",
+      "favicon": "favicons/mdn.svg",
+      "faviconType": "image/svg+xml"
     },
     {
       "key": "accessibility",
       "url": "https://www.w3.org/WAI/tips/designing/",
       "group": "website",
-      "container": "work"
+      "container": "work",
+      "title": "Designing for Web Accessibility – Tips for Getting Started | Web Accessibility Initiative (WAI) | W3C",
+      "favicon": "favicons/accessibility.png",
+      "faviconType": "image/png"
     },
     {
       "key": "grid",
       "url": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Grids",
       "group": "css",
-      "container": "work"
+      "container": "work",
+      "title": "CSS grid layout - Learn web development | MDN",
+      "favicon": "favicons/grid.svg",
+      "faviconType": "image/svg+xml"
     },
     {
       "key": "subgrid",
       "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout/Subgrid",
       "group": "css",
       "parent": "grid",
-      "container": "work"
+      "container": "work",
+      "title": "Subgrid - CSS | MDN",
+      "favicon": "favicons/subgrid.svg",
+      "faviconType": "image/svg+xml"
     },
     {
       "key": "flexbox",
       "url": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Flexbox",
       "group": "css",
-      "container": "work"
+      "container": "work",
+      "title": "Flexbox - Learn web development | MDN",
+      "favicon": "favicons/flexbox.svg",
+      "faviconType": "image/svg+xml"
     },
     {
       "key": "copenhagen",
       "url": "https://en.wikipedia.org/wiki/Copenhagen",
       "group": "trip",
-      "container": "personal"
+      "container": "personal",
+      "title": "Copenhagen - Wikipedia",
+      "favicon": "favicons/copenhagen.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "nyhavn",
       "url": "https://en.wikipedia.org/wiki/Nyhavn",
       "group": "trip",
       "parent": "copenhagen",
-      "container": "personal"
+      "container": "personal",
+      "title": "Nyhavn - Wikipedia",
+      "favicon": "favicons/nyhavn.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "tivoli",
       "url": "https://en.wikipedia.org/wiki/Tivoli_Gardens",
       "group": "trip",
       "parent": "copenhagen",
-      "container": "personal"
+      "container": "personal",
+      "title": "Tivoli Gardens - Wikipedia",
+      "favicon": "favicons/tivoli.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "louisiana",
       "url": "https://louisiana.dk/en/",
       "group": "trip",
-      "container": "personal"
+      "container": "personal",
+      "title": "Louisiana Museum of Modern Art",
+      "favicon": "favicons/louisiana.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "metro",
       "url": "https://m.dk/en/",
       "group": "trip",
-      "container": "personal"
+      "container": "personal",
+      "title": "Copenhagen Metro - Travel Information | Metroen",
+      "favicon": "favicons/metro.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "barr-review",
       "url": "https://www.tripadvisor.co.uk/Restaurant_Review-g189541-d12624794-Reviews-Restaurant_Barr-Copenhagen_Zealand.html",
       "group": "food",
-      "container": "personal"
+      "container": "personal",
+      "title": "RESTAURANT BARR, Copenhagen - 2026 Reviews & Information",
+      "favicon": "favicons/barr-review.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "host-review",
       "url": "https://www.tripadvisor.co.uk/Restaurant_Review-g189541-d4106509-Reviews-Host-Copenhagen_Zealand.html",
       "group": "food",
-      "container": "personal"
+      "container": "personal",
+      "title": "HØST, Copenhagen - 2026 Reviews & Information",
+      "favicon": "favicons/host-review.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "goodfood",
       "url": "https://www.bbcgoodfood.com/recipes/collection/quick-and-easy-recipes",
       "group": "recipes",
-      "container": "personal"
+      "container": "personal",
+      "title": "Quick and easy recipes | Good Food",
+      "favicon": "favicons/goodfood.png",
+      "faviconType": "image/png"
     },
     {
       "key": "sourdough",
       "url": "https://www.kingarthurbaking.com/recipes/rustic-sourdough-bread-recipe",
       "group": "recipes",
-      "container": "personal"
+      "container": "personal",
+      "title": "Rustic Sourdough Bread Recipe | King Arthur Baking",
+      "favicon": "favicons/sourdough.ico",
+      "faviconType": "image/x-icon"
     },
     {
       "key": "seriouseats",
       "url": "https://www.seriouseats.com/recipes",
       "group": "recipes",
-      "container": "personal"
+      "container": "personal",
+      "title": "All Recipes",
+      "favicon": "favicons/seriouseats.png",
+      "faviconType": "image/png"
     },
     {
       "key": "nasa",
       "url": "https://science.nasa.gov/solar-system/",
-      "group": "reading"
+      "group": "reading",
+      "title": "Solar System Exploration",
+      "favicon": "favicons/nasa.png",
+      "faviconType": "image/png"
     },
     {
       "key": "openlibrary",
       "url": "https://openlibrary.org/",
-      "group": "reading"
+      "group": "reading",
+      "title": "Welcome to Open Library | Open Library",
+      "favicon": "favicons/openlibrary.png",
+      "faviconType": "image/png"
     },
     {
       "key": "northern-lights",
       "url": "https://www.rmg.co.uk/stories/space-astronomy/what-causes-northern-lights-aurora-borealis-explained",
-      "group": "reading"
+      "group": "reading",
+      "title": "What causes the Northern Lights? Aurora borealis explained | Royal Museums Greenwich",
+      "favicon": "favicons/northern-lights.png",
+      "faviconType": "image/png"
     },
     {
       "key": "sourdough-science",
       "url": "https://www.smithsonianmag.com/science-nature/scientific-secrets-behind-making-great-sourdough-bread-180975568/",
-      "group": "reading"
+      "group": "reading",
+      "title": "The Scientific Secrets Behind Making Great Sourdough Bread",
+      "favicon": "favicons/sourdough-science.svg",
+      "faviconType": "image/svg+xml"
     },
     {
       "key": "underground-history",
       "url": "https://www.londonmuseum.org.uk/collections/london-stories/building-victorian-underground-railway/",
-      "group": "reading"
+      "group": "reading",
+      "title": "Building a Victorian underground railway | London Museum",
+      "favicon": "favicons/underground-history.png",
+      "faviconType": "image/png"
     }
   ],
   "shots": [
@@ -259,6 +337,9 @@
           "width": 518
         },
         "dark": false
+      },
+      "framing": {
+        "bottom": "[data-key=\"new-tab:null\"]"
       }
     },
     {
@@ -283,6 +364,10 @@
           "width": 548
         },
         "dark": false
+      },
+      "framing": {
+        "bottom": "[data-key=\"new-tab:c7999750-3d73-4d2b-8daa-11fcd598e005\"]",
+        "paddingBottom": 10
       }
     },
     {
@@ -307,6 +392,11 @@
           "width": 548
         },
         "dark": false
+      },
+      "framing": {
+        "bottom": "#tree .tab-row",
+        "minimumHeight": 260,
+        "paddingBottom": 16
       }
     },
     {
@@ -335,6 +425,9 @@
           "width": 548
         },
         "dark": false
+      },
+      "framing": {
+        "element": "#dialog"
       }
     },
     {
@@ -364,6 +457,12 @@
           "width": 548
         },
         "dark": true
+      },
+      "framing": {
+        "top": "#navigation-capsule",
+        "paddingTop": 6,
+        "bottom": "[data-key=\"new-tab:c7999750-3d73-4d2b-8daa-11fcd598e005\"]",
+        "paddingBottom": 11
       }
     },
     {
@@ -389,6 +488,10 @@
           "width": 600
         },
         "dark": false
+      },
+      "framing": {
+        "bottom": "[data-key=\"new-tab:c7999750-3d73-4d2b-8daa-11fcd598e006\"]",
+        "paddingBottom": 1
       }
     }
   ],

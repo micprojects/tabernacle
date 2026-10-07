@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { fitScreenshotImage } from './screenshot-layout.js';
 
-const fixture = JSON.parse(await readFile('assets/screenshots/screenshots.json', 'utf8'));
+const fixture = JSON.parse(
+  await readFile(process.argv[4] || 'assets/screenshots/screenshots.json', 'utf8'),
+);
 const source = process.argv[2] || 'output/promo';
 const destination = process.argv[3] || 'assets/screenshots';
 const { width, height, scale } = fixture.capture;
@@ -34,7 +37,7 @@ for (const [index, shot] of fixture.shots.entries()) {
   assert.equal(metadata.height, sourceSize.height * scale, `${input}: wrong capture height`);
   const { crop, image, title, body, feature, dark } = shot.composition;
   const imageHeight = Math.round((crop.height / crop.width) * image.width);
-  assert(image.left + image.width <= width - 40 && image.top + imageHeight <= height - 40);
+  const layout = fitScreenshotImage(image, imageHeight, { width, height });
   assert(crop.width * scale >= px(image.width), `${input}: capture would need upscaling`);
   const pixels = await sharp(input)
     .extract({
@@ -65,7 +68,7 @@ for (const [index, shot] of fixture.shots.entries()) {
     </defs>
     <rect width="100%" height="100%" fill="${background}"/>
     <ellipse cx="990" cy="385" rx="520" ry="590" fill="url(#glow)"/>
-    <rect x="${image.left}" y="${image.top + 17}" width="${image.width}" height="${imageHeight}" rx="18" fill="${dark ? '#0c0616' : '#443053'}" opacity=".17" filter="url(#shadow)"/>
+    <rect x="${layout.left}" y="${layout.top + 17}" width="${layout.width}" height="${layout.height}" rx="18" fill="${dark ? '#0c0616' : '#443053'}" opacity=".17" filter="url(#shadow)"/>
     <g font-family="Arial, Helvetica, sans-serif">
       <text x="139" y="91" font-size="26" font-weight="700" fill="${ink}" letter-spacing="-.5">Tabernacle</text>
       <text x="74" y="220" font-size="13" font-weight="700" letter-spacing="2" fill="${accent}">${escapeXml(feature)}</text>
@@ -78,12 +81,19 @@ for (const [index, shot] of fixture.shots.entries()) {
   </svg>`;
   const composition = await sharp(Buffer.from(svg))
     .composite([
-      { input: pixels, left: px(image.left), top: px(image.top) },
+      {
+        input:
+          layout.width === image.width
+            ? pixels
+            : await sharp(pixels).resize(px(layout.width), px(layout.height)).png().toBuffer(),
+        left: px(layout.left),
+        top: px(layout.top),
+      },
       { input: logo, left: px(72), top: px(55) },
     ])
     .png(pngOptions)
     .toBuffer();
-  await sharp(composition).png(pngOptions).toFile(join(destination, shot.file));
+  await writeFile(join(destination, shot.file), composition);
   await sharp(composition)
     .webp({ lossless: true, effort: 6 })
     .toFile(join(destination, shot.file.replace('.png', '.webp')));
@@ -104,7 +114,7 @@ for (const [index, shot] of fixture.shots.entries()) {
     .png(pngOptions)
     .toBuffer();
   const uiFile = shot.file.replace('.png', '-ui.png');
-  await sharp(standalone).png(pngOptions).toFile(join(destination, uiFile));
+  await writeFile(join(destination, uiFile), standalone);
   await sharp(standalone)
     .webp({ lossless: true, effort: 6 })
     .toFile(join(destination, uiFile.replace('.png', '.webp')));

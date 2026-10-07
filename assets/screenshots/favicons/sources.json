@@ -1,0 +1,184 @@
+[
+  {
+    "key": "wikipedia",
+    "url": "Firefox-provided data URL for https://www.wikipedia.org/",
+    "file": "favicons/wikipedia.ico",
+    "mime": "image/x-icon",
+    "bytes": 2530
+  },
+  {
+    "key": "github",
+    "url": "Firefox-provided data URL for https://github.com/",
+    "file": "favicons/github.svg",
+    "mime": "image/svg+xml",
+    "bytes": 959
+  },
+  {
+    "key": "youtube",
+    "url": "Firefox-provided data URL for https://www.youtube.com/",
+    "file": "favicons/youtube.ico",
+    "mime": "image/x-icon",
+    "bytes": 1260
+  },
+  {
+    "key": "reddit",
+    "url": "Firefox-provided data URL for https://www.reddit.com/",
+    "file": "favicons/reddit.png",
+    "mime": "image/png",
+    "bytes": 17859
+  },
+  {
+    "key": "google-maps",
+    "url": "https://www.google.com/images/branding/product/ico/maps15_bnuw3a_32dp.ico",
+    "file": "favicons/google-maps.ico",
+    "mime": "image/x-icon",
+    "bytes": 4286
+  },
+  {
+    "key": "bbc-news",
+    "url": "Firefox-provided data URL for https://www.bbc.co.uk/news",
+    "file": "favicons/bbc-news.png",
+    "mime": "image/png",
+    "bytes": 4353
+  },
+  {
+    "key": "mdn",
+    "url": "Firefox-provided data URL for https://developer.mozilla.org/en-US/",
+    "file": "favicons/mdn.svg",
+    "mime": "image/svg+xml",
+    "bytes": 536
+  },
+  {
+    "key": "accessibility",
+    "url": "Firefox-provided data URL for https://www.w3.org/WAI/tips/designing/",
+    "file": "favicons/accessibility.png",
+    "mime": "image/png",
+    "bytes": 1600
+  },
+  {
+    "key": "grid",
+    "url": "Firefox-provided data URL for https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Grids",
+    "file": "favicons/grid.svg",
+    "mime": "image/svg+xml",
+    "bytes": 536
+  },
+  {
+    "key": "subgrid",
+    "url": "Firefox-provided data URL for https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout/Subgrid",
+    "file": "favicons/subgrid.svg",
+    "mime": "image/svg+xml",
+    "bytes": 536
+  },
+  {
+    "key": "flexbox",
+    "url": "Firefox-provided data URL for https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Flexbox",
+    "file": "favicons/flexbox.svg",
+    "mime": "image/svg+xml",
+    "bytes": 536
+  },
+  {
+    "key": "copenhagen",
+    "url": "Firefox-provided data URL for https://en.wikipedia.org/wiki/Copenhagen",
+    "file": "favicons/copenhagen.ico",
+    "mime": "image/x-icon",
+    "bytes": 2530
+  },
+  {
+    "key": "nyhavn",
+    "url": "Firefox-provided data URL for https://en.wikipedia.org/wiki/Nyhavn",
+    "file": "favicons/nyhavn.ico",
+    "mime": "image/x-icon",
+    "bytes": 2530
+  },
+  {
+    "key": "tivoli",
+    "url": "Firefox-provided data URL for https://en.wikipedia.org/wiki/Tivoli_Gardens",
+    "file": "favicons/tivoli.ico",
+    "mime": "image/x-icon",
+    "bytes": 2530
+  },
+  {
+    "key": "louisiana",
+    "url": "Firefox-provided data URL for https://louisiana.dk/en/",
+    "file": "favicons/louisiana.ico",
+    "mime": "image/x-icon",
+    "bytes": 2352
+  },
+  {
+    "key": "metro",
+    "url": "Firefox-provided data URL for https://m.dk/en/",
+    "file": "favicons/metro.ico",
+    "mime": "image/x-icon",
+    "bytes": 1122
+  },
+  {
+    "key": "barr-review",
+    "url": "Firefox-provided data URL for https://www.tripadvisor.co.uk/Restaurant_Review-g189541-d12624794-Reviews-Restaurant_Barr-Copenhagen_Zealand.html",
+    "file": "favicons/barr-review.ico",
+    "mime": "image/x-icon",
+    "bytes": 3517
+  },
+  {
+    "key": "host-review",
+    "url": "Firefox-provided data URL for https://www.tripadvisor.co.uk/Restaurant_Review-g189541-d4106509-Reviews-Host-Copenhagen_Zealand.html",
+    "file": "favicons/host-review.ico",
+    "mime": "image/x-icon",
+    "bytes": 3517
+  },
+  {
+    "key": "goodfood",
+    "url": "Firefox-provided data URL for https://www.bbcgoodfood.com/recipes/collection/quick-and-easy-recipes",
+    "file": "favicons/goodfood.png",
+    "mime": "image/png",
+    "bytes": 2204
+  },
+  {
+    "key": "sourdough",
+    "url": "Firefox-provided data URL for https://www.kingarthurbaking.com/recipes/rustic-sourdough-bread-recipe",
+    "file": "favicons/sourdough.ico",
+    "mime": "image/x-icon",
+    "bytes": 3991
+  },
+  {
+    "key": "seriouseats",
+    "url": "Firefox-provided data URL for https://www.seriouseats.com/recipes",
+    "file": "favicons/seriouseats.png",
+    "mime": "image/png",
+    "bytes": 252
+  },
+  {
+    "key": "nasa",
+    "url": "Firefox-provided data URL for https://science.nasa.gov/solar-system/",
+    "file": "favicons/nasa.png",
+    "mime": "image/png",
+    "bytes": 751
+  },
+  {
+    "key": "openlibrary",
+    "url": "Firefox-provided data URL for https://openlibrary.org/",
+    "file": "favicons/openlibrary.png",
+    "mime": "image/png",
+    "bytes": 7277
+  },
+  {
+    "key": "northern-lights",
+    "url": "Firefox-provided data URL for https://www.rmg.co.uk/stories/space-astronomy/what-causes-northern-lights-aurora-borealis-explained",
+    "file": "favicons/northern-lights.png",
+    "mime": "image/png",
+    "bytes": 624
+  },
+  {
+    "key": "sourdough-science",
+    "url": "Firefox-provided data URL for https://www.smithsonianmag.com/science-nature/scientific-secrets-behind-making-great-sourdough-bread-180975568/",
+    "file": "favicons/sourdough-science.svg",
+    "mime": "image/svg+xml",
+    "bytes": 904
+  },
+  {
+    "key": "underground-history",
+    "url": "Firefox-provided data URL for https://www.londonmuseum.org.uk/collections/london-stories/building-victorian-underground-railway/",
+    "file": "favicons/underground-history.png",
+    "mime": "image/png",
+    "bytes": 681
+  }
+]
