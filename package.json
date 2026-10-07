@@ -1,6 +1,6 @@
 {
   "name": "tabernacle",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "description": "Organise your Firefox tabs with sidebar folders, nested tab trees and search.",

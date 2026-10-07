@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tabernacle",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Organise your Firefox tabs with sidebar folders, nested tab trees and search.",
   "permissions": ["tabs", "storage", "sessions", "tabGroups", "contextualIdentities", "cookies"],
   "incognito": "not_allowed",
