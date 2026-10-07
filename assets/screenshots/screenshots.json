@@ -251,11 +251,11 @@
           "left": 41,
           "top": 134,
           "width": 388,
-          "height": 522
+          "height": 548
         },
         "image": {
           "left": 660,
-          "top": 51,
+          "top": 28,
           "width": 518
         },
         "dark": false
@@ -275,7 +275,7 @@
           "left": 41,
           "top": 134,
           "width": 388,
-          "height": 350
+          "height": 376
         },
         "image": {
           "left": 644,
@@ -356,7 +356,7 @@
           "left": 41,
           "top": 168,
           "width": 388,
-          "height": 415
+          "height": 441
         },
         "image": {
           "left": 644,
