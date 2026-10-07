@@ -20,6 +20,7 @@
     "dev": "web-ext run --source-dir extension",
     "preview": "node scripts/preview.js",
     "screenshots:prepare": "node scripts/prepare-screenshots.js",
+    "screenshots:refresh": "node scripts/refresh-screenshots.js",
     "format": "eslint . --fix && prettier --write .",
     "test:ui:core": "node scripts/test-ui.js",
     "check": "npm run format:check && npm run lint && npm test",

@@ -4,3 +4,5 @@ test-results/
 output/
 firefox/
 package-lock.json
+# Preserve original website favicon bytes used by screenshot fixtures.
+assets/screenshots/favicons/*.svg
