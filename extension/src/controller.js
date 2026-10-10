@@ -715,6 +715,11 @@ export function createController(api, notify = () => {}) {
       case 'enterGroup': {
         const scopeId = requireGroup(model, message.id ?? null);
         const view = await viewFor(windowId);
+        if (scopeId !== null && scopeId !== view.scopeId)
+          view.recentFolders = [
+            { id: scopeId, enteredAt: Date.now() },
+            ...(view.recentFolders ?? []).filter(({ id }) => id !== scopeId),
+          ];
         view.scopeId = scopeId;
         if (scopeId !== null && typeof message.collapsed === 'boolean') {
           view.collapsed = view.collapsed.filter((id) => id !== scopeId);
@@ -881,6 +886,7 @@ export function createController(api, notify = () => {}) {
           await writeTab(windowId, 'update', tab.id, { active: true });
           if (!window.focused) await api.windows.update(windowId, { focused: true });
         }
+        if (message.reveal === true) await revealTab(message.id, windowId);
         break;
       }
       case 'closeTab':

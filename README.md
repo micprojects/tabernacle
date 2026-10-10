@@ -7,6 +7,7 @@ Tabernacle is a Firefox extension I made to help me navigate and organise my tab
 - Search folders, tab titles and URLs.
 - Use Firefox containers and set default containers for folders.
 - Access pinned tabs, mute audio and reopen recently closed tabs.
+- Revisit viewed tabs, recently entered folders and closed tabs in one searchable timeline.
 
 Requires Firefox 142 or newer.
 
