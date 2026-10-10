@@ -55,6 +55,7 @@ export function createBrowserCache(api, changed = () => {}) {
     'groupId',
     'cookieStoreId',
     'active',
+    'lastAccessed',
   ]);
   watch(api.tabs.onUpdated, (_id, properties, tab) => {
     invalidateTabs(tab.windowId);

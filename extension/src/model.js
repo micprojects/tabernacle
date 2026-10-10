@@ -91,11 +91,26 @@ export function removeGroup(model, id) {
 
 export function normalizeView(model, view = {}) {
   view ??= {};
+  const seen = new Set();
+  const recentFolders = (Array.isArray(view.recentFolders) ? view.recentFolders : [])
+    .filter(
+      (entry) =>
+        groupById(model, entry?.id) && Number.isFinite(entry.enteredAt) && entry.enteredAt > 0,
+    )
+    .sort((a, b) => b.enteredAt - a.enteredAt)
+    .filter(({ id }) => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    })
+    .slice(0, 100)
+    .map(({ id, enteredAt }) => ({ id, enteredAt }));
   return {
     scopeId: groupById(model, view.scopeId) ? view.scopeId : null,
     collapsed: Array.isArray(view.collapsed)
       ? view.collapsed.filter((id) => groupById(model, id))
       : [],
+    ...(recentFolders.length ? { recentFolders } : {}),
   };
 }
 

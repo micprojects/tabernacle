@@ -22,7 +22,10 @@ export function memoryBrowser({
   containers = [],
   events = false,
 } = {}) {
-  let liveTabs = structuredClone(tabs);
+  let liveTabs = structuredClone(tabs).map((tab) => ({
+    ...(tab.active ? { lastAccessed: Date.now() } : {}),
+    ...tab,
+  }));
   let nextId = Math.max(0, ...liveTabs.map((tab) => tab.id)) + 1;
   let nextSessionId = 1;
   let nextContainerId =
@@ -141,6 +144,7 @@ export function memoryBrowser({
             .filter((item) => item.windowId === tab.windowId)
             .forEach((item) => (item.active = false));
         const next = { ...changes };
+        if (next.active) next.lastAccessed = Date.now();
         if ('muted' in next) {
           next.mutedInfo = { muted: next.muted };
           delete next.muted;
@@ -163,6 +167,7 @@ export function memoryBrowser({
           groupId: -1,
           cookieStoreId: 'firefox-default',
           active: false,
+          ...(props.active ? { lastAccessed: Date.now() } : {}),
           ...props,
         };
         if ('muted' in tab) {
@@ -194,7 +199,11 @@ export function memoryBrowser({
           api.sessions.onChanged?.emit?.();
           if (tab.active) {
             const next = liveTabs.find((item) => item.windowId === tab.windowId);
-            if (next) next.active = true;
+            if (next) {
+              next.active = true;
+              next.lastAccessed = Date.now();
+              api.tabs.onActivated?.emit?.({ tabId: next.id, windowId: next.windowId });
+            }
           }
         }
       },

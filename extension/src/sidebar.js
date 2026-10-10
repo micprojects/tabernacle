@@ -2,7 +2,7 @@ import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createDialogs } from './dialogs.js';
-import { createRecentlyClosed } from './recently-closed.js';
+import { createRecentActivity } from './recently-closed.js';
 import {
   groupById,
   groupPath,
@@ -1600,11 +1600,13 @@ $('reveal').querySelector('span').append(icon('enter'));
 $('dialog-icon').append(icon('groupPlus'));
 $('new-tab').append(icon('plus'));
 $('new-group').append(icon('groupPlus'));
-recentlyClosed = createRecentlyClosed({
+recentlyClosed = createRecentActivity({
   trigger: $('recently-closed-toggle'),
   getState: () => state,
   favicon: tabFavicon,
   restore: (sessionId) => blankAreaAction('restoreClosedTab', { sessionId }),
+  activate: (id) => blankAreaAction('activateTab', { id, reveal: true }),
+  enter: (id) => enter(id),
 
   beforeOpen() {
     closeMenu();
