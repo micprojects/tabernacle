@@ -67,6 +67,8 @@ export function createMoveRecovery({ api, readRecords, saveMembership, saveGroup
   }
 
   return {
+    hasPending: () => Boolean(pending),
+
     async load() {
       const value = (await api.storage.local.get(PENDING_MOVE_KEY))[PENDING_MOVE_KEY];
       if (value != null) {

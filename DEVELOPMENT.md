@@ -20,6 +20,29 @@ use the same choices and controller actions as the contextual sidebar dialogs.
 The Firefox add-on ID is `tabernacle@michaelprojects.com`, with saved data under `tabernacle.*`
 keys.
 
+## Folder backups
+
+Settings → Backup and restore uses `src/settings-backup.js`, with portable parsing and
+merge planning in `src/folder-backup.js`. The `tabernacle-folders` version 1 JSON format
+stores an export date, ordered `folders` and referenced `containers`. Record IDs are
+file-local references. A folder's omitted `container` means inheritance, `none` means
+regular browsing, and any other value references a container definition. Unavailable
+definitions carry `unavailable: true` and must be mapped during import. Files are limited
+to 5 MB and 10,000 folders/containers.
+
+The dedicated controller handles `getFolderBackupState`, `exportFolders`,
+`previewFolderImport` and `importFolders` without tab snapshots or session repair.
+The Settings page retains the backup, destination, preview fingerprint and operation
+token, allowing imports after the MV3 background page unloads. Commit compares the
+fingerprint against fresh folder/container state and returns a new preview if changed.
+Folder additions and the latest import receipt are saved together; retrying that operation
+returns its result without duplicating a destination folder. Pending moves must finish
+through the sidebar before backup actions can run.
+
+Run `npm run test:backup` for the Settings flow and `npm run test:backup:firefox` for
+download/upload and persistence checks in an isolated native Firefox profile. Core
+format, merge and failure tests are included in `npm test`.
+
 ## Folder appearance
 
 Folders may store an optional `appearance` with independent Acorn `icon` and palette

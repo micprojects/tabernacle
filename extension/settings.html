@@ -24,6 +24,7 @@
         <nav aria-label="Settings sections">
           <a href="#appearance" aria-current="page" data-icon="list">Appearance</a>
           <a href="#containers" data-icon="container">Containers</a>
+          <a href="#backup" data-icon="history">Backup and restore</a>
           <a href="#shortcuts" data-icon="keyboard">Shortcuts</a>
           <a href="#about" data-icon="info">About</a>
         </nav>
@@ -149,6 +150,81 @@
             To set a folder’s default container, right-click the folder in the sidebar and choose
             “Default container…”.
           </p>
+        </section>
+        <section id="backup" aria-labelledby="backup-title" hidden>
+          <h2 id="backup-title" tabindex="-1">Backup and restore</h2>
+          <p class="section-description">
+            Save your folders to a file and bring them to another Firefox installation.
+          </p>
+          <div class="settings-card">
+            <h3>Export folders</h3>
+            <p class="setting-help">
+              Includes names, nesting, order, icons, colours and default containers. Tabs and
+              sign-ins aren’t included.
+            </p>
+            <button id="backup-export" class="settings-button" type="button" disabled>
+              Export folders
+            </button>
+            <p id="backup-export-status" class="setting-help" role="status"></p>
+          </div>
+          <form id="backup-form" class="settings-card">
+            <h3>Import folders</h3>
+            <p class="setting-help">
+              Add missing folders and reuse matching ones. Existing folders keep their settings.
+            </p>
+            <fieldset id="backup-fields" disabled>
+              <legend class="sr-only">Choose a folder backup and destination</legend>
+              <label for="backup-file">Backup file</label>
+              <input
+                id="backup-file"
+                type="file"
+                accept=".json,application/json"
+                aria-describedby="backup-file-status"
+              />
+              <p id="backup-file-status" class="setting-help" role="status">
+                Choose a JSON file exported by Tabernacle.
+              </p>
+              <div id="backup-destination-fields" hidden>
+                <label for="backup-destination">Import into</label>
+                <select id="backup-destination">
+                  <option value="home">Home</option>
+                  <option value="existing">Existing folder</option>
+                  <option value="new">New folder</option>
+                </select>
+                <div id="backup-name-field" hidden>
+                  <label for="backup-name">New folder name</label>
+                  <input id="backup-name" type="text" maxlength="80" autocomplete="off" />
+                </div>
+                <div id="backup-picker"></div>
+                <button id="backup-preview-button" class="settings-button" type="submit">
+                  Preview import
+                </button>
+              </div>
+            </fieldset>
+            <div id="backup-preview" hidden>
+              <h3 id="backup-preview-title" tabindex="-1">Import preview</h3>
+              <p id="backup-preview-destination"></p>
+              <p id="backup-preview-counts" role="status"></p>
+              <p class="setting-help">
+                Folders with the same name are matched within their parent. Duplicate names are
+                paired in sibling order.
+              </p>
+              <ul id="backup-preview-tree" aria-label="Folders to import" tabindex="0"></ul>
+              <div id="backup-container-mappings"></div>
+              <p id="backup-container-note" class="setting-help" hidden>
+                New containers restore their name, colour and icon. Cookies and sign-ins aren’t
+                included.
+              </p>
+              <div class="settings-actions">
+                <button id="backup-import" class="settings-button primary" type="button">
+                  Import folders
+                </button>
+                <button id="backup-cancel" class="settings-button" type="button">Cancel</button>
+              </div>
+            </div>
+            <p id="backup-status" role="status" aria-live="polite" tabindex="-1"></p>
+          </form>
+          <p id="backup-error" class="settings-error" role="alert" hidden></p>
         </section>
         <section id="shortcuts" aria-labelledby="shortcuts-title" hidden>
           <h2 id="shortcuts-title" tabindex="-1">Shortcuts</h2>

@@ -420,3 +420,91 @@ kbd {
   padding: 0;
   margin: 0 0 20px;
 }
+
+#backup-export {
+  margin-top: 20px;
+}
+#backup-fields {
+  border: 0;
+  padding: 0;
+  margin: 24px 0 0;
+  min-width: 0;
+}
+#backup-fields label,
+.backup-container-mapping label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+#backup-file {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+}
+#backup-file::file-selector-button {
+  margin-right: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--panel-text);
+  font: inherit;
+  cursor: pointer;
+}
+#backup-destination-fields,
+#backup-name-field,
+#backup-picker:not(:empty),
+#backup-preview-button,
+.backup-container-mapping {
+  margin-top: 20px;
+}
+#backup .folder-picker-trigger {
+  width: 100%;
+  min-height: 38px;
+}
+#backup .folder-picker-help,
+#backup .folder-picker-empty {
+  color: var(--panel-muted);
+  font-size: 13px;
+}
+#backup-preview {
+  border-top: 1px solid var(--panel-line);
+  margin-top: 24px;
+  padding-top: 24px;
+}
+#backup-preview-destination,
+#backup-container-mappings,
+#backup-status {
+  overflow-wrap: anywhere;
+}
+#backup-preview-tree {
+  max-height: 300px;
+  overflow: auto;
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+}
+#backup-preview-tree li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 12px 8px calc(12px + var(--backup-depth) * 12px);
+}
+#backup-preview-tree li + li {
+  border-top: 1px solid var(--panel-line);
+}
+#backup-preview-tree li > :first-child {
+  flex: 1;
+  overflow-wrap: anywhere;
+  min-width: 60px;
+}
+.backup-folder-action {
+  font-size: 12px;
+  color: var(--panel-muted);
+}
+#backup-preview .settings-actions {
+  margin-top: 24px;
+}
