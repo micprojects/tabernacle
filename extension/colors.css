@@ -1,20 +1,20 @@
-/* Shared appearance tokens for the sidebar, settings and activity page.
+/* Shared Monochrome tokens for the sidebar, settings and activity page.
    Firefox palettes override these on the root through theme-palette.js. */
 :root {
   color-scheme: light dark;
-  --background: light-dark(#f7f6fa, #211d2b);
-  --text: light-dark(#24202d, #f3eff9);
+  --background: light-dark(#f7f7f7, #202020);
+  --text: light-dark(#242424, #f2f2f2);
   --icon: var(--text);
-  --toolbar-icon: light-dark(#5b5b66, #fbfbfe);
+  --toolbar-icon: light-dark(#5e5e5e, #fbfbfb);
   --muted: color-mix(in srgb, var(--text) 72%, var(--background));
   --line: color-mix(in srgb, var(--text) 14%, var(--background));
   --subtle: color-mix(in srgb, var(--text) 7%, var(--background));
   --hover: color-mix(in srgb, var(--text) 6%, var(--background));
-  --control: light-dark(#ffffff, #302938);
-  --selected: light-dark(#ffffff, #352e42);
-  --selected-border: light-dark(#c4b3df, #645575);
+  --control: light-dark(#ffffff, #2d2d2d);
+  --selected: light-dark(#ffffff, #343434);
+  --selected-border: light-dark(#bdbdbd, #606060);
   --selected-text: var(--text);
-  --accent: light-dark(#7542cc, #c4a1ff);
+  --accent: light-dark(#505050, #c7c7c7);
   --accent-text: var(--background);
   --focus: var(--accent);
   --action-text: var(--accent);

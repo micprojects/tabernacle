@@ -1,4 +1,4 @@
-/* These colour-only rules are inactive for the original Tabernacle palette. */
+/* These colour-only rules are inactive for the Monochrome palette. */
 :root[data-firefox-theme] .sidebar {
   background-color: var(--background);
   background-image: var(--theme-gradient);

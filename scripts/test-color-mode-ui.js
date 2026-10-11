@@ -11,7 +11,7 @@ const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 
 let openLook, settings, mode;
-const background = (scheme) => (scheme === 'dark' ? 'rgb(33, 29, 43)' : 'rgb(247, 246, 250)');
+const background = (scheme) => (scheme === 'dark' ? 'rgb(32, 32, 32)' : 'rgb(247, 247, 247)');
 
 const checkPalette = async (scheme) => {
   await expect(page.locator('html')).toHaveCSS('background-color', background(scheme));
@@ -106,12 +106,12 @@ try {
 
   openLook = await prepareSettings(page);
   settings = await openLook();
-  mode = settings.getByRole('combobox', { name: 'Tabernacle colour mode', exact: true });
+  mode = settings.getByRole('combobox', { name: 'Monochrome colour mode', exact: true });
   await openLook();
   await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toBeVisible();
   await expect(mode).toHaveValue('default');
   await expect(mode).toHaveAccessibleDescription(
-    'Used for Tabernacle’s colours, including the fallback. Follow Firefox uses its light/dark preference.',
+    'Used for Monochrome, including the fallback. Follow Firefox uses its light/dark preference.',
   );
   await mode.selectOption('light');
   await settings.getByRole('button', { name: 'Discard changes', exact: true }).click();

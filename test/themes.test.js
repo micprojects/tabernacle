@@ -43,7 +43,7 @@ test('theme settings default, validate, and keep fallback colour preferences', (
   for (const themeSource of [null, true, 'sun'])
     assert.throws(
       () => requireLook({ connectingLines: true, domains: false, themeSource }),
-      /Choose Follow Firefox or Tabernacle/,
+      /Choose Follow Firefox or Monochrome/,
     );
 });
 
