@@ -5,6 +5,7 @@ import { sortContainers } from './containers.js';
 import { createGroupCreation } from './group-creation.js';
 import { createAppearancePicker } from './appearance-picker.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
+import { pinActionLabels } from './pinned-items.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -142,6 +143,24 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
         onChange(await request('setGroupAppearance', { id, appearance }));
       },
     });
+  }
+
+  function pinFolderDialog(id) {
+    const state = getState();
+    const group = groupById(state, id);
+    if (!group) return;
+    const pin = state.folderPins.find((item) => item.id === id);
+    showDialog({
+      title: pin ? 'Change default action' : 'Pin folder',
+      description: `Choose what happens when you click “${group.name}”.`,
+      input: false,
+      value: pin?.action ?? 'open',
+      submit: pin ? 'Save' : 'Pin folder',
+      choices: Object.entries(pinActionLabels).map(([value, label]) => ({ value, label })),
+      onSubmit: async (action) => onChange(await request('setGroupPin', { id, action })),
+    });
+    $('dialog-select').setAttribute('aria-label', 'Default action');
+    $('dialog-icon').replaceChildren(folderIcon(group, folderContainer(state, group), { state }));
   }
 
   function containerDialog(id, groupId) {
@@ -485,6 +504,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     createDialog,
     renameDialog,
     appearanceDialog,
+    pinFolderDialog,
     removeDialog,
     closeGroupTabsDialog,
     closeTabTreeDialog,

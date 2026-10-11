@@ -13,6 +13,7 @@ for (const name of [
   'test-tree-expansion-ui',
   'test-tab-clicks-ui',
   'test-pinned-tabs-ui',
+  'test-pinned-folders-ui',
   'test-tab-close-ui',
   'test-recently-closed-ui',
   'test-activity-page-ui',

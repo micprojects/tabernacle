@@ -153,9 +153,7 @@ try {
     .click();
   await expect(page.locator('.tab-row.active')).toContainText('Acorn');
   await activity.getByRole('link', { name: /^Folders/ }).click();
-  await activity
-    .getByRole('button', { name: 'Enter folder: Website refresh', exact: true })
-    .click();
+  await activity.getByRole('button', { name: 'Open folder: Website refresh', exact: true }).click();
   expect(await page.evaluate(() => window.activityTest.sidebarOpened)).toBe(true);
   await expect(page.locator('#group-path')).toContainText('Website refresh');
   await activity.locator('.item-button').first().focus();
@@ -171,7 +169,7 @@ try {
     }),
   );
   await expect(
-    activity.getByRole('button', { name: 'Enter folder: Website updates' }),
+    activity.getByRole('button', { name: 'Open folder: Website updates' }),
   ).toBeVisible();
   await page.evaluate(() => {
     window.activityTest.fail = 'tabernacle:snapshot';

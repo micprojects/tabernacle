@@ -6,6 +6,7 @@ import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createDialogs } from './dialogs.js';
 import { folderIcon } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
+import { pinActionLabels } from './pinned-items.js';
 import { createRecentActivity } from './recently-closed.js';
 import { installActivityLauncher } from './activity-launcher.js';
 import { openDemoPage } from './internal-pages.js';
@@ -185,6 +186,7 @@ const {
   createDialog,
   renameDialog,
   appearanceDialog,
+  pinFolderDialog,
   removeDialog,
   closeGroupTabsDialog,
   closeTabTreeDialog,
@@ -227,7 +229,11 @@ function action(type, args = {}) {
       return state;
     } catch (error) {
       finishViewAction();
-      acceptState(confirmedState);
+      try {
+        acceptState(await request('snapshot'));
+      } catch {
+        acceptState(confirmedState);
+      }
       render();
       announce(error.message, true);
       return null;
@@ -357,6 +363,19 @@ function enter(id, collapsed) {
   return action('enterGroup', { id, ...(typeof collapsed === 'boolean' ? { collapsed } : {}) });
 }
 
+async function revealFolder(id) {
+  cancelGroupClick();
+  if (searchOpen) showSearch(false, { restoreFocus: false });
+  $('search').value = '';
+  const next = await action('revealGroup', { id });
+  if (!next) return;
+  const row = tree.querySelector(`[data-key="group:${CSS.escape(id)}"]`);
+  if (row) {
+    selectRow(row);
+    row.scrollIntoView({ block: 'nearest' });
+  }
+}
+
 function parent() {
   if (state?.view.scopeId) enter(groupById(state, state.view.scopeId)?.parentId ?? null);
 }
@@ -468,7 +487,7 @@ function tabDomain(tab) {
 function createGroupRow(group, container) {
   const row = rowBase('group', group.id);
   row.setAttribute('aria-label', `${group.name}, ${count(group.id)} tabs`);
-  row.title = `${group.name}\nClick to expand/collapse · Double-click to enter · Right-click for options`;
+  row.title = `${group.name}\nClick to expand/collapse · Double-click to open · Right-click for options`;
   describeContainer(row, { container }, 'Default container');
   const playing = audioInGroups.get(group.id) || 0;
   const audio = playingLabel(playing, 'in this folder');
@@ -626,17 +645,13 @@ function closeOnMiddleClick(node, id) {
   });
 }
 
-function createPinnedTab(tab) {
-  const label = `${tab.title || 'New tab'}, pinned`;
-  const node = button(label, null, () => action('activateTab', { id: tab.id }), 'pinned-tab');
-  node.dataset.key = `tab:${tab.id}`;
-  node.removeAttribute('title');
-  node.setAttribute('aria-pressed', String(Boolean(tab.active)));
-  node.classList.toggle('active', Boolean(tab.active));
+function pinnedDrag(node, item) {
+  node.dataset.pinKind = item.kind;
+  node.dataset.pinId = item.id;
   node.draggable = true;
   node.addEventListener('dragstart', (event) => {
     cancelGroupClick();
-    drag = { kind: 'pin', id: tab.id, windowId };
+    drag = { kind: 'pin', item, windowId };
     event.dataTransfer.setData('application/x-tabernacle-pin', JSON.stringify(drag));
     event.dataTransfer.effectAllowed = 'move';
     node.classList.add('dragging');
@@ -648,25 +663,80 @@ function createPinnedTab(tab) {
     clearDrops();
     if (renderPending || refreshAgain) scheduleRefresh();
   });
-  node.append(tabFavicon(tab));
-  describeContainer(node, tab);
-  const audio = audioDescription(tab);
-  describeAudio(node, audio);
-  if (audio) node.append(audioIndicator(audio, audioInTabs.get(tab.id) ? 'speaker' : 'muted'));
+}
+
+function pinnedMenu(node, kind, id) {
   node.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     node.focus();
-    contextMenu('tab', tab.id, event.clientX, event.clientY);
+    contextMenu(kind, id, event.clientX, event.clientY);
   });
   node.addEventListener('keydown', (event) => {
     if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
       event.preventDefault();
       const rect = node.getBoundingClientRect();
-      contextMenu('tab', tab.id, rect.left, rect.bottom);
+      contextMenu(kind, id, rect.left, rect.bottom);
     }
   });
+}
+
+function createPinnedTab(tab) {
+  const label = `${tab.title || 'New tab'}, pinned`;
+  const node = button(label, null, () => action('activateTab', { id: tab.id }), 'pinned-tab');
+  node.dataset.key = `tab:${tab.id}`;
+  node.removeAttribute('title');
+  node.setAttribute('aria-pressed', String(Boolean(tab.active)));
+  node.classList.toggle('active', Boolean(tab.active));
+  pinnedDrag(node, { kind: 'tab', id: tab.treeId });
+  node.append(tabFavicon(tab));
+  describeContainer(node, tab);
+  const audio = audioDescription(tab);
+  describeAudio(node, audio);
+  if (audio) node.append(audioIndicator(audio, audioInTabs.get(tab.id) ? 'speaker' : 'muted'));
+  pinnedMenu(node, 'tab', tab.id);
   closeOnMiddleClick(node, tab.id);
   return node;
+}
+
+function pinnedFolder(pin) {
+  const group = groupById(state, pin.id);
+  const container = groupContainerDetails(group);
+  const appearance = folderAppearance(group, container, state);
+  const path = groupPath(state, group.id)
+    .map((item) => item.name)
+    .join(' / ');
+  const current = group.id === state.view.scopeId;
+  return rowCache.get(
+    `pin:group:${group.id}`,
+    [
+      path,
+      pin.action,
+      current,
+      appearance.icon,
+      appearance.color,
+      container?.iconUrl,
+      container?.icon,
+    ],
+    () => {
+      const node = button(
+        `${path}, pinned folder, ${pinActionLabels[pin.action]}`,
+        null,
+        () => {
+          const current = state.folderPins.find((item) => item.id === group.id);
+          if (current) current.action === 'reveal' ? revealFolder(group.id) : enter(group.id);
+        },
+        'pinned-tab pinned-folder',
+      );
+      node.title = `${path}\n${pinActionLabels[pin.action]} · Right-click for options`;
+      node.dataset.key = `pin:group:${group.id}`;
+      node.classList.toggle('active', current);
+      if (current) node.setAttribute('aria-current', 'location');
+      node.append(folderIcon(group, container, { state }));
+      pinnedDrag(node, { kind: 'group', id: group.id });
+      pinnedMenu(node, 'group', group.id);
+      return node;
+    },
+  );
 }
 
 function rowValues(tab) {
@@ -1004,8 +1074,15 @@ function render() {
   treeTabs = index.tabs;
   audioInTabs = index.audio;
   audioInGroups = new Map([...index.groupStats].map(([id, stats]) => [id, stats.audio]));
-  const pins = state.tabs.filter((tab) => tab.pinned).sort((a, b) => a.index - b.index);
-  reconcileChildren($('pinned-tabs'), pins.map(pinnedTab));
+  const pins = state.pins;
+  const tabPins = new Map(state.tabs.filter((tab) => tab.pinned).map((tab) => [tab.treeId, tab]));
+  const folderPins = new Map(state.folderPins.map((pin) => [pin.id, pin]));
+  reconcileChildren(
+    $('pinned-tabs'),
+    pins.map((pin) =>
+      pin.kind === 'tab' ? pinnedTab(tabPins.get(pin.id)) : pinnedFolder(folderPins.get(pin.id)),
+    ),
+  );
   $('pinned-tabs').hidden = !pins.length;
   if (scope) $('home').removeAttribute('aria-current');
   else $('home').setAttribute('aria-current', 'location');
@@ -1366,7 +1443,19 @@ function contextMenu(kind, id, x, y) {
   if (kind === 'group')
     menu(
       [
-        { label: 'Go into folder', icon: 'enter', run: () => enter(id) },
+        { label: 'Open folder', icon: 'enter', run: () => enter(id) },
+        { label: 'Show in tree', icon: 'group', run: () => revealFolder(id) },
+        ...(state.folderPins.some((item) => item.id === id)
+          ? [
+              { label: 'Change default action…', icon: 'pin', run: () => pinFolderDialog(id) },
+              {
+                label: 'Unpin folder',
+                icon: 'pin',
+                run: () => action('setGroupPin', { id, action: null }),
+              },
+            ]
+          : [{ label: 'Pin folder…', icon: 'pin', run: () => pinFolderDialog(id) }]),
+        null,
         {
           label: 'New tab here',
           icon: 'plus',
@@ -1484,11 +1573,11 @@ function pinnedDropPosition(event) {
       return {
         node: before || node,
         after: !before,
-        beforeId: before ? Number(before.dataset.key.slice(4)) : null,
+        before: before ? { kind: before.dataset.pinKind, id: before.dataset.pinId } : null,
       };
     }
   }
-  return { node: pins.at(-1), after: true, beforeId: null };
+  return { node: pins.at(-1), after: true, before: null };
 }
 
 $('pinned-tabs').addEventListener('dragover', (event) => {
@@ -1528,15 +1617,20 @@ $('pinned-tabs').addEventListener('drop', async (event) => {
   } catch {
     return;
   }
-  if (source?.kind !== 'pin' || !Number.isInteger(source.id)) return;
+  if (
+    source?.kind !== 'pin' ||
+    !['group', 'tab'].includes(source.item?.kind) ||
+    typeof source.item.id !== 'string'
+  )
+    return;
   if (source.windowId !== windowId) {
-    announce('Move tabs between windows in Firefox first.', true);
+    announce('Reorder pins in their own window.', true);
     return;
   }
-  const { beforeId } = pinnedDropPosition(event);
+  const { before } = pinnedDropPosition(event);
   drag = null;
   pointerHeld = false;
-  await action('movePinnedTab', { id: source.id, beforeId });
+  await action('movePinnedItem', { item: source.item, before });
 });
 
 function dropPosition(event, node, kind) {

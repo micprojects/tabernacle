@@ -1,5 +1,6 @@
 import { normalizeLook } from './look.js';
 import { normalizeExpansions } from './folder-activity.js';
+import { normalizePinLayout } from './pinned-items.js';
 
 // Storage namespace for the tabernacle@michaelprojects.com add-on identity.
 export const MODEL_KEY = 'tabernacle.model.v1';
@@ -114,6 +115,7 @@ export function normalizeView(model, view = {}) {
       : [],
     ...(recentFolders.length ? { recentFolders } : {}),
     ...(recentExpandedFolders.length ? { recentExpandedFolders } : {}),
+    ...(Array.isArray(view.pinLayout) ? { pinLayout: normalizePinLayout(view.pinLayout) } : {}),
   };
 }
 

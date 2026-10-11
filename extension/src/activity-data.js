@@ -4,7 +4,7 @@ import { groupPath, isWithin } from './model.js';
 export const activityKinds = {
   viewed: { label: 'Viewed tabs', event: 'Viewed', action: 'Switch to tab', icon: 'globe' },
   closed: { label: 'Closed tabs', event: 'Closed', action: 'Reopen tab', icon: 'undo' },
-  folder: { label: 'Folders', event: 'Entered', action: 'Enter folder', icon: 'group' },
+  folder: { label: 'Folders', event: 'Opened', action: 'Open folder', icon: 'group' },
 };
 
 function domain(url) {
@@ -63,10 +63,10 @@ export function activityItems(state, { folderEvent = 'all', pageUrl = '' } = {})
       folderEvent === 'all'
         ? expandedAt > enteredAt
           ? 'Expanded'
-          : 'Entered'
+          : 'Opened'
         : folderEvent === 'expanded'
           ? 'Expanded'
-          : 'Entered';
+          : 'Opened';
     items.push({
       key: `folder:${group.id}`,
       id: group.id,

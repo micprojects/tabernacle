@@ -5,13 +5,13 @@ import { recentItems, recentDay, recentTime } from './recent-history.js';
 
 const kinds = {
   viewed: { event: 'Viewed tab', action: 'Switch to', icon: 'enter' },
-  folder: { event: 'Entered folder', action: 'Enter', icon: 'chevron' },
+  folder: { event: 'Opened folder', action: 'Open', icon: 'chevron' },
   closed: { event: 'Closed tab', action: 'Reopen', icon: 'undo' },
 };
 const emptyMessages = {
   all: 'No recent activity yet.',
   viewed: 'No recently viewed tabs.',
-  folder: 'No recently entered folders.',
+  folder: 'No recently opened folders.',
   closed: 'No recently closed tabs.',
 };
 

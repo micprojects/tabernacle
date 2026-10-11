@@ -34,7 +34,7 @@ test('expansions are window-local, persisted, deduplicated, and leave the old pa
   snapshot = await send('snapshot');
   const combined = activityItems(snapshot);
   assert.equal(combined.length, 1);
-  assert.equal(combined[0].event, 'Entered');
+  assert.equal(combined[0].event, 'Opened');
   assert.equal(combined[0].expandedAt, 10000);
   assert.equal(activityItems(snapshot, { folderEvent: 'expanded' })[0].timestamp, 10000);
   assert.deepEqual(api.testing.windowValues.get(1).recentExpandedFolders, [

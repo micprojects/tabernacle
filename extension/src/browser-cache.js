@@ -67,7 +67,10 @@ export function createBrowserCache(api, changed = () => {}) {
   watch(api.tabs.onActivated, (info) => tabChanged(info.windowId));
   watch(api.tabs.onMoved, (_id, info) => tabChanged(info.windowId));
   watch(api.tabs.onAttached, (_id, info) => tabChanged(info.newWindowId));
-  watch(api.tabs.onDetached, (_id, info) => tabChanged(info.oldWindowId));
+  watch(api.tabs.onDetached, (id, info) => {
+    invalidateTabs(info.oldWindowId);
+    changed({ windowId: info.oldWindowId, detachedTabId: id });
+  });
   watch(api.windows.onRemoved, (windowId) => tabChanged(windowId));
   watch(api.sessions.onChanged, () => {
     ancillary.delete('history');

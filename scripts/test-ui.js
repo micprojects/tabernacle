@@ -134,7 +134,7 @@ try {
   await expect(inlineTab.locator('../..')).toHaveAttribute('id', 'tree');
   await expect(homeAdd).toBeFocused();
   await page.locator('[data-key="group:design"]').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Open folder', exact: true }).click();
   await expect(page.locator('#scope-heading')).toHaveText('Design');
   await expect(inlineActions).toHaveText(Array(3).fill('New tab'));
   await designAdd.focus();

@@ -49,6 +49,24 @@ Run `npm run test:backup` for the Settings flow and `npm run test:backup:firefox
 download/upload and persistence checks in an isolated native Firefox profile. Core
 format, merge and failure tests are included in `npm test`.
 
+## Pinned folders
+
+`src/pinned-items.js` reconciles the mixed strip. The model's ordered `folderPins`
+contains folder IDs and `open`/`reveal` actions; a window's `pinLayout` stores typed
+folder IDs and durable tab `treeId` references. Folder slots follow shared folder
+order, and tab slots follow native Firefox pinned order. New slots append. Missing
+tab identities remain dormant during incremental session restoration; observed
+closes, unpins and detaches remove their slots. Explicit rearrangement retains only
+live pins. Pin preferences and layouts are omitted from version 1 folder backups.
+
+The controller exposes `setGroupPin`, `movePinnedItem` and `revealGroup` alongside
+the compatible `enterGroup` and `movePinnedTab` actions. Snapshots include
+`folderPins` and the resolved `pins` list. Revealing a folder never activates a tab
+or records an opening; only a newly expanded target records expansion activity.
+Run `node scripts/test-pinned-folders-ui.js` and
+`node scripts/test-pinned-folders-firefox.js` for the new interactions and native
+multi-window/session checks. Core behaviour is included in `npm test`.
+
 ## Folder appearance
 
 Folders may store an optional `appearance` with independent Acorn `icon` and palette
@@ -75,7 +93,7 @@ call in `sidebar.js` restores the original button behaviour.
 The page uses a single timeline, with the same live
 controller messages as the sidebar. It excludes itself from activity and follows
 the window it is in. Viewed tabs are currently open tabs; closed tabs come from
-Firefox's session restore list. Folder activity merges the latest entry and
+Firefox's session restore list. Folder activity merges the latest opening and
 deliberate expansion per folder, with separate filters. Expansion timestamps start
 with this experiment, are saved per window, and are bounded to 100 folders.
 
