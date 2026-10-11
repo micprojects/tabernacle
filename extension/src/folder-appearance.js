@@ -1,7 +1,7 @@
 import { groupPath } from './model.js';
 
-// IDs match the official 16px Acorn desktop assets. Keywords describe common
-// browsing tasks as well as the pictured object, so searches need not be exact.
+// Pictogram IDs match the official 16px Acorn desktop assets; letter and number
+// IDs use Tabernacle's custom symbols. Keywords also describe common browsing tasks.
 const categories = {
   General: [
     ['folder', 'Folder', 'organise collection'],
@@ -93,6 +93,16 @@ const categories = {
     ['lock', 'Lock', 'private security passwords accounts'],
     ['fingerprinter', 'Fingerprint', 'identity personal privacy accounts'],
   ],
+  'Letters & numbers': [
+    ...Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ', (letter) => [
+      `letter-${letter.toLowerCase()}`,
+      `Letter ${letter}`,
+      'alphabet initial monogram character',
+    ]),
+    ...['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'].map(
+      (name, number) => [`number-${number}`, `Number ${number}`, `${name} digit numeric character`],
+    ),
+  ],
 };
 
 export const folderIcons = Object.entries(categories).flatMap(([category, entries]) =>
@@ -149,8 +159,16 @@ export function folderAppearance(group, container, state) {
 
 export function matchingFolderIcons(query = '', category = '') {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  // A character query should find its glyph, rather than every keyword containing it.
+  const character = /^(?:(?:letter|number|digit)\s+)?([a-z0-9])$/i.exec(query.trim())?.[1];
+  const characterId = character
+    ? `${/\d/.test(character) ? 'number' : 'letter'}-${character.toLowerCase()}`
+    : undefined;
   return folderIcons.filter((item) => {
     const text = `${item.name} ${item.category} ${item.keywords}`.toLocaleLowerCase();
-    return (!category || item.category === category) && words.every((word) => text.includes(word));
+    return (
+      (!category || item.category === category) &&
+      (characterId ? item.id === characterId : words.every((word) => text.includes(word)))
+    );
   });
 }
