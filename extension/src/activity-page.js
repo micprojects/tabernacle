@@ -111,7 +111,7 @@ async function act(item) {
       await opening;
     } else await request('activateTab', { id: item.id, reveal: true });
     $('activity-status').textContent =
-      `${item.kind === 'closed' ? 'Reopened' : item.kind === 'folder' ? 'Entered' : 'Switched to'} ${item.title}.`;
+      `${item.kind === 'closed' ? 'Reopened' : item.kind === 'folder' ? 'Opened' : 'Switched to'} ${item.title}.`;
     await refresh();
   } catch (error) {
     showError(error.message || 'Could not open this item. Try again.');
@@ -150,7 +150,7 @@ function row(item) {
   const affordance = el('span', 'item-action');
   affordance.setAttribute('aria-hidden', 'true');
   affordance.append(
-    el('span', '', item.kind === 'closed' ? 'Reopen' : item.kind === 'folder' ? 'Enter' : 'Switch'),
+    el('span', '', item.kind === 'closed' ? 'Reopen' : item.kind === 'folder' ? 'Open' : 'Switch'),
     icon(item.kind === 'closed' ? 'undo' : 'enter'),
   );
   node.append(itemIcon(item), text, time, affordance);
@@ -185,7 +185,7 @@ function empty() {
   node.append(el('strong', '', filtered ? 'No matching activity' : 'Nothing here yet'));
   const copy =
     kind === 'folder'
-      ? 'Folders you enter or expand will appear here.'
+      ? 'Folders you open or expand will appear here.'
       : kind === 'closed'
         ? 'Tabs you close in this window will appear here.'
         : 'Tabs you view and folders you use will appear here.';

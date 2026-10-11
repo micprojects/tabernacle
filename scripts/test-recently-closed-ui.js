@@ -154,15 +154,15 @@ try {
   await popup.getByRole('button', { name: 'All', exact: true }).click();
   await expect(rows).toHaveCount(4);
   await expect(rows.locator('.recent-item-detail')).toContainText([
-    /Viewed tab|Entered folder|Closed tab/,
-    /Viewed tab|Entered folder|Closed tab/,
-    /Viewed tab|Entered folder|Closed tab/,
-    /Viewed tab|Entered folder|Closed tab/,
+    /Viewed tab|Opened folder|Closed tab/,
+    /Viewed tab|Opened folder|Closed tab/,
+    /Viewed tab|Opened folder|Closed tab/,
+    /Viewed tab|Opened folder|Closed tab/,
   ]);
   const search = popup.getByRole('searchbox', { name: 'Search recent activity' });
   await search.fill('Work');
   await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toHaveAttribute('aria-label', 'Enter Work');
+  await expect(rows.first()).toHaveAttribute('aria-label', 'Open Work');
   await expect(search).toBeFocused();
   await page.keyboard.press('Home');
   await expect(search).toBeFocused();

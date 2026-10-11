@@ -5,6 +5,7 @@ import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normalizeLook, requireLook } from './look.js';
 import { recordExpansions } from './folder-activity.js';
+import { normalizeFolderPins, reconcilePins, movePin, pinActionLabels } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
 import { internalPage, openInternalPage } from './internal-pages.js';
 import { createFolderBackupController, folderBackupActions } from './folder-backup-controller.js';
@@ -41,9 +42,15 @@ export function createController(api, notify = () => {}) {
   const generation = crypto.randomUUID();
   let requestTabs = new Map();
   let queue = Promise.resolve();
+  const forgottenPins = new Map();
   const publish = (windowId) => notify({ windowId, revision: ++revision, generation });
-  const cache = createBrowserCache(api, ({ windowId, removedTabId }) => {
+  const cache = createBrowserCache(api, ({ windowId, removedTabId, detachedTabId }) => {
     requestTabs.clear();
+    const forgotten = tabTreeKeys.get(removedTabId ?? detachedTabId);
+    if (forgotten) {
+      if (!forgottenPins.has(windowId)) forgottenPins.set(windowId, new Set());
+      forgottenPins.get(windowId).add(forgotten);
+    }
     if (removedTabId !== undefined) {
       const key = tabTreeKeys.get(removedTabId);
       if (treeOwners.get(key) === removedTabId) treeOwners.delete(key);
@@ -80,6 +87,7 @@ export function createController(api, notify = () => {}) {
       if (next.version !== 1 || !Array.isArray(next.groups))
         throw new Error('This Tabernacle data needs a newer version of the extension.');
       next.look = normalizeLook(next.look);
+      next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
       await moves.load();
       model = next;
     })().catch((error) => {
@@ -105,9 +113,33 @@ export function createController(api, notify = () => {}) {
     // Publish only after storage succeeds; a rejected save must not leak into
     // later requests or get persisted by an unrelated action.
     const next = structuredClone(model);
+    const previousPins = model.folderPins;
     const result = change(next);
+    next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
     await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
     model = next;
+    if (
+      JSON.stringify(previousPins.map((item) => item.id)) !==
+      JSON.stringify(next.folderPins.map((item) => item.id))
+    ) {
+      try {
+        // A closed sidebar still owns a layout. Resolve its previous folder
+        // order before removing slots, otherwise a reorder followed by unpin
+        // could remove the wrong position in a window that never refreshed.
+        for (const window of (await api.windows.getAll()).filter((item) => !item.incognito)) {
+          const view = await viewFor(window.id);
+          if (!view.pinLayout) continue;
+          const prior = reconcilePins(view.pinLayout, previousPins, []).layout;
+          const layout = reconcilePins(prior, next.folderPins, []).layout;
+          if (JSON.stringify(layout) === JSON.stringify(view.pinLayout)) continue;
+          view.pinLayout = layout;
+          await saveView(window.id, view);
+        }
+      } catch (error) {
+        publish();
+        throw error;
+      }
+    }
     return result;
   }
 
@@ -271,11 +303,24 @@ export function createController(api, notify = () => {}) {
     const failed = results.find((result) => result.status === 'rejected');
     if (failed) throw failed.reason;
     const [tabs, view, identities, history] = results.map((result) => result.value);
+    const pins = reconcilePins(view.pinLayout, model.folderPins, tabs, forgottenPins.get(windowId));
+    // Tab-only installations need no additional session writes. Once a mixed
+    // layout exists, remember new slots without discarding pending restorations.
+    if (
+      (model.folderPins.length || view.pinLayout) &&
+      JSON.stringify(view.pinLayout) !== JSON.stringify(pins.layout)
+    ) {
+      view.pinLayout = pins.layout;
+      await saveView(windowId, view);
+    }
+    forgottenPins.delete(windowId);
     const byStore = new Map(identities.map((identity) => [identity.cookieStoreId, identity]));
     return {
       generation,
       revision: snapshotRevision,
       groups: structuredClone(model.groups),
+      folderPins: structuredClone(model.folderPins),
+      pins: pins.items,
       containers: identities,
       look: { ...model.look },
       canUndoClose: history.tabs.length > 0,
@@ -427,6 +472,32 @@ export function createController(api, notify = () => {}) {
     view.collapsed = view.collapsed.filter((id) => !parents.has(id));
     await saveView(windowId, view);
     await expandAncestors(tabs, tab.id);
+  }
+
+  async function moveNativePin(windowId, id, beforeId = null) {
+    const tab = await checkedTab(id, windowId);
+    if (!tab.pinned) throw new Error('That tab is no longer pinned.');
+    const pins = (await listTabs(windowId))
+      .filter((item) => item.pinned)
+      .sort((a, b) => a.index - b.index);
+    if (beforeId === id) return;
+    const remaining = pins.filter((item) => item.id !== id);
+    const position =
+      beforeId === null ? remaining.length : remaining.findIndex((item) => item.id === beforeId);
+    if (position < 0) throw new Error('The destination pinned tab has moved or closed.');
+    const index = pins[position].index;
+    if (index === tab.index) return;
+    const moved = await writeTab(windowId, 'move', id, { index });
+    if (Array.isArray(moved) && !moved.length)
+      throw new Error('Firefox could not move that pinned tab. Try again.');
+    const expected = remaining.map((item) => item.id);
+    expected.splice(position, 0, id);
+    const actual = (await listTabs(windowId))
+      .filter((item) => item.pinned)
+      .sort((a, b) => a.index - b.index)
+      .map((item) => item.id);
+    if (JSON.stringify(actual) !== JSON.stringify(expected))
+      throw new Error('Firefox could not move that pinned tab. Try again.');
   }
 
   async function reopenInContainer(tabId, cookieStoreId, windowId) {
@@ -782,6 +853,66 @@ export function createController(api, notify = () => {}) {
         }
         break;
       }
+      case 'revealGroup': {
+        const group = groupById(model, requireGroup(model, message.id));
+        if (!group) throw new Error('Choose a folder to show.');
+        const view = await viewFor(windowId);
+        // The scoped folder itself has no row: its parent tree must be shown.
+        if (view.scopeId === group.id || !isWithin(model, group.id, view.scopeId))
+          view.scopeId = null;
+        if (view.collapsed.includes(group.id)) recordExpansions(view, [group.id]);
+        const expanded = new Set(groupPath(model, group.id).map((item) => item.id));
+        view.collapsed = view.collapsed.filter((id) => !expanded.has(id));
+        await saveView(windowId, view);
+        break;
+      }
+      case 'setGroupPin': {
+        const group = groupById(model, requireGroup(model, message.id));
+        if (!group) throw new Error('Choose a folder to pin.');
+        if (message.action !== null && !Object.hasOwn(pinActionLabels, message.action))
+          throw new Error('Choose what clicking the pinned folder does.');
+        await changeModel((next) => {
+          const existing = next.folderPins.find((item) => item.id === group.id);
+          if (message.action === null)
+            next.folderPins = next.folderPins.filter((item) => item.id !== group.id);
+          else if (existing) existing.action = message.action;
+          else next.folderPins.push({ id: group.id, action: message.action });
+        });
+        break;
+      }
+      case 'movePinnedItem': {
+        const tabs = await listTabs(windowId);
+        const view = await viewFor(windowId);
+        const { items } = reconcilePins(
+          view.pinLayout,
+          model.folderPins,
+          tabs,
+          forgottenPins.get(windowId),
+        );
+        const next = movePin(items, message.item, message.before ?? null);
+        if (JSON.stringify(next) === JSON.stringify(items)) break;
+        if (message.item.kind === 'tab') {
+          const ordered = next.filter((item) => item.kind === 'tab');
+          const position = ordered.findIndex((item) => item.id === message.item.id);
+          const tab = tabs.find((tab) => tab.treeId === message.item.id);
+          const before = tabs.find((tab) => tab.treeId === ordered[position + 1]?.id);
+          await moveNativePin(windowId, tab.id, before?.id ?? null);
+        } else {
+          const byId = new Map(model.folderPins.map((item) => [item.id, item]));
+          const folders = next
+            .filter((item) => item.kind === 'group')
+            .map((item) => byId.get(item.id));
+          if (JSON.stringify(folders) !== JSON.stringify(model.folderPins))
+            await changeModel((model) => {
+              model.folderPins = folders;
+            });
+        }
+        if (model.folderPins.length || view.pinLayout) {
+          view.pinLayout = next;
+          await saveView(windowId, view);
+        }
+        break;
+      }
       case 'toggleGroup': {
         requireGroup(model, message.id);
         const view = await viewFor(windowId);
@@ -982,25 +1113,7 @@ export function createController(api, notify = () => {}) {
         break;
       }
       case 'movePinnedTab': {
-        const tab = await checkedTab(message.id, windowId);
-        if (!tab.pinned) throw new Error('That tab is no longer pinned.');
-        const pins = (await listTabs(windowId))
-          .filter((item) => item.pinned)
-          .sort((a, b) => a.index - b.index);
-        const beforeId = message.beforeId ?? null;
-        if (beforeId === tab.id) break;
-        const remaining = pins.filter((item) => item.id !== tab.id);
-        const position =
-          beforeId === null
-            ? remaining.length
-            : remaining.findIndex((item) => item.id === beforeId);
-        if (position < 0) throw new Error('The destination pinned tab has moved or closed.');
-        const index = pins[position].index;
-        if (index !== tab.index) {
-          const moved = await writeTab(windowId, 'move', tab.id, { index });
-          if (Array.isArray(moved) && !moved.length)
-            throw new Error('Firefox could not move that pinned tab. Try again.');
-        }
+        await moveNativePin(windowId, message.id, message.beforeId ?? null);
         break;
       }
       case 'muteTab': {
@@ -1049,6 +1162,8 @@ export function createController(api, notify = () => {}) {
         'moveGroup',
         'moveGroupContents',
         'removeGroup',
+        'setGroupPin',
+        'movePinnedItem',
         'setLook',
       ].includes(type)
         ? undefined
@@ -1060,9 +1175,16 @@ export function createController(api, notify = () => {}) {
   return {
     start: () => enqueue(() => {}),
     request: (message) =>
-      enqueue(() => {
+      enqueue(async () => {
         requestTabs = new Map();
-        return handle(message);
+        try {
+          return await handle(message);
+        } catch (error) {
+          // Some operations span browser and session writes. Refresh all
+          // sidebars from committed state even if a later write failed.
+          if (['setGroupPin', 'movePinnedItem'].includes(message.type)) publish();
+          throw error;
+        }
       }, !folderBackupActions.has(message.type)),
     dispose: () => cache.dispose(),
     created: (tab) =>

@@ -310,6 +310,8 @@ try {
         const state = {
           tabs,
           groups,
+          folderPins: [],
+          pins: [],
           look: { connectingLines: false, domains: false },
           view: { scopeId: null, collapsed: [] },
         };

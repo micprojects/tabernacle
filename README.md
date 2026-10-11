@@ -6,8 +6,8 @@ Tabernacle is a Firefox extension I made to help me navigate and organise my tab
 - Keep related tabs in collapsible trees, with drag and drop to move or nest them.
 - Search folders, tab titles and URLs.
 - Use Firefox containers and set default containers for folders.
-- Access pinned tabs, mute audio and reopen recently closed tabs.
-- Revisit viewed tabs, recently entered folders and closed tabs in one searchable timeline.
+- Access pinned tabs and folders, mute audio and reopen recently closed tabs.
+- Revisit viewed tabs, recently opened folders and closed tabs in one searchable timeline.
 
 Requires Firefox 142 or newer.
 
@@ -49,14 +49,18 @@ Theme identification requires Firefox’s **management** permission, which provi
 
 ## Back up your folders
 
-In **Settings → Backup and restore**, export your folder tree to a JSON file. It includes folder order, icons, colours and default containers. Tabs, browsing activity, cookies and sign-ins aren’t included.
+In **Settings → Backup and restore**, export your folder tree to a JSON file. It includes folder order, icons, colours and default containers. Pin preferences, pinned strip layouts, tabs, browsing activity, cookies and sign-ins aren’t included.
 
 Import a backup into **Home**, an existing folder or a new folder. Preview shows which folders will be created or reused. Matching uses exact folder names within each parent; duplicate names are paired in sibling order. Existing folders keep their settings and order. New folders are added after existing siblings.
 
 For default containers, choose an existing container, create one from the saved name, colour and icon, or select **No container**. Inherited defaults follow the destination folder’s ancestry. Importing the same file into the same destination again adds only folders that are still missing.
 
-## Keep pinned tabs visible
+## Keep pinned tabs and folders visible
 
-Pin the sites you use most. They stay visible in every folder.
+Pin the sites and folders you use most. Their icons stay visible in every folder. Right-click a folder and choose **Pin folder…**, then choose whether clicking its pin should **Open folder** or **Show in tree**. Both actions remain available on right-click, along with **Change default action…** and **Unpin folder**.
+
+**Open folder** focuses the sidebar on its contents. **Show in tree** expands and reveals the folder without switching your active tab. Pins use the folder’s existing icon and colour; hover to see its path and click action.
+
+Drag folder and tab pins into any order. Folder pins, their default actions and their relative order are shared across windows. Each window keeps its own arrangement of folder and tab positions, with tabs following Firefox’s pinned-tab order.
 
 <img src="assets/screenshots/06-pinned-tabs-ui.png" width="602" alt="Pinned sites above the folder path and tabs.">
