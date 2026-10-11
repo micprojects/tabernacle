@@ -56,6 +56,20 @@
 /* Controls sit on the full theme background, with quiet appearance-led borders.
    Forced colours retain the system roles from colors.css. */
 @media (forced-colors: none) {
+  /* Match Firefox's native header surface, then reveal the chosen theme below.
+     The shared edge keeps the fade continuous when pins wrap or disappear. */
+  :root[data-firefox-theme] .sidebar {
+    --header-edge: color-mix(in srgb, Canvas 65%, transparent);
+  }
+
+  :root[data-firefox-theme] header {
+    background: linear-gradient(Canvas 40px, var(--header-edge));
+  }
+
+  :root[data-firefox-theme] .tree {
+    background-image: linear-gradient(var(--header-edge), transparent calc(2 * var(--row-height)));
+  }
+
   :root[data-firefox-theme='default'] .sidebar {
     --line: color-mix(in srgb, var(--toolbar-icon) 25%, transparent);
     --hover: color-mix(in srgb, var(--text) 7%, transparent);

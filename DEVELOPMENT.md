@@ -10,7 +10,11 @@ when no highlight is supplied. Custom folder and container colours remain explic
 Favicons come directly from Firefox.
 
 In Follow Firefox, the sidebar continues the selected theme's frame colour across
-the tab list and transparent toolbars. Bundled themes add their leading gradient
+the tab list and footer. The search and pins area starts at the system Canvas colour
+(white in light appearance) and fades into the theme through the first two list rows,
+softening the transition from Firefox's own header. The fade follows the actual header
+height, including wrapped or hidden pins, and is disabled in forced colours.
+Bundled themes add their leading gradient
 stop as a flat overlay, including its original opacity; external themes use their
 exposed frame colour. Theme and light/dark changes repaint this surface through
 the existing theme observer. Controls keep their paired theme surfaces and text.
