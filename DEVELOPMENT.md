@@ -9,6 +9,12 @@ Primary actions use the theme’s popup highlight/text pair, or its popup text/b
 when no highlight is supplied. Custom folder and container colours remain explicit choices.
 Favicons come directly from Firefox.
 
+In Follow Firefox, the sidebar continues the selected theme's frame colour across
+the tab list and transparent toolbars. Bundled themes add their leading gradient
+stop as a flat overlay, including its original opacity; external themes use their
+exposed frame colour. Theme and light/dark changes repaint this surface through
+the existing theme observer. Controls keep their paired theme surfaces and text.
+
 `extension/settings.html` is the native Firefox options page. The Settings button
 reuses one live page across windows, without navigating or reloading it, so its
 section, scroll position and unsaved edits survive switching to another tab.

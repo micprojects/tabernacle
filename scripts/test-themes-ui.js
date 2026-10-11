@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import sharp from 'sharp';
+import { writeFile } from 'node:fs/promises';
 import { startUiTest } from './ui-test.js';
 import { prepareSettings } from './settings-test.js';
 import { knownThemes } from '../extension/src/theme-palette.js';
@@ -145,6 +146,25 @@ try {
         theme.id ? expected.text : expected.accent,
       );
       const pixels = await page.screenshot();
+      // Check the visible backdrop after live theme changes, including the
+      // default theme's translucent tint composited over its frame colour.
+      const backdrops = {
+        'default-theme@mozilla.org': dark ? [50, 43, 68] : [245, 238, 255],
+        'nova-sun@mozilla.org': dark ? [39, 15, 0] : [249, 245, 230],
+        'nova-pine@mozilla.org': dark ? [0, 73, 51] : [236, 244, 241],
+      };
+      if (backdrops[theme.id]) {
+        const { data, info } = await sharp(pixels).raw().toBuffer({ resolveWithObject: true });
+        const offset =
+          (Math.floor(info.height * 0.85) * info.width + Math.floor(info.width * 0.9)) *
+          info.channels;
+        for (const [channel, expected] of backdrops[theme.id].entries())
+          expect(Math.abs(data[offset + channel] - expected)).toBeLessThanOrEqual(1);
+        await writeFile(
+          `test-results/theme-background-${theme.name.toLowerCase().replaceAll(' ', '-')}-${dark ? 'dark' : 'light'}.png`,
+          pixels,
+        );
+      }
       await page.mouse.move(0, 0);
       await newTab.focus();
       await expect(newTab).toHaveCSS('color', theme.id ? expected.text : expected.accent);

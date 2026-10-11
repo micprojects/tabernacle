@@ -70,6 +70,7 @@
     --field-line: ButtonBorder !important;
     --danger: CanvasText !important;
     --theme-gradient: none !important;
+    --theme-sidebar-gradient: none !important;
     --toolbar-surface: Canvas !important;
     --toolbar-text: CanvasText !important;
     --toolbar-hover: ButtonFace !important;
