@@ -175,9 +175,6 @@ export function paletteFrom(details, dark, { bundled = false, isDefault = false,
     'theme-background-repeat': bundled
       ? (details.properties?.additional_backgrounds_tiling || ['no-repeat']).join(', ')
       : 'no-repeat',
-    'selected-border-gradient': isDefault
-      ? 'linear-gradient(96deg, #b89cff 20.68%, #ff9565 79.34%)'
-      : 'none',
   };
   return { vars, dark, isDefault };
 }

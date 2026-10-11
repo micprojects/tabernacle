@@ -51,22 +51,54 @@
   background: var(--accent);
   border-color: var(--accent);
 }
-:root[data-firefox-theme='default']
-  :is(.row.active, .pinned-tab):not(.drop-before, .drop-after)::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: var(--selected-border-gradient);
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
 :root[data-firefox-theme] .dialog-actions .primary:hover:not(:disabled) {
   color: var(--accent-text);
   background: color-mix(in srgb, var(--accent) 85%, var(--panel));
+}
+
+/* Quiet default surfaces keep highlights tied to the chosen appearance.
+   Forced colours retain the system roles from colors.css. */
+@media (forced-colors: none) {
+  :root[data-firefox-theme='default'] .sidebar {
+    --background: light-dark(#fbfbfe, #1c1b22);
+    --theme-gradient: none;
+    --muted: light-dark(#5b5b66, #b8b8c5);
+    --toolbar-surface: light-dark(#f0f0f4, #23222b);
+    --toolbar-icon: var(--muted);
+    --line: light-dark(#d5d5de, #484750);
+    --hover: color-mix(in srgb, var(--text) 7%, transparent);
+    --toolbar-hover: color-mix(in srgb, var(--toolbar-icon) 12%, transparent);
+    --toolbar-active: color-mix(in srgb, var(--toolbar-icon) 20%, transparent);
+    --control: light-dark(#ffffff, #2b2a33);
+    --field: var(--control);
+    --field-line: light-dark(#b8b8c2, #62616d);
+    --selected: color-mix(in srgb, var(--accent) 8%, var(--background));
+    --selected-border: var(--accent);
+    --panel-hover: color-mix(in srgb, var(--accent) 8%, var(--panel));
+    --action-hover: var(--hover);
+  }
+
+  :root[data-firefox-theme='default'] .tree.show-connecting-lines {
+    --tree-guide: light-dark(#c9c9d2, #4a4954);
+  }
+
+  :root[data-firefox-theme='default'] .pinned-tab:not(.active) {
+    background: var(--control);
+    border-color: light-dark(#cfcfd8, #484750);
+  }
+
+  :root[data-firefox-theme='default'] .pinned-tab:not(.active):hover {
+    background: var(--toolbar-hover);
+  }
+
+  :root[data-firefox-theme='default'] .pinned-tab.active,
+  :root[data-firefox-theme='default'] .pinned-tab.active:hover {
+    background: var(--selected);
+    border-color: var(--accent);
+  }
+
+  :root[data-firefox-theme='default'] .row.selected:not(.active) {
+    background: var(--selected);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, var(--background));
+  }
 }
