@@ -2,7 +2,8 @@
 
 The tab list uses one layout, styled in `extension/tree.css`. Shared appearance tokens live in
 `extension/colors.css`; the bottom bar, menus and dialogs live in `extension/sidebar.css`.
-The sidebar, settings and activity page share this fallback palette. Firefox palettes
+The sidebar, settings and activity page share this Monochrome fallback palette. Its saved
+theme source remains `tabernacle` for compatibility with existing preferences. Firefox palettes
 come from `src/theme-palette.js`, including action, focus and default folder colours.
 Primary actions use the theme’s popup highlight/text pair, or its popup text/background
 when no highlight is supplied. Custom folder and container colours remain explicit choices.

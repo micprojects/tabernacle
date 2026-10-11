@@ -536,7 +536,7 @@ try {
     async () =>
       (await driver.executeScript(
         'return getComputedStyle(document.documentElement).backgroundColor;',
-      )) === 'rgb(33, 29, 43)',
+      )) === 'rgb(32, 32, 32)',
     5000,
   );
   await driver.wait(
@@ -562,7 +562,7 @@ try {
       const dark = colorScheme === 'dark' || (colorScheme === 'default' && palette.prefersDark);
       return (
         palette.mode === colorScheme &&
-        palette.background === (dark ? 'rgb(33, 29, 43)' : 'rgb(247, 246, 250)')
+        palette.background === (dark ? 'rgb(32, 32, 32)' : 'rgb(247, 247, 247)')
       );
     }, 5000);
   }

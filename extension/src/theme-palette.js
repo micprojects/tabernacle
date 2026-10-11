@@ -60,7 +60,7 @@ function mix(color, percent) {
 }
 
 // Incomplete external themes use Firefox's role fallbacks, not a mix of its
-// colours and Tabernacle's purple palette. Images are trusted bundled data only.
+// colours and the Monochrome palette. Images are trusted bundled data only.
 export function paletteFrom(details, dark, { bundled = false, isDefault = false, platform } = {}) {
   const supplied = colorsFrom(details);
   if (!Object.keys(supplied).length) return null;
@@ -219,8 +219,7 @@ function externalThemeDark(details, preference) {
 }
 
 export function resolveTheme(look, snapshot, dark) {
-  if (look.themeSource === 'tabernacle')
-    return { palette: null, status: 'Using Tabernacle’s colours' };
+  if (look.themeSource === 'tabernacle') return { palette: null, status: 'Using Monochrome' };
   const known = catalogue.get(snapshot.active?.id);
   if (known)
     return {
@@ -238,12 +237,12 @@ export function resolveTheme(look, snapshot, dark) {
     palette,
     status: palette
       ? `Using ${snapshot.active?.name || 'Firefox theme colours'}`
-      : 'Using Tabernacle’s fallback colours',
+      : 'Using Monochrome fallback colours',
   };
 }
 
 // Only remove properties owned by this adapter. This also makes reverting to
-// Tabernacle exactly restore its original CSS, including forced-colour rules.
+// Monochrome exactly restore its CSS, including forced-colour rules.
 export function createPaletteRenderer(root) {
   let previous = [];
   return (palette, colorScheme = 'default') => {

@@ -111,7 +111,7 @@ try {
   for (const tab of [settings, activity])
     tab.on('pageerror', (error) => errors.push(error.message));
   const beforeGeometry = await page.locator('.row.active').boundingBox();
-  const cases = [{ id: null, name: 'Tabernacle fallback' }, ...knownThemes];
+  const cases = [{ id: null, name: 'Monochrome fallback' }, ...knownThemes];
   for (const dark of [false, true]) {
     for (const tab of [page, settings, activity])
       await tab.emulateMedia({ colorScheme: dark ? 'dark' : 'light' });
@@ -131,7 +131,7 @@ try {
       } else
         await expect(page.locator('html')).toHaveCSS(
           'background-color',
-          dark ? 'rgb(33, 29, 43)' : 'rgb(247, 246, 250)',
+          dark ? 'rgb(32, 32, 32)' : 'rgb(247, 247, 247)',
         );
       const geometry = await page.locator('.row.active').boundingBox();
       expect(geometry).toEqual(beforeGeometry);
@@ -192,7 +192,7 @@ try {
   });
   await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
-  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(33, 29, 43)');
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
   await expect(page.locator('.sidebar')).toHaveCSS('background-image', 'none');
   await checkSharedPalette();
   await setTheme('nova-pine@mozilla.org');

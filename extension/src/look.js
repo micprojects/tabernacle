@@ -1,3 +1,4 @@
+// Keep the stored ID for Monochrome compatible with existing preferences.
 const themeSources = ['firefox', 'tabernacle'];
 const colorSchemes = ['default', 'light', 'dark'];
 
@@ -16,6 +17,6 @@ export function requireLook(value) {
   if (value.colorScheme !== undefined && !colorSchemes.includes(value.colorScheme))
     throw new Error('Choose Follow Firefox, Light or Dark for the colour mode.');
   if (value.themeSource !== undefined && !themeSources.includes(value.themeSource))
-    throw new Error('Choose Follow Firefox or Tabernacle for the theme.');
+    throw new Error('Choose Follow Firefox or Monochrome for the theme.');
   return normalizeLook(value);
 }

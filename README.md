@@ -41,7 +41,7 @@ Tabernacle follows your Firefox theme automatically. It recognises Firefox Defau
 
 Click the **Settings** cog at the bottom of the sidebar, or use **Preferences** for Tabernacle in Firefox’s Add-ons Manager. Settings open in a full browser tab, with sections for Appearance, Containers, Backup and restore, Shortcuts and About.
 
-In **Settings → Appearance**, choose **Follow Firefox** or **Tabernacle**. **Tabernacle colour mode** controls the original palette when selected manually or used as a fallback: **Follow Firefox**, **Light** or **Dark**. Save applies your preferences to every window. You can also show website domains and lines connecting nested tabs.
+In **Settings → Appearance**, choose **Follow Firefox** or **Monochrome**. **Monochrome colour mode** controls the neutral palette when selected manually or used as a fallback: **Follow Firefox**, **Light** or **Dark**. Save applies your preferences to every window. You can also show website domains and lines connecting nested tabs.
 
 Theme identification requires Firefox’s **management** permission, which provides installed add-on information. Tabernacle uses it to identify the enabled theme; it does not store or transmit the installed add-on list or change Firefox’s theme. Mozilla palettes are bundled locally, with sources and licences in `extension/themes/NOTICE.txt`. No theme downloads happen at runtime.
 
