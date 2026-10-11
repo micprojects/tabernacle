@@ -66,15 +66,15 @@ are independent of the original slide-up menu (`recently-closed.js` and
 preview URL to compare the original menu. Removing the `installActivityLauncher`
 call in `sidebar.js` restores the original button behaviour.
 
-The page offers Timeline, By type and Detail view layouts, using the same live
+The page uses a single timeline, with the same live
 controller messages as the sidebar. It excludes itself from activity and follows
 the window it is in. Viewed tabs are currently open tabs; closed tabs come from
 Firefox's session restore list. Folder activity merges the latest entry and
 deliberate expansion per folder, with separate filters. Expansion timestamps start
 with this experiment, are saved per window, and are bounded to 100 folders.
 
-Open `http://127.0.0.1:4173/preview/activity-mockups.html` after `npm run preview`
-to compare all three working layouts with sample activity. Run
+Open `http://127.0.0.1:4173/extension/activity.html?demo&mockup` after `npm run preview`
+to preview the timeline with sample activity. Run
 `node scripts/test-activity-page-ui.js` for the page and launcher tests.
 `node scripts/test-activity-firefox.js` verifies the same actions in an isolated
 native Firefox profile.
