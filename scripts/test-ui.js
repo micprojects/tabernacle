@@ -73,8 +73,30 @@ try {
   const inlineActions = page.locator('#tree .new-tab-action');
   const homeAdd = page.locator('#tree > .new-tab-item .new-tab-action');
   const designAdd = page.getByRole('button', { name: 'New tab in Design', exact: true });
-  await expect(inlineActions).toHaveText(['', '', '', '', '']);
+  await expect(inlineActions).toHaveText(Array(5).fill('New tab'));
   await expect(homeAdd).toHaveAccessibleName('New tab');
+  const designFolder = page.getByRole('button', { name: 'New folder in Design', exact: true });
+  await expect(designAdd.locator('.new-action-label')).toBeHidden();
+  await expect(designFolder).toHaveCSS('opacity', '0');
+  const addBounds = await designAdd.boundingBox();
+  await designAdd.hover();
+  await expect(designAdd.locator('.new-action-label')).toBeVisible();
+  await expect(designFolder).toBeVisible();
+  await expect(designFolder).toHaveCSS('opacity', '1');
+  expect(await designAdd.boundingBox()).toEqual(addBounds);
+  await designFolder.hover();
+  await expect(designAdd.locator('.new-action-label')).toBeVisible();
+  await designFolder.click();
+  await expect(page.getByLabel('Create in', { exact: true })).toHaveText('Home / Work / Design');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(designFolder).toBeFocused();
+  await designFolder.press('ArrowLeft');
+  await expect(designAdd).toBeFocused();
+  await designAdd.press('Tab');
+  await expect(designFolder).toBeFocused();
+  await designFolder.press('Shift+Tab');
+  await expect(designAdd).toBeFocused();
+  check('Quiet reveal keeps the plus in place and exposes folder creation by hover or keyboard');
   await designAdd.click();
   await expect(page.locator('.tab-row')).toHaveCount(7);
   const inlineTab = page.locator('.tab-row.active');
@@ -108,13 +130,36 @@ try {
   await page.locator('[data-key="group:design"]').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Go into folder', exact: true }).click();
   await expect(page.locator('#scope-heading')).toHaveText('Design');
-  await expect(inlineActions).toHaveText(['', '', '']);
+  await expect(inlineActions).toHaveText(Array(3).fill('New tab'));
   await designAdd.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.tab-row')).toHaveCount(6);
   await expect(inlineTab.locator('../..')).toHaveAttribute('id', 'tree');
   await expect(designAdd).toBeVisible();
   check('Quiet actions append to Home or the named folder and remain available by keyboard');
+
+  for (const [groupId, destination] of [
+    ['null', 'Home'],
+    ['design', 'Home / Work / Design'],
+  ]) {
+    await page.goto(`${base}/extension/sidebar.html?demo`);
+    const add = page.locator(`[data-key="new-tab:${groupId}"]`);
+    const folder = page.locator(`[data-key="new-group:${groupId}"]`);
+    await add.focus();
+    await add.press('ArrowRight');
+    await expect(folder).toBeFocused();
+    await folder.press('Enter');
+    await expect(page.getByLabel('Create in', { exact: true })).toHaveText(destination);
+    await page.getByLabel('Folder name', { exact: true }).fill('From quiet reveal');
+    await page.getByRole('button', { name: 'Create folder', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    const branch = add.locator('../..');
+    await expect(branch.locator(':scope > .group-node > .group-row > .label')).toContainText([
+      'From quiet reveal',
+    ]);
+    await expect(page.locator('.tab-row')).toHaveCount(6);
+  }
+  check('Quiet folder actions create in Home or the named folder without opening a tab');
 
   for (const { selector, scope, destination } of [
     { selector: '#tree > .new-tab-item .new-tab-action', scope: null, destination: 'Home' },
