@@ -27,7 +27,9 @@
     "format:check": "prettier --check .",
     "screenshots:export": "node scripts/export-screenshots.js",
     "icons:generate": "node scripts/generate-icons.js",
-    "test:settings": "node scripts/test-settings-ui.js"
+    "test:settings": "node scripts/test-settings-ui.js",
+    "test:themes": "node scripts/test-themes-ui.js",
+    "test:themes:firefox": "node scripts/test-themes-firefox.js"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

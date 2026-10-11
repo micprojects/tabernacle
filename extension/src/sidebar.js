@@ -1,3 +1,5 @@
+import { observeTheme } from './theme-observer.js';
+import { resolveTheme, createPaletteRenderer } from './theme-palette.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
@@ -58,6 +60,25 @@ function markSelected(row) {
 let audioInTabs = new Map(),
   audioInGroups = new Map();
 let recentlyClosed;
+let themeObserver;
+const paintPalette = createPaletteRenderer(document.documentElement);
+const forcedColors = matchMedia('(forced-colors: active)');
+
+function themeResult(source = state?.look?.themeSource) {
+  return resolveTheme(
+    { themeSource: source },
+    themeObserver?.snapshot || {},
+    themeObserver?.dark || false,
+  );
+}
+
+function renderAppearance() {
+  if (!state) return;
+  const result = themeResult();
+  paintPalette(forcedColors.matches ? null : result.palette, state.look.colorScheme);
+}
+
+forcedColors.addEventListener('change', renderAppearance);
 let state, request, windowId, selected, drag, refreshTimer, toastTimer, menuReturnFocus;
 let confirmedState;
 let actionQueue = Promise.resolve();
@@ -956,7 +977,7 @@ function toggleFolderMenu(trigger, parentId) {
 
 function render() {
   if (!state) return;
-  document.documentElement.dataset.colorScheme = state.look.colorScheme;
+  renderAppearance();
   $('new-tab').disabled = false;
   $('new-group').disabled = false;
   $('recently-closed-toggle').disabled = false;
@@ -1780,6 +1801,13 @@ async function start() {
     });
   } else
     throw new Error('Load Tabernacle as a Firefox extension, or open the interactive preview.');
+  themeObserver = observeTheme({
+    api: demo ? null : globalThis.browser,
+    windowId,
+    media: matchMedia('(prefers-color-scheme: dark)'),
+    onChange: renderAppearance,
+  });
+  window.addEventListener('pagehide', () => themeObserver.dispose(), { once: true });
   await refresh();
 }
 

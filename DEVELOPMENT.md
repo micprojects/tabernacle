@@ -12,7 +12,7 @@ tab tree, folder counts and recent activity, including recently closed tabs.
 They still exist in Firefox's native tab strip; Firefox cannot hide an active tab.
 New Settings documents claim the existing page before enabling editing, so opening
 Preferences through Firefox also returns to the same view.
-It shares the sidebar’s colour tokens, with its layout in `settings.css`
+It shares the sidebar’s colour tokens and theme observer, with its layout in `settings.css`
 and behaviour in `src/settings.js`. Appearance saves merge only edited fields in the
 controller so simultaneous settings tabs preserve each other’s changes. Container forms
 use the same choices and controller actions as the contextual sidebar dialogs.
