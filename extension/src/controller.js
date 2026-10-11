@@ -4,6 +4,7 @@ import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normalizeLook, requireLook } from './look.js';
+import { requireGroupAppearance } from './folder-appearance.js';
 import {
   MODEL_KEY,
   VIEW_KEY,
@@ -603,6 +604,7 @@ export function createController(api, notify = () => {}) {
         if (groupById(model, id)) break;
         const parentId = requireGroup(model, message.parentId ?? null);
         const name = cleanName(message.name);
+        const appearance = requireGroupAppearance(message.appearance ?? {});
         let cookieStoreId = message.cookieStoreId ?? null;
         let details;
         if (message.newContainer != null) {
@@ -625,6 +627,7 @@ export function createController(api, notify = () => {}) {
           }
           await changeModel((next) => {
             const group = addGroup(next, name, parentId, id);
+            if (Object.keys(appearance).length) group.appearance = appearance;
             if (cookieStoreId !== null) group.defaultCookieStoreId = cookieStoreId;
           });
         } catch (error) {
@@ -665,6 +668,17 @@ export function createController(api, notify = () => {}) {
           const target = groupById(next, group.id);
           if (message.cookieStoreId === null) delete target.defaultCookieStoreId;
           else target.defaultCookieStoreId = message.cookieStoreId;
+        });
+        break;
+      }
+      case 'setGroupAppearance': {
+        const group = groupById(model, requireGroup(model, message.id));
+        if (!group) throw new Error('Choose a folder to customise.');
+        const appearance = requireGroupAppearance(message.appearance);
+        await changeModel((next) => {
+          const target = groupById(next, group.id);
+          if (Object.keys(appearance).length) target.appearance = appearance;
+          else delete target.appearance;
         });
         break;
       }
@@ -992,6 +1006,7 @@ export function createController(api, notify = () => {}) {
         'createGroup',
         'renameGroup',
         'setGroupContainer',
+        'setGroupAppearance',
         'moveGroup',
         'moveGroupContents',
         'removeGroup',

@@ -6,6 +6,7 @@ for (const name of [
   'test-search-dismiss-ui',
   'test-breadcrumbs-ui',
   'test-folder-picker-ui',
+  'test-folder-appearance-ui',
   'test-group-creation-ui',
   'test-folder-clicks-ui',
   'test-group-actions-ui',

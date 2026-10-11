@@ -1,4 +1,6 @@
 import { icon } from './icons.js';
+import { groupById } from './model.js';
+import { folderContainer, folderIcon } from './folder-icons.js';
 import { recentItems, recentDay, recentTime } from './recent-history.js';
 
 const kinds = {
@@ -105,7 +107,15 @@ export function createRecentActivity({
     const items = recentItems(state, filter, search.value);
     const error = (filter === 'all' || filter === 'closed') && state.recentlyClosedError;
     const now = Date.now();
-    const key = JSON.stringify([items, error, filter, search.value, Math.floor(now / 60_000)]);
+    const key = JSON.stringify([
+      items,
+      state.groups,
+      state.containers,
+      error,
+      filter,
+      search.value,
+      Math.floor(now / 60_000),
+    ]);
     if (key !== renderKey) {
       renderKey = key;
       const focused = document.activeElement;
@@ -149,7 +159,13 @@ export function createRecentActivity({
         action.setAttribute('aria-hidden', 'true');
         action.append(icon(kind.icon));
         if (item.kind === 'viewed') action.append(el('span', 'recent-switch-label', 'Switch'));
-        row.append(item.kind === 'folder' ? icon('group') : favicon(item), text, time, action);
+        const group = item.kind === 'folder' && groupById(state, item.id);
+        row.append(
+          group ? folderIcon(group, folderContainer(state, group), { state }) : favicon(item),
+          text,
+          time,
+          action,
+        );
         row.addEventListener('click', () => {
           close(true);
           if (item.kind === 'closed') restore(item.sessionId);

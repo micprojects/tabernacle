@@ -6,6 +6,19 @@ bar, menus and dialogs live in `extension/sidebar.css`. Favicons come directly f
 The Firefox add-on ID is `tabernacle@michaelprojects.com`, with saved data under `tabernacle.*`
 keys.
 
+## Folder appearance
+
+Folders may store an optional `appearance` with independent Acorn `icon` and palette
+`color` IDs. Colours inherit from the nearest ancestor with a custom colour, then
+fall back to the effective container or the standard folder colour. An explicit
+colour overrides inheritance for that folder and its subfolders; reset removes
+the override. Inherited colours are resolved when rendered, so edits and moves
+update descendants without copying colours into their saved appearance. Icons
+apply only to that folder and fall back to the effective container or standard
+folder icon. The catalogue and search keywords live in
+`src/folder-appearance.js`; the picker uses bundled, licensed Acorn symbols from
+`icons/ui/folder-icons.svg`. Firefox container identities keep their native choices.
+
 Use the Node.js version in `.nvmrc` and install the locked dependencies:
 
 ```sh
