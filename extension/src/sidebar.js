@@ -7,6 +7,7 @@ import { createDialogs } from './dialogs.js';
 import { folderIcon } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
 import { createRecentActivity } from './recently-closed.js';
+import { installActivityLauncher } from './activity-launcher.js';
 import { openDemoPage } from './internal-pages.js';
 import {
   groupById,
@@ -1647,6 +1648,13 @@ recentlyClosed = createRecentActivity({
   },
 });
 $('home').addEventListener('click', () => enter(null));
+installActivityLauncher({
+  trigger: $('recently-closed-toggle'),
+  demo,
+  request: (type, args) => request(type, args),
+  beforeOpen: () => closeMenu(),
+  onError: (message) => announce(message, true),
+});
 $('search-toggle').addEventListener('click', () => showSearch());
 $('search-close').addEventListener('click', () => showSearch(false));
 $('navigation-capsule').addEventListener('click', (event) => {

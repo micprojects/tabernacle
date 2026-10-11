@@ -15,6 +15,7 @@ for (const name of [
   'test-pinned-tabs-ui',
   'test-tab-close-ui',
   'test-recently-closed-ui',
+  'test-activity-page-ui',
   'test-edge-cases-ui',
   'test-audio-ui',
   'test-containers-ui',
