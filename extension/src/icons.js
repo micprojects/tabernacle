@@ -15,6 +15,7 @@ const assets = {
   search: 'search-16',
   searchLarge: 'search-20',
   more: 'page-actions-16',
+  settings: 'settings-16',
   info: 'information-16',
   enter: 'forward-16',
   keyboard: 'keyboard-16',

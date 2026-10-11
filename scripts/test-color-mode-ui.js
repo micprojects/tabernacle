@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { startUiTest } from './ui-test.js';
+import { prepareSettings } from './settings-test.js';
 
 const { page, close, base } = await startUiTest({
   viewport: { width: 320, height: 760 },
@@ -9,12 +10,7 @@ const { page, close, base } = await startUiTest({
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 
-const openLook = async () => {
-  await page.locator('#more').click();
-  await page.getByRole('menuitem', { name: 'Appearance', exact: true }).click();
-};
-
-const mode = page.getByRole('combobox', { name: 'Colour mode', exact: true });
+let openLook, settings, mode;
 const background = (scheme) => (scheme === 'dark' ? 'rgb(33, 29, 43)' : 'rgb(247, 246, 250)');
 
 const checkPalette = async (scheme) => {
@@ -73,7 +69,7 @@ try {
     const listeners = new Set();
     let ready;
     window.browser = {
-      // Fail immediately if the retired Firefox colour integration is used.
+      // A failed theme API must leave the original fallback palette usable.
       get theme() {
         throw new Error('Firefox theme colours must not be queried');
       },
@@ -108,19 +104,22 @@ try {
   await checkPalette('dark');
   await page.screenshot({ path: 'test-results/color-mode-dark.png' });
 
+  openLook = await prepareSettings(page);
+  settings = await openLook();
+  mode = settings.getByRole('combobox', { name: 'Colour mode', exact: true });
   await openLook();
-  await expect(mode).toBeFocused();
+  await expect(settings.getByRole('combobox', { name: 'Colour mode', exact: true })).toBeVisible();
   await expect(mode).toHaveValue('default');
   await expect(mode).toHaveAccessibleDescription(
     'Default follows Firefox’s light/dark preference.',
   );
   await mode.selectOption('light');
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await settings.getByRole('button', { name: 'Discard changes', exact: true }).click();
   await checkPalette('dark');
   await openLook();
   await expect(mode).toHaveValue('default');
   await mode.selectOption('light');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
   await checkPalette('light');
   await page.emulateMedia({ colorScheme: 'light' });
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -130,13 +129,13 @@ try {
   await expect(mode).toHaveValue('light');
   await mode.selectOption('dark');
   await page.evaluate(() => (window.failLookSave = true));
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('Storage unavailable');
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(settings.getByRole('alert')).toHaveText('Storage unavailable');
   await expect(mode).toBeEnabled();
   await expect(mode).toHaveValue('dark');
   await checkPalette('light');
   await page.evaluate(() => (window.failLookSave = false));
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.emulateMedia({ colorScheme: 'light' });
   await checkPalette('dark');
 
@@ -145,16 +144,22 @@ try {
   await page.keyboard.press('Escape');
   await openLook();
   await expect(mode).toHaveValue('dark');
-  await expect(page.getByRole('dialog')).toHaveCSS('background-color', background('dark'));
+  await expect(settings.locator('.settings-card').first()).toHaveCSS(
+    'background-color',
+    background('dark'),
+  );
   await expect(mode).toHaveCSS('background-color', background('dark'));
-  await page.setViewportSize({ width: 220, height: 660 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(220);
-  await page.screenshot({ path: 'test-results/color-mode-look-dark-narrow.png' });
+  await settings.setViewportSize({ width: 220, height: 660 });
+  expect(await settings.evaluate(() => document.documentElement.scrollWidth)).toBe(220);
+  await settings.screenshot({
+    path: 'test-results/color-mode-look-dark-narrow.png',
+    fullPage: true,
+  });
   await page.emulateMedia({ forcedColors: 'active' });
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await page.emulateMedia({ forcedColors: 'none' });
   await mode.selectOption('default');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
   await checkPalette('light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await checkPalette('dark');
@@ -162,7 +167,7 @@ try {
   await checkPalette('light');
   expect(errors).toEqual([]);
   console.log(
-    '✓ Accessible compact palettes, live Default mode, saved overrides, cancellation, save retry, narrow layouts and forced colours work without Firefox theme access',
+    '✓ Accessible compact palettes, live Default mode, saved overrides, cancellation, save retry, narrow layouts and forced colours work',
   );
 } finally {
   await close();

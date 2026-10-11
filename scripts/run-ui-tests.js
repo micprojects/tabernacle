@@ -20,6 +20,7 @@ for (const name of [
   'test-containers-ui',
   'test-color-mode-ui',
   'test-look-ui',
+  'test-settings-ui',
   'test-performance-ui',
 ]) {
   const result = spawnSync(process.execPath, [`scripts/${name}.js`], {

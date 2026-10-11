@@ -28,7 +28,7 @@ export function containerListIcon(identity) {
   return node;
 }
 
-function visualChoices(key, title, choices, current) {
+export function visualChoices(key, title, choices, current) {
   const field = el('fieldset', 'container-choice-field');
   field.append(el('legend', '', title));
   const grid = el('div', 'container-choice-grid');

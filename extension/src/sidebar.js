@@ -5,6 +5,7 @@ import { createDialogs } from './dialogs.js';
 import { folderIcon } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
 import { createRecentActivity } from './recently-closed.js';
+import { openDemoPage } from './internal-pages.js';
 import {
   groupById,
   groupPath,
@@ -169,10 +170,6 @@ const {
   containerDialog,
   newContainerDialog,
   groupContainerDialog,
-  createContainerDialog,
-  manageContainersDialog,
-  lookDialog,
-  aboutDialog,
 } = createDialogs({
   getState: () => state,
   request: (...args) => request(...args),
@@ -1126,40 +1123,22 @@ function closeMenu(restore = false) {
   recentlyClosed?.close(restore);
   $('menu').hidden = true;
   folderMenuKey = undefined;
-  $('more').setAttribute('aria-expanded', 'false');
   pathOverflow.setAttribute('aria-expanded', 'false');
   if (menuReturnFocus?.matches('.crumb-children'))
     menuReturnFocus.setAttribute('aria-expanded', 'false');
   if (restore && menuReturnFocus?.isConnected) menuReturnFocus.focus();
 }
 
-async function openShortcutSettings() {
+async function openSettings() {
+  closeMenu();
   if (demo) {
-    announce('Install Tabernacle in Firefox to change its extension shortcuts.');
+    openDemoPage('settings');
     return;
   }
   try {
-    await browser.commands.openShortcutSettings();
+    await request('openPage', { page: 'settings' });
   } catch {
-    announce(
-      'Could not open shortcut settings. Try Add-ons and themes → Manage Extension Shortcuts.',
-      true,
-    );
-  }
-}
-
-async function openAbout() {
-  try {
-    // Only the browser preview fetches; installed extensions read their own manifest.
-    const manifest = demo
-      ? await fetch(new URL('../manifest.json', import.meta.url)).then((response) => {
-          if (!response.ok) throw new Error('Could not load extension details.');
-          return response.json();
-        })
-      : browser.runtime.getManifest();
-    aboutDialog(manifest);
-  } catch (error) {
-    announce(error.message, true);
+    announce('Could not open settings. Try Tabernacle’s Preferences in Add-ons and themes.', true);
   }
 }
 
@@ -1626,7 +1605,7 @@ function dropTarget(node, kind, id) {
 
 $('home').append(icon('home'));
 $('search-toggle').append(icon('search'));
-$('more').append(icon('more'));
+$('settings').append(icon('settings'));
 $('search-close').append(icon('close'));
 $('reveal').querySelector('span').append(icon('enter'));
 $('dialog-icon').append(icon('groupPlus'));
@@ -1693,40 +1672,7 @@ $('tree-toggle').addEventListener('click', async () => {
   if (restoreFocus && document.activeElement === document.body)
     $('tree-toggle').focus({ preventScroll: true });
 });
-$('more').addEventListener('click', () => {
-  if (!state) return;
-  if ($('more').getAttribute('aria-expanded') === 'true') {
-    closeMenu(true);
-    return;
-  }
-  const rect = $('more').getBoundingClientRect();
-  menu(
-    [
-      {
-        label: 'Expand all folders',
-        icon: 'expand',
-        run: () => action('collapseAll', { collapsed: false }),
-      },
-      {
-        label: 'Collapse all folders',
-        icon: 'collapse',
-        run: () => action('collapseAll', { collapsed: true }),
-      },
-      null,
-      { label: 'Appearance', icon: 'list', run: () => lookDialog() },
-      null,
-      { label: 'New container…', icon: 'plus', run: () => createContainerDialog() },
-      { label: 'Manage containers…', icon: 'container', run: () => manageContainersDialog() },
-      null,
-      { label: 'Extension shortcuts…', icon: 'keyboard', run: openShortcutSettings },
-      { label: 'About', icon: 'info', run: openAbout },
-    ],
-    rect.right,
-    rect.top - 8,
-    { above: true, alignRight: true },
-  );
-  $('more').setAttribute('aria-expanded', 'true');
-});
+$('settings').addEventListener('click', openSettings);
 document.addEventListener('pointerdown', (event) => {
   const dismissSearch = searchOpen && !$('navigation-capsule').contains(event.target);
   // Clearing the filter must not move or replace a target before its click.
@@ -1738,7 +1684,6 @@ document.addEventListener('pointerdown', (event) => {
   }
   if (
     !$('menu').contains(event.target) &&
-    !$('more').contains(event.target) &&
     !$('recently-closed-toggle').contains(event.target) &&
     !$('recently-closed').contains(event.target) &&
     !pathOverflow.contains(event.target) &&

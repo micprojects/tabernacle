@@ -117,12 +117,13 @@ try {
   await closed();
   console.log('✓ Pins and empty sidebar space dismiss search without changing folder scope');
 
-  for (const id of ['new-tab', 'new-group', 'more', 'tree-toggle']) {
+  for (const id of ['new-tab', 'new-group', 'settings', 'tree-toggle']) {
     await reset();
     await open();
     const button = page.locator(`#${id}`);
     // The fold control is disabled while filtering. The outside press must
     // restore it in time for this same click to perform the requested action.
+    const popup = id === 'settings' ? page.waitForEvent('popup') : null;
     const bounds = await button.boundingBox();
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     await closed();
@@ -131,9 +132,11 @@ try {
     else if (id === 'new-group') {
       await expect(page.getByRole('dialog')).toBeVisible();
       await expect(page.getByLabel('Folder name', { exact: true })).toBeFocused();
-    } else if (id === 'more') {
-      await expect(page.getByRole('menu')).toBeVisible();
-      await expect(page.getByRole('menuitem').first()).toBeFocused();
+    } else if (id === 'settings') {
+      const settings = await popup;
+      await expect(settings.locator('#appearance-fields')).toBeEnabled();
+      await expect(page.getByRole('menu')).toBeHidden();
+      await settings.close();
     } else {
       await expect(button).toHaveAccessibleName('Expand all in Home');
       await expect(row('group:work')).toHaveAttribute('aria-expanded', 'false');

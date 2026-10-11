@@ -26,7 +26,8 @@
     "check": "npm run format:check && npm run lint && npm test",
     "format:check": "prettier --check .",
     "screenshots:export": "node scripts/export-screenshots.js",
-    "icons:generate": "node scripts/generate-icons.js"
+    "icons:generate": "node scripts/generate-icons.js",
+    "test:settings": "node scripts/test-settings-ui.js"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
