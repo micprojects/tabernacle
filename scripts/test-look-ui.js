@@ -388,9 +388,9 @@ try {
   await expect(page.locator('.row-detail')).toHaveCount(0);
   expect(await guides()).toBe('none');
 
-  // The caption-free action stays left-aligned, with full-row hover and the same group target.
+  // Revealing the creation actions keeps the plus aligned with the tree guides.
   const add = page.getByRole('button', { name: 'New tab in Design', exact: true });
-  await expect(add).toHaveText('');
+  await expect(add).toHaveText('New tab');
   await expect(add).toHaveAttribute('title', 'New tab in Design');
   await saveLook(true, false);
   for (const width of [320, 240]) {
@@ -411,7 +411,8 @@ try {
   await child.hover();
   const tabHover = await child.evaluate((node) => getComputedStyle(node).backgroundColor);
   await add.hover();
-  await expect(add).toHaveCSS('background-color', tabHover);
+  await expect(add.locator('.new-action-label')).toBeVisible();
+  await expect(add).not.toHaveCSS('background-color', tabHover);
   await page.screenshot({ path: 'test-results/look-left-new-tab-hover.png' });
   const beforeAdd = await page.locator('.tab-row').count();
   await add.focus();
@@ -419,13 +420,13 @@ try {
   await expect(page.locator('.tab-row')).toHaveCount(beforeAdd + 1);
   const created = group.locator('..').locator('.tab-row.active');
   await expect(created.locator('.label')).toHaveText('New tab');
-  await expect(add).toHaveText('');
+  await expect(add).toHaveText('New tab');
   expect(await iconCentre('[data-key="new-tab:work"] svg')).toBe(
     await iconCentre('[data-key="tab:8"] .tab-icon'),
   );
   await checkConnection('group:design', 'new-tab:design');
   await add.hover();
-  await expect(add).toHaveCSS('background-color', tabHover);
+  await expect(add).not.toHaveCSS('background-color', tabHover);
   await add.click({ button: 'right' });
   await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New folder…']);
   await page.keyboard.press('Escape');
