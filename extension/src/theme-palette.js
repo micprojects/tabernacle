@@ -59,6 +59,17 @@ function mix(color, percent) {
   return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 }
 
+// The bundled Firefox gradients start with the tint beside the left sidebar.
+// Repeat that stop over the frame colour, preserving alpha compositing without
+// stretching the browser-wide gradient across the narrow tab list.
+function sidebarGradient(details, bundled) {
+  if (!bundled) return 'none';
+  const gradient = details.images?.additional_backgrounds?.[0]?.['linear-gradient'];
+  const firstStop = gradient?.match(/^[^,]+,\s*(#[\da-f]{3,8}\b|rgba?\([^)]*\))/i)?.[1];
+  const tint = themeColor(firstStop);
+  return tint ? `linear-gradient(${tint}, ${tint})` : 'none';
+}
+
 // Incomplete external themes use Firefox's role fallbacks, not a mix of its
 // colours and the Monochrome palette. Images are trusted bundled data only.
 export function paletteFrom(details, dark, { bundled = false, isDefault = false, platform } = {}) {
@@ -166,6 +177,7 @@ export function paletteFrom(details, dark, { bundled = false, isDefault = false,
     'field-focus-text': c.toolbar_field_text_focus,
     'field-focus-line': supplied.toolbar_field_border_focus || (isDefault ? focus : mix(focus, 50)),
     'theme-gradient': gradient,
+    'theme-sidebar-gradient': sidebarGradient(details, bundled),
     'theme-background-size': bundled
       ? (details.properties?.additional_backgrounds_size || ['auto']).join(', ')
       : 'auto',
