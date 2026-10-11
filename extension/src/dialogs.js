@@ -4,6 +4,8 @@ import { containerListIcon, createContainerManagement } from './container-dialog
 import { sortContainers } from './containers.js';
 import { normalizeLook } from './look.js';
 import { createGroupCreation } from './group-creation.js';
+import { createAppearancePicker } from './appearance-picker.js';
+import { folderContainer, folderIcon } from './folder-icons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -43,6 +45,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     dialogContext = Symbol();
     dialogBusy = false;
     $('dialog').classList.toggle('compact-container-dialog', compact);
+    $('dialog').classList.remove('folder-appearance-dialog');
     $('dialog-icon').replaceChildren(icon('groupPlus'));
     $('dialog-back').hidden = !onBack;
     $('dialog-back').replaceChildren(icon('back'), document.createTextNode(backLabel));
@@ -105,6 +108,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     onChange,
     showDialog,
     draftContainerDialog,
+    editAppearance,
     isCurrent: (context) => dialogContext === context && $('dialog').open,
   });
 
@@ -204,6 +208,39 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     });
     $('dialog-icon').replaceChildren(icon('list'));
     mode.focus();
+  }
+
+  function editAppearance({ group, container, onSubmit, onSave, onCancel }) {
+    const state = getState();
+    const picker = createAppearancePicker({ group, container, state });
+    showDialog({
+      title: 'Folder appearance',
+      input: false,
+      compact: true,
+      content: picker.element,
+      onCancel,
+      afterSubmit: () => onSave?.(picker.getValue()),
+
+      onSubmit: async () => {
+        await onSubmit?.(picker.getValue());
+      },
+    });
+    $('dialog').classList.add('folder-appearance-dialog');
+    $('dialog-icon').replaceChildren(folderIcon(group, container, { state }));
+    picker.focus();
+  }
+
+  function appearanceDialog(id) {
+    const group = groupById(getState(), id);
+    if (!group) return;
+    editAppearance({
+      group,
+      container: folderContainer(getState(), group),
+
+      onSubmit: async (appearance) => {
+        onChange(await request('setGroupAppearance', { id, appearance }));
+      },
+    });
   }
 
   function containerDialog(id, groupId) {
@@ -546,6 +583,7 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
   return {
     createDialog,
     renameDialog,
+    appearanceDialog,
     removeDialog,
     closeGroupTabsDialog,
     closeTabTreeDialog,

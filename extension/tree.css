@@ -201,7 +201,8 @@
   width: 16px;
   height: 16px;
 }
-svg.folder-icon {
+svg.folder-icon,
+.group-container-icon {
   color: var(--folder-color, light-dark(#858585, #adadad));
 }
 .group-row > .label {
@@ -423,6 +424,10 @@ svg.folder-icon {
   }
   svg.folder-icon {
     color: CanvasText;
+  }
+  .group-container-icon {
+    forced-color-adjust: none;
+    color: CanvasText !important;
   }
   .row.active,
   .pinned-tab.active {

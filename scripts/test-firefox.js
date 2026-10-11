@@ -544,6 +544,56 @@ try {
   // Capture the installed sidebar itself at a realistic narrow viewport.
   await driver.manage().window().setRect({ width: 450, height: 860 });
   await driver.wait(until.elementLocated(By.css(`[data-key="group:${work}"]`)), 5000);
+  await send('setGroupContainer', { id: work, cookieStoreId: identity.cookieStoreId });
+  await send('setGroupAppearance', { id: work, appearance: { icon: 'plane', color: 'teal' } });
+  await reloadAddon();
+  await driver.wait(
+    () =>
+      driver.executeScript(
+        `const glyph=document.querySelector('[data-key="group:${work}"] .folder-glyph');
+       return glyph?.dataset.icon === 'plane-16' && glyph.getBBox().width > 0;`,
+      ),
+    5000,
+  );
+  assert.deepEqual((await send('snapshot')).groups.find((group) => group.id === work).appearance, {
+    icon: 'plane',
+    color: 'teal',
+  });
+  await driver
+    .actions()
+    .contextClick(await driver.findElement(By.css(`[data-key="group:${work}"]`)))
+    .perform();
+  await driver
+    .findElement(By.xpath('//button[@role="menuitem" and text()="Icon and colour…"]'))
+    .click();
+  await driver.findElement(By.css('input[aria-label="Find an icon"]')).sendKeys('holiday');
+  await driver.findElement(By.css('[role="radio"][aria-label="Plane"]')).click();
+  assert(
+    await driver.executeScript(
+      'const dialog=document.getElementById("dialog"); dialog.scrollTop=0; return dialog.scrollWidth<=dialog.clientWidth;',
+    ),
+  );
+  await writeFile(
+    'test-results/firefox-folder-appearance.png',
+    await driver.takeScreenshot(),
+    'base64',
+  );
+  await driver.findElement(By.css('.appearance-reset')).click();
+  await driver.findElement(By.id('dialog-submit')).click();
+  await driver.wait(
+    () =>
+      driver.executeScript(
+        `return !!document.querySelector('[data-key="group:${work}"] .group-container-icon');`,
+      ),
+    5000,
+  );
+  assert.equal(
+    (await send('snapshot')).groups.find((group) => group.id === work).appearance,
+    undefined,
+  );
+  console.log(
+    '✓ Acorn folder icons render and persist in Firefox; the searchable picker restores the native container',
+  );
   await mkdir('test-results', { recursive: true });
   await writeFile('test-results/firefox-extension.png', await driver.takeScreenshot(), 'base64');
   console.log('Real-Firefox checks passed.');

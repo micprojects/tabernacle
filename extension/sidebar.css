@@ -1,3 +1,5 @@
+@import url('folder-icons.css');
+
 :root {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 13px;
@@ -701,6 +703,204 @@ dialog select {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 22px;
+}
+.group-appearance-change {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px;
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--panel-text);
+  text-align: left;
+}
+.group-appearance-change > span:not(.folder-glyph) {
+  flex: 1;
+}
+.group-appearance-change:hover {
+  background: var(--panel-hover);
+}
+.folder-appearance-dialog {
+  max-width: 360px;
+}
+.folder-appearance-dialog h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.appearance-picker {
+  display: grid;
+  gap: 14px;
+}
+.appearance-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--panel-hover);
+  color: var(--panel-hover-text);
+}
+.appearance-sample {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  flex-shrink: 0;
+}
+.appearance-details {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+.appearance-details strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.appearance-summary {
+  color: var(--panel-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.appearance-reset {
+  display: flex;
+  align-items: center;
+  justify-self: start;
+  gap: 7px;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  color: var(--panel-text);
+  text-align: left;
+  font-size: 11px;
+}
+.appearance-reset:disabled {
+  color: var(--panel-muted);
+  opacity: 0.65;
+}
+.appearance-reset:enabled:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.appearance-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.appearance-field legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.appearance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 5px;
+  padding: 3px;
+}
+.appearance-icon-grid {
+  max-height: clamp(120px, 25dvh, 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.appearance-choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--panel-line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--appearance-color, var(--panel-text));
+}
+.appearance-choice:hover {
+  background: var(--panel-hover);
+}
+.appearance-choice[aria-checked='true'] {
+  border-color: var(--panel-text);
+  box-shadow: inset 0 0 0 1px var(--panel-text);
+  background: var(--panel-hover);
+}
+.appearance-choice:focus-visible,
+.appearance-reset:focus-visible,
+.group-appearance-change:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.appearance-default {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 9px;
+  color: var(--panel-text);
+  font-size: 11px;
+}
+.appearance-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px #0002;
+  forced-color-adjust: none;
+}
+.appearance-filters {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.appearance-search {
+  position: relative;
+}
+.appearance-search > svg {
+  position: absolute;
+  left: 10px;
+  top: 9px;
+  color: var(--panel-muted);
+  pointer-events: none;
+}
+.appearance-search input {
+  padding: 8px 8px 8px 33px;
+  font-size: 12px;
+}
+.appearance-filters select {
+  padding: 6px 8px;
+  font-size: 11px;
+}
+dialog .appearance-results {
+  margin: 6px 3px 0;
+  font-size: 11px;
+}
+@media (max-width: 280px) {
+  .folder-appearance-dialog {
+    width: calc(100vw - 16px);
+    padding: 12px;
+  }
+  .folder-appearance-dialog h2 {
+    font-size: 16px;
+  }
+  .folder-appearance-dialog .dialog-actions {
+    gap: 6px;
+  }
+  .folder-appearance-dialog .dialog-actions button {
+    padding-inline: 9px;
+  }
+  .appearance-grid {
+    grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+  }
+}
+@media (forced-colors: active) {
+  .appearance-choice[aria-checked='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }
 .about-details {
   margin: 0;

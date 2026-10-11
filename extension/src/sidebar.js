@@ -2,6 +2,8 @@ import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createDialogs } from './dialogs.js';
+import { folderIcon } from './folder-icons.js';
+import { folderAppearance } from './folder-appearance.js';
 import { createRecentActivity } from './recently-closed.js';
 import {
   groupById,
@@ -159,6 +161,7 @@ function announce(message, error = false) {
 const {
   createDialog,
   renameDialog,
+  appearanceDialog,
   removeDialog,
   closeGroupTabsDialog,
   closeTabTreeDialog,
@@ -483,10 +486,14 @@ function groupNode(group, query, ancestorMatch = false) {
       `group:${group.id}`,
       [
         group.name,
+        group.appearance?.icon,
+        folderAppearance(group, container, state).color,
         count(group.id),
         audioInGroups.get(group.id) || 0,
         container?.name,
         container?.colorCode,
+        container?.icon,
+        container?.iconUrl,
       ],
       () => createGroupRow(group, container),
     ),
@@ -496,7 +503,9 @@ function groupNode(group, query, ancestorMatch = false) {
   const disclosure = row.querySelector('.disclosure');
   const label = `${expanded ? 'Collapse' : 'Expand'} ${group.name}`;
   if (disclosure.getAttribute('aria-expanded') !== String(expanded))
-    disclosure.replaceChildren(groupIcon(container, 'group', expanded));
+    disclosure.replaceChildren(
+      folderIcon(group, container, { className: 'group', expanded, state }),
+    );
   setAttribute(disclosure, 'aria-expanded', expanded);
   setAttribute(disclosure, 'aria-label', label);
   setAttribute(disclosure, 'title', label);
@@ -550,13 +559,6 @@ function containerColor(container) {
   return color && CSS.supports('color', color) ? color : null;
 }
 
-function groupIcon(container, className = '', expanded = false) {
-  const folder = icon(expanded ? 'groupOpen' : 'group', className);
-  const color = containerColor(container);
-  if (color) folder.style.setProperty('--folder-color', color);
-  return folder;
-}
-
 function groupContainerDetails(group) {
   const source = groupPath(state, group.id)
     .reverse()
@@ -572,6 +574,8 @@ function groupContainerDetails(group) {
   return {
     name: `${name}${source.id === group.id ? '' : ' (inherited)'}`,
     colorCode: identity?.colorCode,
+    icon: identity?.icon,
+    iconUrl: identity?.iconUrl,
   };
 }
 
@@ -1270,6 +1274,7 @@ function blankAreaMenu(x, y) {
       { label: 'New folder…', icon: 'groupPlus', run: () => createDialog(groupId) },
       ...(groupId !== null
         ? [
+            { label: 'Icon and colour…', icon: 'rename', run: () => appearanceDialog(groupId) },
             {
               label: 'Default container…',
               icon: 'container',
@@ -1374,6 +1379,7 @@ function contextMenu(kind, id, x, y) {
         null,
         { label: 'Copy URLs', icon: 'copy', run: () => copyUrls(kind, id) },
         { label: 'Rename folder', icon: 'rename', run: () => renameDialog(id) },
+        { label: 'Icon and colour…', icon: 'rename', run: () => appearanceDialog(id) },
         { label: 'Default container…', icon: 'container', run: () => groupContainerDialog(id) },
         {
           label: 'Move folder…',
@@ -1799,8 +1805,8 @@ dropTarget($('home'), 'inside', null);
 
 async function start() {
   if (demo) {
-    const { createDemo } = await import('../../preview/demo.js');
-    const controller = await createDemo(scheduleRefresh);
+    const { connectDemo } = await import('../../preview/session.js');
+    const controller = await connectDemo(scheduleRefresh);
     windowId = 1;
     request = (type, args = {}) => controller.request({ type, windowId, ...args });
   } else if (globalThis.browser?.runtime?.id) {

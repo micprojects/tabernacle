@@ -37,9 +37,8 @@ const assets = {
 };
 const sprite = new URL('../icons/ui/acorn.svg', import.meta.url).href;
 
-export function icon(name, className = '') {
+export function svgIcon(asset, spriteUrl, className = '') {
   const ns = 'http://www.w3.org/2000/svg';
-  const asset = assets[name] ?? assets.globe;
   const size = asset.split('-').at(-1);
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
@@ -49,9 +48,14 @@ export function icon(name, className = '') {
   svg.setAttribute('focusable', 'false');
   svg.dataset.icon = asset;
   if (className) svg.setAttribute('class', className);
-  if (name === 'group' || name === 'groupOpen') svg.classList.add('folder-icon');
   const use = document.createElementNS(ns, 'use');
-  use.setAttribute('href', `${sprite}#${asset}`);
+  use.setAttribute('href', `${spriteUrl}#${asset}`);
   svg.append(use);
+  return svg;
+}
+
+export function icon(name, className = '') {
+  const svg = svgIcon(assets[name] ?? assets.globe, sprite, className);
+  if (name === 'group' || name === 'groupOpen') svg.classList.add('folder-icon');
   return svg;
 }

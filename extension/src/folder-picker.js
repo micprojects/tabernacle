@@ -1,5 +1,6 @@
 import { icon } from './icons.js';
-import { groupPath } from './model.js';
+import { groupPath, groupById } from './model.js';
+import { folderContainer, folderIcon } from './folder-icons.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -52,6 +53,13 @@ export function createFolderPicker({ getState, parentId, dialog, onChange }) {
   }
 
   function updateValue() {
+    const state = getState();
+    const group = groupById(state, selectedId);
+    trigger.firstChild.replaceWith(
+      selectedId === null
+        ? icon('home')
+        : folderIcon(group, folderContainer(state, group), { state }),
+    );
     value.textContent = pathFor(selectedId);
     trigger.title = value.textContent;
   }
@@ -144,7 +152,16 @@ export function createFolderPicker({ getState, parentId, dialog, onChange }) {
       const text = el('span', 'folder-picker-text');
       text.append(el('span', 'folder-picker-name', entry.name));
       if (query) text.append(el('span', 'folder-picker-path', entry.path));
-      row.append(disclosure, icon(open ? 'groupOpen' : 'group'), text);
+      row.append(
+        disclosure,
+        entry.id === null
+          ? icon('home')
+          : folderIcon(entry, folderContainer(getState(), entry), {
+              expanded: open,
+              state: getState(),
+            }),
+        text,
+      );
       if (entry.id === selectedId) row.append(icon('check', 'folder-picker-check'));
       row.addEventListener('click', () => choose(entry.id));
       row.addEventListener('keydown', (event) => {

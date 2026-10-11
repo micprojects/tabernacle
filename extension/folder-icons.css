@@ -1,0 +1,19 @@
+.folder-glyph {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--folder-color, light-dark(#858585, #adadad));
+}
+.folder-glyph-mask {
+  background: currentColor;
+  mask: center / contain no-repeat;
+}
+@media (forced-colors: active) {
+  .folder-glyph {
+    color: CanvasText !important;
+  }
+  .folder-glyph-mask {
+    forced-color-adjust: none;
+  }
+}

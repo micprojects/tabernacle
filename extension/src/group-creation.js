@@ -3,6 +3,7 @@ import { groupById, groupContainer } from './model.js';
 import { containerListIcon } from './container-dialogs.js';
 import { sortContainers } from './containers.js';
 import { createFolderPicker } from './folder-picker.js';
+import { folderIcon } from './folder-icons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -20,10 +21,18 @@ export function createGroupCreation({
   onChange,
   showDialog,
   draftContainerDialog,
+  editAppearance,
   isCurrent,
 }) {
   return function createDialog(parentId = getState().view.scopeId) {
-    const draft = { id: crypto.randomUUID(), name: '', parentId, selection: null, container: null };
+    const draft = {
+      id: crypto.randomUUID(),
+      name: '',
+      parentId,
+      selection: null,
+      container: null,
+      appearance: {},
+    };
     let identities = getState().containers ?? [];
 
     function identityFor(cookieStoreId) {
@@ -36,6 +45,19 @@ export function createGroupCreation({
 
     function inherited() {
       return identityFor(groupContainer(getState(), draft.parentId) ?? 'firefox-default');
+    }
+
+    function selectedContainer() {
+      return draft.selection === 'new'
+        ? draft.container
+        : draft.selection === null
+          ? inherited()
+          : identityFor(draft.selection);
+    }
+
+    function appearanceContainer() {
+      const identity = selectedContainer();
+      return identity.icon || identity.iconUrl || identity.colorCode ? identity : undefined;
     }
 
     function showGroup(restoreFocus = false) {
@@ -59,14 +81,31 @@ export function createGroupCreation({
         'New tabs created here through Tabernacle use this container.',
       );
       field.append(label, summary, help);
+      const appearance = el('button', 'group-appearance-change');
+      appearance.type = 'button';
+      appearance.id = 'change-group-appearance';
+      appearance.setAttribute('aria-label', 'Change folder appearance');
+      appearance.addEventListener('click', () => {
+        draft.name = $('dialog-input').value;
+        editAppearance({
+          group: draft,
+          container: appearanceContainer(),
+
+          onSave: (value) => {
+            draft.appearance = value;
+            showGroup();
+            $('change-group-appearance').focus();
+          },
+
+          onCancel: () => {
+            showGroup();
+            $('change-group-appearance').focus();
+          },
+        });
+      });
 
       function updateSummary() {
-        const identity =
-          draft.selection === 'new'
-            ? draft.container
-            : draft.selection === null
-              ? inherited()
-              : identityFor(draft.selection);
+        const identity = selectedContainer();
         const note =
           draft.selection === 'new'
             ? 'New container · ready to create'
@@ -79,6 +118,11 @@ export function createGroupCreation({
         name.title = identity.name;
         details.replaceChildren(name, el('span', 'group-container-note', note));
         summary.replaceChildren(containerListIcon(identity), details, change);
+        appearance.replaceChildren(
+          folderIcon(draft, appearanceContainer(), { state: getState() }),
+          el('span', '', 'Icon and colour'),
+          icon('chevron'),
+        );
       }
 
       const destination = createFolderPicker({
@@ -91,7 +135,7 @@ export function createGroupCreation({
           updateSummary();
         },
       });
-      content.append(destination.element, field);
+      content.append(destination.element, field, appearance);
       change.addEventListener('click', () => {
         draft.name = $('dialog-input').value;
         showPicker();
@@ -110,6 +154,7 @@ export function createGroupCreation({
             id: draft.id,
             name,
             parentId: draft.parentId,
+            appearance: draft.appearance,
             ...(draft.selection === 'new'
               ? { newContainer: draft.container }
               : { cookieStoreId: draft.selection }),
