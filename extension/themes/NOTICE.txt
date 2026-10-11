@@ -33,10 +33,11 @@ https://mozilla.org/MPL/2.0/
 Copyright Mozilla and contributors. See MPL-2.0.txt. Their source is included
 in this extension. Other Tabernacle code remains under its existing licence.
 
-Firefox Default reproduces the Nova palette without native platform materials.
-Forced colours use system colours. Third-party theme matching uses exposed
-colour data only: Firefox's theme.getCurrent returns the base definition and
-cannot reliably expose separate dark_theme definitions. Missing roles use
+Firefox Default keeps the Nova colour roles without native platform materials.
+Its sidebar uses quiet neutral surfaces, with subtle highlights drawn from the
+appearance's accent colour. Forced colours use system colours. Third-party theme
+matching uses exposed colour data only: Firefox's theme.getCurrent returns the
+base definition and cannot reliably expose separate dark_theme definitions. Missing roles use
 Firefox's Nova defaults; no third-party theme images or external assets load.
 
 Variant selection uses the sidebar's prefers-color-scheme media query, which
