@@ -122,6 +122,10 @@ try {
         '--color-accent-primary': '--accent',
         '--focus-outline-color': '--focus',
       })) {
+        // App actions and focus use the selected theme's roles. Firefox chrome
+        // uses the OS accent for these controls in custom themes.
+        if (theme.id !== 'default-theme@mozilla.org' && ['--accent', '--focus'].includes(key))
+          continue;
         if (actual[key] !== native[nativeKey])
           mismatches.push({
             theme: theme.name,
@@ -131,6 +135,12 @@ try {
             native: native[nativeKey],
           });
       }
+      const newTab = await driver.executeScript(`
+        const button = document.querySelector('.new-tab-action');
+        button.focus();
+        return { text: getComputedStyle(button).color, themeText: getComputedStyle(document.documentElement).color };
+      `);
+      assert.equal(newTab.text, newTab.themeText, `${theme.name}/${dark} New tab colour`);
       if (['Firefox Default', 'Sun', 'Pine', 'Lavender'].includes(theme.name))
         await writeFile(
           `test-results/firefox-theme-${theme.name.toLowerCase().replaceAll(' ', '-')}-${dark ? 'dark' : 'light'}.png`,

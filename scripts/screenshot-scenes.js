@@ -95,7 +95,12 @@ export async function setupScreenshotDemo(
     if (item.parent) await send('nestTab', { id: tab.id, parentTabId: tabs[item.parent] });
   }
   await send('setLook', {
-    value: { connectingLines: true, domains: false, colorScheme: 'light' },
+    value: {
+      connectingLines: true,
+      domains: false,
+      themeSource: 'tabernacle',
+      colorScheme: 'light',
+    },
   });
   await send('enterGroup', { id: null });
   const current = await send('snapshot');
@@ -143,6 +148,7 @@ export async function showScreenshotScene(fixture, session, index) {
     value: {
       connectingLines: true,
       domains: Boolean(shot.domains),
+      themeSource: 'tabernacle',
       colorScheme: shot.colorScheme,
     },
   });

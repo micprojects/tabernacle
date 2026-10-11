@@ -1,7 +1,12 @@
 # Development
 
-The tab list uses one layout, styled in `extension/tree.css`. Colour tokens, the bottom
-bar, menus and dialogs live in `extension/sidebar.css`. Favicons come directly from Firefox.
+The tab list uses one layout, styled in `extension/tree.css`. Shared appearance tokens live in
+`extension/colors.css`; the bottom bar, menus and dialogs live in `extension/sidebar.css`.
+The sidebar, settings and activity page share this fallback palette. Firefox palettes
+come from `src/theme-palette.js`, including action, focus and default folder colours.
+Primary actions use the theme’s popup highlight/text pair, or its popup text/background
+when no highlight is supplied. Custom folder and container colours remain explicit choices.
+Favicons come directly from Firefox.
 
 `extension/settings.html` is the native Firefox options page. The Settings button
 reuses one live page across windows, without navigating or reloading it, so its

@@ -65,20 +65,6 @@
   mask-composite: exclude;
   pointer-events: none;
 }
-@media (forced-colors: active) {
-  :root {
-    --theme-gradient: none !important;
-    --selected-border-gradient: none !important;
-    --toolbar-surface: Canvas !important;
-    --toolbar-text: CanvasText !important;
-    --toolbar-hover: ButtonFace !important;
-    --toolbar-active: Highlight !important;
-    --field-focus: Field !important;
-    --field-focus-text: FieldText !important;
-    --field-focus-line: Highlight !important;
-    --accent-text: HighlightText !important;
-  }
-}
 
 :root[data-firefox-theme] .dialog-actions .primary:hover:not(:disabled) {
   color: var(--accent-text);
