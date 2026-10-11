@@ -69,7 +69,7 @@ multi-window/session checks. Core behaviour is included in `npm test`.
 
 ## Folder appearance
 
-Folders may store an optional `appearance` with independent Acorn `icon` and palette
+Folders may store an optional `appearance` with independent `icon` and palette
 `color` IDs. Colours inherit from the nearest ancestor with a custom colour, then
 fall back to the effective container or the standard folder colour. An explicit
 colour overrides inheritance for that folder and its subfolders; reset removes
@@ -77,8 +77,11 @@ the override. Inherited colours are resolved when rendered, so edits and moves
 update descendants without copying colours into their saved appearance. Icons
 apply only to that folder and fall back to the effective container or standard
 folder icon. The catalogue and search keywords live in
-`src/folder-appearance.js`; the picker uses bundled, licensed Acorn symbols from
-`icons/ui/folder-icons.svg`. Firefox container identities keep their native choices.
+`src/folder-appearance.js`; the picker uses bundled, licensed Acorn symbols followed
+by custom A–Z and 0–9 symbols from `icons/ui/folder-icons.svg`. The final Letters &
+numbers category includes all 36 characters; searching a character or its label
+(such as "A" or "Number 7") finds that glyph directly. Asset provenance is recorded
+in `icons/ui/NOTICE.txt`. Firefox container identities keep their native choices.
 
 ## Recent activity page experiment
 
