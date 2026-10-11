@@ -10,25 +10,33 @@ function el(tag, className, text) {
 }
 
 // Keep destination selection local to the form; browsing never changes the sidebar scope.
-export function createFolderPicker({ getState, parentId, dialog, onChange }) {
+export function createFolderPicker({
+  getState,
+  parentId,
+  dialog,
+  onChange,
+  labelText = 'Create in',
+  helpText = 'Defaults to your current folder',
+  idPrefix = '',
+}) {
   let selectedId = parentId;
   let rows = [];
   const expanded = new Set([null, ...groupPath(getState(), parentId).map((group) => group.id)]);
   const events = new AbortController();
   const field = el('div', 'folder-field');
-  const label = el('label', '', 'Create in');
-  label.htmlFor = 'create-in';
+  const label = el('label', '', labelText);
+  label.htmlFor = `${idPrefix}create-in`;
   const trigger = el('button', 'folder-picker-trigger');
   trigger.type = 'button';
-  trigger.id = 'create-in';
+  trigger.id = `${idPrefix}create-in`;
   trigger.setAttribute('aria-haspopup', 'tree');
   trigger.setAttribute('aria-expanded', 'false');
-  trigger.setAttribute('aria-controls', 'folder-picker-tree');
-  trigger.setAttribute('aria-describedby', 'create-in-help');
+  trigger.setAttribute('aria-controls', `${idPrefix}folder-picker-tree`);
+  trigger.setAttribute('aria-describedby', `${idPrefix}create-in-help`);
   const value = el('span', 'folder-picker-value');
   trigger.append(icon('group'), value, icon('chevron', 'folder-picker-chevron'));
-  const help = el('p', 'folder-picker-help', 'Defaults to your current folder');
-  help.id = 'create-in-help';
+  const help = el('p', 'folder-picker-help', helpText);
+  help.id = `${idPrefix}create-in-help`;
   const popup = el('div', 'folder-picker-popup');
   popup.hidden = true;
   const searchWrap = el('div', 'folder-picker-search');
@@ -39,7 +47,7 @@ export function createFolderPicker({ getState, parentId, dialog, onChange }) {
   search.autocomplete = 'off';
   searchWrap.append(icon('search'), search);
   const tree = el('div', 'folder-picker-tree');
-  tree.id = 'folder-picker-tree';
+  tree.id = `${idPrefix}folder-picker-tree`;
   tree.setAttribute('role', 'tree');
   tree.setAttribute('aria-label', 'Destination folders');
   const empty = el('p', 'folder-picker-empty', 'No folders found.');
@@ -268,7 +276,7 @@ export function createFolderPicker({ getState, parentId, dialog, onChange }) {
     },
     { signal: events.signal },
   );
-  dialog.addEventListener('scroll', position, { signal: events.signal });
+  dialog.addEventListener('scroll', position, { signal: events.signal, capture: true });
   window.addEventListener('resize', position, { signal: events.signal });
   updateValue();
   return {

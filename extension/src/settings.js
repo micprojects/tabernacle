@@ -4,6 +4,7 @@ import { resolveTheme, createPaletteRenderer } from './theme-palette.js';
 import { containerListIcon, visualChoices } from './container-dialogs.js';
 import { sortContainers } from './containers.js';
 import { icon } from './icons.js';
+import { createSettingsBackup } from './settings-backup.js';
 
 const $ = (id) => document.getElementById(id);
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
@@ -19,6 +20,7 @@ let containerItems = [],
   editorGeneration = 0,
   editorTrigger;
 let refreshTimer;
+const folderBackup = createSettingsBackup({ request: (...args) => request(...args) });
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -362,7 +364,7 @@ $('shortcut-settings').addEventListener('click', async () => {
 });
 
 function navigate(focus = false) {
-  const sections = ['appearance', 'containers', 'shortcuts', 'about'];
+  const sections = ['appearance', 'containers', 'backup', 'shortcuts', 'about'];
   const section = sections.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'appearance';
   for (const id of sections) $(id).hidden = id !== section;
   for (const link of document.querySelectorAll('nav a')) {
@@ -371,6 +373,7 @@ function navigate(focus = false) {
   }
   if (focus) $(`${section}-title`).focus();
   if (section === 'containers' && request) loadContainers();
+  if (section === 'backup' && request) folderBackup.refresh();
   if (section === 'shortcuts') refreshShortcuts();
 }
 
@@ -413,7 +416,7 @@ window.addEventListener('focus', () => {
   if (!$('shortcuts').hidden) refreshShortcuts();
 });
 window.addEventListener('beforeunload', (event) => {
-  if (dirty.size || savingContainer) event.preventDefault();
+  if (dirty.size || savingContainer || folderBackup.isBusy()) event.preventDefault();
 });
 forcedColors.addEventListener('change', renderAppearance);
 for (const link of document.querySelectorAll('nav a')) link.prepend(icon(link.dataset.icon));

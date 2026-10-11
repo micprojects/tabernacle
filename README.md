@@ -39,13 +39,21 @@ Choose a Firefox container for new tabs, or set a default container for each fol
 
 Tabernacle follows your Firefox theme automatically. It recognises Firefox Default and Mozilla’s Sun, Spark, Flame, Flare, Lavender, Dusk, Lagoon, Pine, Tide, Ash and Smoke themes, using bundled light/dark palettes and gradients. Other themes use the colours Firefox exposes; Firefox may return their base palette even when a separate dark variant is displayed. Third-party background images are not loaded.
 
-Click the **Settings** cog at the bottom of the sidebar, or use **Preferences** for Tabernacle in Firefox’s Add-ons Manager. Settings open in a full browser tab, with sections for Appearance, Containers, Shortcuts and About.
+Click the **Settings** cog at the bottom of the sidebar, or use **Preferences** for Tabernacle in Firefox’s Add-ons Manager. Settings open in a full browser tab, with sections for Appearance, Containers, Backup and restore, Shortcuts and About.
 
 In **Settings → Appearance**, choose **Follow Firefox** or **Tabernacle**. **Tabernacle colour mode** controls the original palette when selected manually or used as a fallback: **Follow Firefox**, **Light** or **Dark**. Save applies your preferences to every window. You can also show website domains and lines connecting nested tabs.
 
 Theme identification requires Firefox’s **management** permission, which provides installed add-on information. Tabernacle uses it to identify the enabled theme; it does not store or transmit the installed add-on list or change Firefox’s theme. Mozilla palettes are bundled locally, with sources and licences in `extension/themes/NOTICE.txt`. No theme downloads happen at runtime.
 
 <img src="assets/screenshots/05-dark-mode-ui.png" width="550" alt="The sidebar in dark mode with website domains and connecting lines.">
+
+## Back up your folders
+
+In **Settings → Backup and restore**, export your folder tree to a JSON file. It includes folder order, icons, colours and default containers. Tabs, browsing activity, cookies and sign-ins aren’t included.
+
+Import a backup into **Home**, an existing folder or a new folder. Preview shows which folders will be created or reused. Matching uses exact folder names within each parent; duplicate names are paired in sibling order. Existing folders keep their settings and order. New folders are added after existing siblings.
+
+For default containers, choose an existing container, create one from the saved name, colour and icon, or select **No container**. Inherited defaults follow the destination folder’s ancestry. Importing the same file into the same destination again adds only folders that are still missing.
 
 ## Keep pinned tabs visible
 

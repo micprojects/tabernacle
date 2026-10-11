@@ -22,6 +22,7 @@ for (const name of [
   'test-color-mode-ui',
   'test-look-ui',
   'test-settings-ui',
+  'test-backup-ui',
   'test-themes-ui',
   'test-performance-ui',
 ]) {

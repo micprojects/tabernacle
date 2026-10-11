@@ -7,6 +7,7 @@ import { normalizeLook, requireLook } from './look.js';
 import { recordExpansions } from './folder-activity.js';
 import { requireGroupAppearance } from './folder-appearance.js';
 import { internalPage, openInternalPage } from './internal-pages.js';
+import { createFolderBackupController, folderBackupActions } from './folder-backup-controller.js';
 import {
   MODEL_KEY,
   VIEW_KEY,
@@ -51,6 +52,13 @@ export function createController(api, notify = () => {}) {
     publish(windowId);
   });
   let ready;
+  const folderBackup = createFolderBackupController({
+    api,
+    getModel: () => model,
+    changeModel,
+    publish,
+    invalidateContainers: () => cache.invalidateContainers(),
+  });
   const moves = createMoveRecovery({
     api,
     readRecords,
@@ -81,10 +89,12 @@ export function createController(api, notify = () => {}) {
     return ready;
   }
 
-  const enqueue = (work) => {
+  const enqueue = (work, recoverMoves = true) => {
     const result = queue.then(async () => {
       await initialize();
-      await moves.recover();
+      if (recoverMoves) await moves.recover();
+      else if (moves.hasPending())
+        throw new Error('A folder or tab move needs to finish. Open the sidebar, then try again.');
       return work();
     });
     queue = result.catch(() => {});
@@ -556,6 +566,7 @@ export function createController(api, notify = () => {}) {
     if (!Number.isInteger(windowId)) throw new Error('No browser window is available.');
     const window = await api.windows.get(windowId);
     if (window.incognito) throw new Error('Tabernacle is not enabled in private windows.');
+    if (folderBackupActions.has(type)) return folderBackup(message);
     let extra = {};
     switch (type) {
       case 'snapshot':
@@ -1052,7 +1063,7 @@ export function createController(api, notify = () => {}) {
       enqueue(() => {
         requestTabs = new Map();
         return handle(message);
-      }),
+      }, !folderBackupActions.has(message.type)),
     dispose: () => cache.dispose(),
     created: (tab) =>
       enqueue(async () => {
