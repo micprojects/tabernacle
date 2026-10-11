@@ -145,12 +145,10 @@ try {
   await clickRow(`[data-key="viewed:${viewed.id}"]`);
   assert.equal((await call('return browser.tabs.get(arguments[0]);', viewed.id)).active, true);
   await driver.switchTo().window(activityHandle);
-  await driver.executeScript(
-    'document.getElementById("activity-layout").value="detail";document.getElementById("activity-layout").dispatchEvent(new Event("change"));',
-  );
-  await driver.wait(until.elementLocated(By.css('.detail-card')), 5000);
+  assert.equal((await driver.findElements(By.id('activity-layout'))).length, 0);
+  await driver.wait(until.elementLocated(By.css('.activity-timeline')), 5000);
   console.log(
-    '✓ Native Firefox: extension page, reuse, self exclusion, folder entry, restore, switch and detail layout',
+    '✓ Native Firefox: extension page, reuse, self exclusion, folder entry, restore, switch and timeline',
   );
 } finally {
   try {

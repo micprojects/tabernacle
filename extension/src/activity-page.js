@@ -18,12 +18,11 @@ const mockup = demo && params.has('mockup');
 const pageUrl = location.href.split(/[?#]/)[0];
 const results = $('activity-results');
 const search = $('activity-search');
-const layout = $('activity-layout');
 const period = $('activity-period');
 const folderEvent = $('folder-event');
 const paint = createPaletteRenderer(document.documentElement);
 const forced = matchMedia('(forced-colors: active)');
-let state, request, observer, windowId, selected, busyKey, readFailed;
+let state, request, observer, windowId, busyKey, readFailed;
 let refreshing = false,
   refreshAgain = false,
   refreshTimer,
@@ -122,30 +121,26 @@ async function act(item) {
   }
 }
 
-function row(item, detail = false) {
+function row(item) {
   const li = el('li', 'activity-row');
   li.dataset.kind = item.kind;
   const action = activityKinds[item.kind];
-  const node = button('item-button', undefined, () => {
-    if (detail) {
-      selected = item.key;
-      render();
-    } else act(item);
-  });
+  const node = button('item-button', undefined, () => act(item));
   node.dataset.key = item.key;
   node.disabled = busyKey === item.key;
-  node.setAttribute(
-    'aria-label',
-    `${detail ? 'Show details for' : action.action + ':'} ${item.title}`,
-  );
-  if (detail && selected === item.key) node.setAttribute('aria-current', 'true');
+  node.setAttribute('aria-label', `${action.action}: ${item.title}`);
   const text = el('span', 'item-text');
   const title = el('span', 'item-title', item.title);
   title.title = item.title;
   const meta = el('span', 'item-detail');
-  const event = el('span', 'item-kind', eventLabel(item));
-  event.prepend(icon(item.kind === 'folder' && item.event === 'Expanded' ? 'expand' : action.icon));
-  meta.append(event, document.createTextNode(item.detail || item.path || 'Tab'));
+  const event = el('span', 'item-kind');
+  event.append(
+    icon(item.kind === 'folder' && item.event === 'Expanded' ? 'expand' : action.icon),
+    el('span', '', eventLabel(item)),
+  );
+  const context = el('span', 'item-context', item.detail || item.path || 'Tab');
+  context.title = context.textContent;
+  meta.append(event, context);
   text.append(title, meta);
   const time = el('time', 'item-time', activityTime(item.timestamp));
   if (item.timestamp) {
@@ -163,7 +158,7 @@ function row(item, detail = false) {
   return li;
 }
 
-function timeline(items, detail = false) {
+function timeline(items) {
   const container = el('div', 'activity-timeline');
   let currentDay, list;
   for (const item of items) {
@@ -176,44 +171,9 @@ function timeline(items, detail = false) {
       section.append(list);
       container.append(section);
     }
-    list.append(row(item, detail));
+    list.append(row(item));
   }
   return container;
-}
-
-function detailCard(item) {
-  const card = el('aside', 'detail-card');
-  card.setAttribute('aria-label', 'Activity details');
-  card.append(
-    itemIcon(item),
-    el('h3', '', item.title),
-    el('p', 'detail-url', item.url || item.detail),
-  );
-  const facts = el('dl');
-
-  const add = (label, value) => {
-    const pair = el('div');
-    pair.append(el('dt', '', label), el('dd', '', value));
-    facts.append(pair);
-  };
-
-  const date = (time) =>
-    new Date(time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  if (item.kind === 'folder') {
-    if (item.enteredAt) add('Last entered', date(item.enteredAt));
-    if (item.expandedAt) add('Last expanded', date(item.expandedAt));
-    add('In this window', `${item.tabCount} ${item.tabCount === 1 ? 'tab' : 'tabs'}`);
-  } else {
-    add(eventLabel(item), item.timestamp ? date(item.timestamp) : 'Time unavailable');
-    if (item.path) add('Folder', item.path);
-    if (item.container?.name) add('Container', item.container.name);
-  }
-  const primary = button('detail-primary', activityKinds[item.kind].action, () => act(item));
-  primary.dataset.actionKey = item.key;
-  primary.disabled = busyKey === item.key;
-  primary.append(icon(item.kind === 'closed' ? 'undo' : 'enter'));
-  card.append(facts, primary);
-  return card;
 }
 
 function empty() {
@@ -246,7 +206,6 @@ function render() {
   if (!state || disposed) return;
   appearance();
   const focusedKey = document.activeElement?.dataset.key;
-  const actionKey = document.activeElement?.dataset.actionKey;
   const options = { query: search.value, period: period.value };
   const all = activityItems(state, {
     pageUrl,
@@ -274,34 +233,11 @@ function render() {
     ? `Could not load closed tabs. ${historyError}`
     : '';
   results.replaceChildren();
-  results.dataset.layout = layout.value;
   if (!items.length) results.append(empty());
-  else if (layout.value === 'columns' && kind === 'all') {
-    const columns = el('div', 'activity-columns');
-    for (const [type, info] of Object.entries(activityKinds)) {
-      const column = el('section');
-      const columnItems = items.filter((item) => item.kind === type);
-      const heading = el('h3', 'column-heading', info.label);
-      heading.prepend(icon(info.icon));
-      heading.append(el('span', '', columnItems.length));
-      column.append(
-        heading,
-        columnItems.length ? timeline(columnItems) : el('p', 'empty-message', 'No activity yet.'),
-      );
-      columns.append(column);
-    }
-    results.append(columns);
-  } else if (layout.value === 'detail') {
-    if (!items.some((item) => item.key === selected)) selected = items[0].key;
-    const split = el('div', 'detail-layout');
-    split.append(timeline(items, true), detailCard(items.find((item) => item.key === selected)));
-    results.append(split);
-  } else results.append(timeline(items));
+  else results.append(timeline(items));
   results.setAttribute('aria-busy', 'false');
-  if (focusedKey || actionKey) {
-    const selector = focusedKey
-      ? `[data-key="${CSS.escape(focusedKey)}"]`
-      : `[data-action-key="${CSS.escape(actionKey)}"]`;
+  if (focusedKey) {
+    const selector = `[data-key="${CSS.escape(focusedKey)}"]`;
     (results.querySelector(selector) || results.querySelector('.item-button') || search).focus({
       preventScroll: true,
     });
@@ -359,14 +295,6 @@ for (const [value, label, symbol] of [
 }
 for (const node of document.querySelectorAll('span[data-icon]'))
   node.append(icon(node.dataset.icon));
-if (['timeline', 'columns', 'detail'].includes(params.get('layout')))
-  layout.value = params.get('layout');
-layout.addEventListener('change', () => {
-  const url = new URL(location.href);
-  url.searchParams.set('layout', layout.value);
-  history.replaceState(null, '', url);
-  render();
-});
 search.addEventListener('input', render);
 period.addEventListener('change', render);
 folderEvent.addEventListener('change', render);

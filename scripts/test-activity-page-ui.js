@@ -9,50 +9,44 @@ const errors = [];
 page.context().on('page', (tab) => tab.on('pageerror', (error) => errors.push(error.message)));
 page.on('pageerror', (error) => errors.push(error.message));
 try {
-  for (const layout of ['timeline', 'columns', 'detail']) {
-    await page.goto(`${base}/extension/activity.html?demo&mockup&layout=${layout}`);
-    await expect(page.locator('.activity-row')).toHaveCount(18);
-    await page.screenshot({ path: `test-results/activity-${layout}.png` });
-    await page.getByRole('link', { name: /^Folders/ }).click();
-    await page.getByLabel('Folder activity', { exact: true }).selectOption('expanded');
-    await expect(page.locator('.activity-row')).toHaveCount(3);
-    await page.getByLabel('Folder activity', { exact: true }).selectOption('entered');
-    await expect(page.locator('.activity-row')).toHaveCount(3);
-    await page.getByRole('link', { name: /^All activity/ }).click();
-    await page.getByLabel('Search recent activity').fill('CSS grid');
-    await expect(page.locator('.activity-row')).toHaveCount(1);
-    await page.getByLabel('Search recent activity').fill('nothing-matches');
-    await expect(page.getByText('No matching activity', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Clear filters' }).click();
-    await expect(page.locator('.activity-row')).toHaveCount(18);
-    await page.getByLabel('Time period').selectOption('yesterday');
-    expect(await page.locator('.activity-row').count()).toBeGreaterThan(0);
-    await page.getByLabel('Time period').selectOption('all');
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.screenshot({ path: `test-results/activity-${layout}-dark.png` });
-    await page.setViewportSize({ width: 390, height: 844 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true,
-    );
-    await page.screenshot({ path: `test-results/activity-${layout}-narrow.png` });
-    await page.emulateMedia({ forcedColors: 'active' });
-    await page.keyboard.press('Tab');
-    await page.locator('.item-button').first().focus();
-    expect(
-      await page
-        .locator('.item-button')
-        .first()
-        .evaluate((node) => getComputedStyle(node).outlineStyle),
-    ).toBe('solid');
-    await page.emulateMedia({ colorScheme: 'light', forcedColors: 'none' });
-    await page.setViewportSize({ width: 1440, height: 1000 });
-  }
+  await page.goto(`${base}/extension/activity.html?demo&mockup`);
+  await expect(page.getByRole('combobox', { name: 'Layout', exact: true })).toHaveCount(0);
+  await expect(page.locator('.activity-row')).toHaveCount(18);
+  await page.screenshot({ path: `test-results/activity-timeline.png` });
+  await page.getByRole('link', { name: /^Folders/ }).click();
+  await page.getByLabel('Folder activity', { exact: true }).selectOption('expanded');
+  await expect(page.locator('.activity-row')).toHaveCount(3);
+  await page.getByLabel('Folder activity', { exact: true }).selectOption('entered');
+  await expect(page.locator('.activity-row')).toHaveCount(3);
+  await page.getByRole('link', { name: /^All activity/ }).click();
+  await page.getByLabel('Search recent activity').fill('CSS grid');
+  await expect(page.locator('.activity-row')).toHaveCount(1);
+  await page.getByLabel('Search recent activity').fill('nothing-matches');
+  await expect(page.getByText('No matching activity', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(page.locator('.activity-row')).toHaveCount(18);
+  await page.getByLabel('Time period').selectOption('yesterday');
+  expect(await page.locator('.activity-row').count()).toBeGreaterThan(0);
+  await page.getByLabel('Time period').selectOption('all');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.screenshot({ path: `test-results/activity-timeline-dark.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `test-results/activity-timeline-narrow.png` });
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.keyboard.press('Tab');
+  await page.locator('.item-button').first().focus();
+  expect(
+    await page
+      .locator('.item-button')
+      .first()
+      .evaluate((node) => getComputedStyle(node).outlineStyle),
+  ).toBe('solid');
+  await page.emulateMedia({ colorScheme: 'light', forcedColors: 'none' });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   console.log(
-    '✓ Three layouts: search, folder filters, dates, dark mode, narrow screens and forced colours',
+    '✓ Timeline: search, folder filters, dates, dark mode, narrow screens and forced colours',
   );
-  await page.goto(`${base}/preview/activity-mockups.html`);
-  await expect(page.frameLocator('iframe').first().locator('.activity-row')).toHaveCount(18);
-  await page.screenshot({ path: 'test-results/activity-mockups.png', fullPage: true });
 
   // Real document messaging with a shared controller and simulated browser tabs.
   await page.context().addInitScript(() => {
@@ -164,10 +158,6 @@ try {
     .click();
   expect(await page.evaluate(() => window.activityTest.sidebarOpened)).toBe(true);
   await expect(page.locator('#group-path')).toContainText('Website refresh');
-  await activity.getByLabel('Layout', { exact: true }).selectOption('detail');
-  await activity.getByRole('button', { name: 'Show details for Copenhagen weekend' }).click();
-  await expect(activity.locator('.detail-card')).toContainText('Last expanded');
-  await expect(activity.locator('.detail-card')).toContainText('Last entered');
   await activity.locator('.item-button').first().focus();
   await activity.keyboard.press('ArrowDown');
   await expect(activity.locator('.item-button').nth(1)).toBeFocused();
@@ -181,7 +171,7 @@ try {
     }),
   );
   await expect(
-    activity.getByRole('button', { name: 'Show details for Website updates' }),
+    activity.getByRole('button', { name: 'Enter folder: Website updates' }),
   ).toBeVisible();
   await page.evaluate(() => {
     window.activityTest.fail = 'tabernacle:snapshot';

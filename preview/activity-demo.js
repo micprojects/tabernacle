@@ -2,8 +2,8 @@ import { memoryBrowser } from './browser.js';
 import { createController } from '../extension/src/controller.js';
 import { VIEW_KEY } from '../extension/src/model.js';
 
-// Shared sample content makes the three mockups directly comparable. It uses
-// the real controller, but only this in-memory browser, never personal history.
+// Sample activity uses the real controller, but only this in-memory browser,
+// never personal history.
 export async function createActivityDemo(notify) {
   const now = Date.now();
   const ago = (minutes) => now - minutes * 60000;
