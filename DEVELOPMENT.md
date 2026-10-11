@@ -3,6 +3,20 @@
 The tab list uses one layout, styled in `extension/tree.css`. Colour tokens, the bottom
 bar, menus and dialogs live in `extension/sidebar.css`. Favicons come directly from Firefox.
 
+`extension/settings.html` is the native Firefox options page. The Settings button
+reuses one live page across windows, without navigating or reloading it, so its
+section, scroll position and unsaved edits survive switching to another tab.
+`src/internal-pages.js` launches it through the controller's serialized queue and
+recreates it if closed. Settings pages are omitted from Tabernacle's
+tab tree, folder counts and recent activity, including recently closed tabs.
+They still exist in Firefox's native tab strip; Firefox cannot hide an active tab.
+New Settings documents claim the existing page before enabling editing, so opening
+Preferences through Firefox also returns to the same view.
+It shares the sidebar’s colour tokens, with its layout in `settings.css`
+and behaviour in `src/settings.js`. Appearance saves merge only edited fields in the
+controller so simultaneous settings tabs preserve each other’s changes. Container forms
+use the same choices and controller actions as the contextual sidebar dialogs.
+
 The Firefox add-on ID is `tabernacle@michaelprojects.com`, with saved data under `tabernacle.*`
 keys.
 
@@ -37,7 +51,8 @@ npm run test:ui
 ```
 
 `check` runs formatting checks, JavaScript and extension linting, and the unit tests.
-`test:ui` runs all sidebar UI suites. `npm run test:firefox` runs integration tests with
+`test:ui` runs the sidebar and settings UI suites. `npm run test:settings` runs just
+the settings suite. `npm run test:firefox` runs integration tests with
 temporary Firefox profile and app-data directories; it requires Firefox and downloads
 GeckoDriver when needed. On macOS, those integration tests dispatch HTML drag events
 because Marionette can fail to complete pointer drags. The Chromium UI suites exercise

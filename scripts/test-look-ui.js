@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { startUiTest } from './ui-test.js';
+import { prepareSettings } from './settings-test.js';
 
 const { page, close, base } = await startUiTest({
   viewport: { width: 320, height: 920 },
@@ -87,15 +88,11 @@ try {
     await page.mouse.move(319, 0);
   };
 
-  const openLook = async () => {
-    await page.locator('#more').click();
-    await expect(page.getByRole('menuitem', { name: 'Look', exact: true })).toHaveCount(0);
-    await page.getByRole('menuitem', { name: 'Appearance', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: 'Appearance', exact: true })).toBeVisible();
-  };
+  const openLook = await prepareSettings(page);
+  const settings = await openLook();
 
-  const lines = page.getByRole('checkbox', { name: 'Show connecting lines', exact: true });
-  const domains = page.getByRole('checkbox', {
+  const lines = settings.getByRole('checkbox', { name: 'Show connecting lines', exact: true });
+  const domains = settings.getByRole('checkbox', {
     name: 'Show the domain as a second line',
     exact: true,
   });
@@ -104,8 +101,19 @@ try {
     await openLook();
     await lines.setChecked(showLines);
     await domains.setChecked(showDomains);
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByRole('dialog')).toBeHidden();
+    if (await settings.locator('#appearance-save').isEnabled())
+      await settings.locator('#appearance-save').click();
+    await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
+    await expect
+      .poll(() =>
+        page
+          .locator('#tree')
+          .evaluate((tree) => [
+            tree.classList.contains('show-connecting-lines'),
+            tree.classList.contains('show-domains'),
+          ]),
+      )
+      .toEqual([showLines, showDomains]);
     await settleFocus();
   };
 
@@ -121,7 +129,7 @@ try {
     );
 
   // Connecting lines start enabled, while domain subtitles remain optional.
-  expect(await guides()).toBe('""');
+  await expect.poll(guides).toBe('""');
   await openLook();
   await expect(lines).toBeChecked();
   await expect(domains).not.toBeChecked();
@@ -237,16 +245,16 @@ try {
   ).toEqual(['sidebar.css', 'tree.css']);
   await page.screenshot({ path: 'test-results/look-default.png' });
   await expect(page.locator('.row-detail')).toHaveCount(0);
-  expect(await guides()).toBe('none');
+  await expect.poll(guides).toBe('none');
 
   // Editing then cancelling does not apply either preference.
   await openLook();
-  await expect(page.getByRole('combobox', { name: 'Colour mode', exact: true })).toBeFocused();
+  await expect(settings.getByRole('combobox', { name: 'Colour mode', exact: true })).toBeVisible();
   await expect(lines).not.toBeChecked();
   await expect(domains).not.toBeChecked();
   await lines.check();
   await domains.check();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await settings.getByRole('button', { name: 'Discard changes', exact: true }).click();
   await openLook();
   await expect(lines).not.toBeChecked();
   await expect(domains).not.toBeChecked();
@@ -254,7 +262,7 @@ try {
 
   // Lines change no row geometry or controls; domains remain disabled.
   await saveLook(true, false);
-  expect(await guides()).toBe('""');
+  await expect.poll(guides).toBe('""');
   expect(await geometry()).toEqual(baselineGeometry);
   await expect(page.locator('.row-detail')).toHaveCount(0);
   await expect(parent.locator('.tab-disclosure')).toBeVisible();
@@ -263,7 +271,7 @@ try {
 
   // Domains apply to parent tabs as well as leaves, without adding group counts.
   await saveLook(false, true);
-  expect(await guides()).toBe('none');
+  await expect.poll(guides).toBe('none');
   await expect(parent.locator('.row-detail')).toHaveText('figma.com');
   await expect(child.locator('.row-detail')).toHaveText('fonts.google.com');
   await expect(group.locator('.row-detail')).toHaveCount(0);
@@ -275,15 +283,15 @@ try {
   await openLook();
   await lines.check();
   await page.evaluate(() => (window.failLookSave = true));
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('Storage unavailable');
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(settings.getByRole('alert')).toHaveText('Storage unavailable');
   await expect(lines).toBeEnabled();
-  expect(await guides()).toBe('none');
+  await expect.poll(guides).toBe('none');
   await page.evaluate(() => (window.failLookSave = false));
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeHidden();
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   await settleFocus();
-  expect(await guides()).toBe('""');
+  await expect.poll(guides).toBe('""');
   await expect(parent.locator('.row-detail')).toHaveText('figma.com');
   expect(await footer()).toEqual(baselineFooter);
   await page.screenshot({ path: 'test-results/look-light.png' });
@@ -339,13 +347,14 @@ try {
   await expect(parent).toBeVisible();
   await checkConnection('tab:1', 'tab:2');
   await page.keyboard.press('Escape');
-  await page.locator('#more').click();
+  await page.locator('#tree').focus();
+  await page.keyboard.press('Shift+F10');
   await expect(page.getByRole('menuitem', { name: /^(Compact|Comfortable) rows$/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(parent).toHaveCSS('min-height', '38px');
   await expect(group).toHaveCSS('min-height', '26px');
 
-  // Background preference changes refresh the open sidebar and its dialog.
+  // Background preference changes refresh the open sidebar and settings page.
   await page.evaluate(() =>
     window.browser.runtime.sendMessage({
       type: 'tabernacle:setLook',
@@ -355,7 +364,7 @@ try {
   );
   await expect(page.locator('.row-detail')).toHaveCount(0);
   expect(await geometry()).toEqual(baselineGeometry);
-  expect(await guides()).toBe('none');
+  await expect.poll(guides).toBe('none');
   await page.evaluate(() =>
     window.browser.runtime.sendMessage({
       type: 'tabernacle:setLook',
@@ -367,7 +376,7 @@ try {
   await openLook();
   await expect(lines).toBeChecked();
   await expect(domains).toBeChecked();
-  await page.screenshot({ path: 'test-results/look-preferences.png' });
+  await settings.screenshot({ path: 'test-results/look-preferences.png' });
   await page.keyboard.press('Escape');
 
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -386,7 +395,7 @@ try {
   expect(await geometry()).toEqual(baselineGeometry);
   expect(await footer()).toEqual(baselineFooter);
   await expect(page.locator('.row-detail')).toHaveCount(0);
-  expect(await guides()).toBe('none');
+  await expect.poll(guides).toBe('none');
 
   // Revealing the creation actions keeps the plus aligned with the tree guides.
   const add = page.getByRole('button', { name: 'New tab in Design', exact: true });

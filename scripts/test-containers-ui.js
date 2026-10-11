@@ -638,14 +638,12 @@ try {
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   check('Management edits shared container details and preserves the picker selection');
 
-  await page.getByRole('button', { name: 'More options', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'New container…', exact: true }).click();
+  await openPicker(pin);
+  await page.getByRole('button', { name: 'New container…', exact: true }).click();
   await expect(page.getByLabel('Container name', { exact: true })).toBeFocused();
   await page.getByLabel('Container name', { exact: true }).fill('Temporary');
   await page.getByRole('button', { name: 'Create container', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeHidden();
-  await page.getByRole('button', { name: 'More options', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Manage containers…', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage containers…', exact: true }).click();
   await page.getByRole('button', { name: 'Remove Temporary', exact: true }).click();
   await expect(page.locator('#dialog-description')).toContainText('cookies and site data');
   await page.keyboard.press('Escape');
@@ -667,9 +665,10 @@ try {
   await expect(page.locator('#dialog-title')).toHaveText('Manage containers');
   await expect(page.getByRole('button', { name: 'Remove Temporary', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(errors).toEqual([]);
-  check('More options exposes both actions; removal supports cancellation and protects open tabs');
+  check('Contextual management supports cancellation and protects open container tabs');
 
   const longName = 'Research and reference for the Copenhagen weekend website project';
   await page.evaluate(async (name) => {

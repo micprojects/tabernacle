@@ -84,6 +84,110 @@ try {
     await driver.wait(until.elementLocated(By.css('.tab-row')), 15000);
   };
 
+  const sidebarHandle = await driver.getWindowHandle();
+  await driver.findElement(By.id('settings')).click();
+  const settingsHandle = await driver.wait(
+    async () => (await driver.getAllWindowHandles()).find((handle) => handle !== sidebarHandle),
+    5000,
+  );
+  await driver.switchTo().window(settingsHandle);
+  await driver.wait(
+    async () =>
+      driver.executeScript('return !document.getElementById("appearance-fields")?.disabled;'),
+    5000,
+  );
+  assert.equal(await driver.getCurrentUrl(), `moz-extension://${uuid}/settings.html`);
+  const optionsManifest = await browserCall('return browser.runtime.getManifest().options_ui;');
+  assert.equal(optionsManifest.open_in_tab, true);
+  assert.equal(optionsManifest.page, `moz-extension://${uuid}/settings.html`);
+  await driver.executeScript(`
+    const mode = document.getElementById('look-color-scheme');
+    mode.value = 'dark'; mode.dispatchEvent(new Event('change', {bubbles:true}));
+    document.querySelector('[name="domains"]').click();
+  `);
+  const settingsId = (await browserCall('return browser.tabs.getCurrent();')).id;
+  await driver.findElement(By.css('a[href="#containers"]')).click();
+  await driver.findElement(By.id('container-new')).click();
+  await driver.findElement(By.id('container-name')).sendKeys('Unfinished container');
+  await driver.executeScript('window.settingsVisit = "retained";');
+  await driver.switchTo().window(sidebarHandle);
+  assert.equal(
+    (await send('snapshot')).tabs.some((tab) => tab.id === settingsId),
+    false,
+  );
+  await driver.findElement(By.id('settings')).click();
+  await driver.switchTo().window(settingsHandle);
+  assert.equal(await driver.getCurrentUrl(), `moz-extension://${uuid}/settings.html#containers`);
+  assert.equal(await driver.executeScript('return window.settingsVisit;'), 'retained');
+  assert.equal(
+    await driver.findElement(By.id('container-name')).getAttribute('value'),
+    'Unfinished container',
+  );
+  await driver.findElement(By.css('#container-editor button[type="button"]')).click();
+  await driver.findElement(By.css('a[href="#appearance"]')).click();
+  assert.equal(await driver.findElement(By.id('appearance-status')).getText(), 'Unsaved changes');
+  await driver.findElement(By.id('appearance-save')).click();
+  await driver.wait(async () => (await send('getSettings')).look.domains, 5000);
+  await driver.navigate().refresh();
+  await driver.wait(
+    async () =>
+      driver.executeScript(
+        'return document.querySelector("[name=domains]")?.checked && document.getElementById("look-color-scheme").value === "dark";',
+      ),
+    5000,
+  );
+  await writeFile('test-results/firefox-settings.png', await driver.takeScreenshot(), 'base64');
+  await driver.switchTo().window(sidebarHandle);
+  await driver.wait(
+    async () =>
+      driver.executeScript(
+        'return document.getElementById("tree").classList.contains("show-domains");',
+      ),
+    5000,
+  );
+  const tabCount = (await driver.getAllWindowHandles()).length;
+  await browserCall('await browser.runtime.openOptionsPage(); return true;');
+  await driver.wait(async () => (await driver.getAllWindowHandles()).length === tabCount, 5000);
+  assert.equal((await driver.getAllWindowHandles()).length, tabCount);
+  await driver.switchTo().window(settingsHandle);
+  await driver.setContext(firefox.Context.CHROME);
+  const optionsURL = await driver.executeAsyncScript(
+    `
+    const done=arguments[arguments.length-1];
+    const {AddonManager}=ChromeUtils.importESModule('resource://gre/modules/AddonManager.sys.mjs');
+    AddonManager.getAddonByID(arguments[0]).then(addon=>done(addon.optionsURL));
+  `,
+    addonId,
+  );
+  assert.equal(optionsURL, `moz-extension://${uuid}/settings.html`);
+  await driver.setContext(firefox.Context.CONTENT);
+  await send('setLook', {
+    value: {
+      connectingLines: true,
+      domains: false,
+      colorScheme: 'default',
+    },
+  });
+  await driver.close();
+  await driver.switchTo().window(sidebarHandle);
+  assert.equal(
+    (await send('snapshot')).recentlyClosed.some((tab) => tab.url.includes('settings.html')),
+    false,
+  );
+  await driver.findElement(By.id('settings')).click();
+  const recreatedSettingsHandle = await driver.wait(
+    async () => (await driver.getAllWindowHandles()).find((handle) => handle !== sidebarHandle),
+    5000,
+  );
+  await driver.switchTo().window(recreatedSettingsHandle);
+  await driver.wait(until.elementLocated(By.id('appearance-fields')), 5000);
+  assert.notEqual((await browserCall('return browser.tabs.getCurrent();')).id, settingsId);
+  await driver.close();
+  await driver.switchTo().window(sidebarHandle);
+  console.log(
+    '✓ Settings stays out of the sidebar and history, preserves drafts on return, recreates after close and integrates with Add-ons Manager',
+  );
+
   const originalActive = (await send('snapshot')).tabs.find((item) => item.active).id;
   const testPins = await browserCall(`
     const pins = [];

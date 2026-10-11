@@ -166,3 +166,20 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
   assert.equal(changes.length, 0);
   controller.dispose();
 });
+
+test('settings updates merge only edited fields across windows and reject invalid partial changes', async () => {
+  const { send, controller, changes } = await fixture();
+  const before = (await send('getSettings')).look;
+  assert.deepEqual(Object.keys(await send('getSettings')), ['look']);
+  await send('setLook', { partial: true, value: { domains: true } }, 2);
+  await send('setLook', { partial: true, value: { colorScheme: 'dark' } });
+  const saved = { ...before, domains: true, colorScheme: 'dark' };
+  assert.deepEqual((await send('getSettings')).look, saved);
+  assert.equal(changes.at(-1).windowId, undefined);
+  await assert.rejects(
+    send('setLook', { partial: true, value: { domains: 'true' } }),
+    /Choose whether/,
+  );
+  assert.deepEqual((await send('getSettings', {}, 2)).look, saved);
+  controller.dispose();
+});

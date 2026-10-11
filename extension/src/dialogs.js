@@ -2,7 +2,6 @@ import { icon } from './icons.js';
 import { children, groupById, groupContainer, isWithin, tabSubtree } from './model.js';
 import { containerListIcon, createContainerManagement } from './container-dialogs.js';
 import { sortContainers } from './containers.js';
-import { normalizeLook } from './look.js';
 import { createGroupCreation } from './group-creation.js';
 import { createAppearancePicker } from './appearance-picker.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
@@ -111,104 +110,6 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     editAppearance,
     isCurrent: (context) => dialogContext === context && $('dialog').open,
   });
-
-  function aboutDialog(manifest) {
-    const content = el('dl', 'about-details');
-    const website = new URL(manifest.homepage_url);
-    for (const [label, text, href] of [
-      ['Website', website.host + website.pathname.replace(/\/$/, ''), website.href],
-      [
-        'Source code',
-        'github.com/micprojects/tabernacle',
-        'https://github.com/micprojects/tabernacle',
-      ],
-      ['Contact email', 'tabernacle@michaelprojects.com', 'mailto:tabernacle@michaelprojects.com'],
-      ['Made by', manifest.author, 'https://michaelprojects.com'],
-    ]) {
-      const detail = el('dd');
-      const link = el('a', '', text);
-      link.href = href;
-      if (href.startsWith('https:')) {
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-      }
-      detail.append(link);
-      content.append(el('dt', '', label), detail);
-    }
-    showDialog({
-      title: `About ${manifest.name}`,
-      description: `Version ${manifest.version}`,
-      input: false,
-      submit: 'Close',
-      cancel: '',
-      content,
-
-      onSubmit: () => {},
-
-      afterSubmit: () => $('more').focus(),
-      onCancel: () => $('more').focus(),
-    });
-    const logo = el('img');
-    logo.src = new URL('../icons/tabernacle-toolbar-full.svg', import.meta.url).href;
-    logo.alt = '';
-    logo.width = 48;
-    logo.height = 48;
-    $('dialog-icon').replaceChildren(logo);
-  }
-
-  function lookDialog() {
-    const look = normalizeLook(getState().look);
-    const content = el('div', 'look-options');
-    const mode = el('select');
-    mode.id = 'look-color-scheme';
-    mode.setAttribute('aria-describedby', 'look-color-scheme-help');
-    for (const [value, text] of [
-      ['default', 'Default'],
-      ['light', 'Light'],
-      ['dark', 'Dark'],
-    ]) {
-      const option = el('option', '', text);
-      option.value = value;
-      option.selected = look.colorScheme === value;
-      mode.append(option);
-    }
-    const modeField = el('div', 'look-color-scheme');
-    const modeLabel = el('label', '', 'Colour mode');
-    modeLabel.htmlFor = mode.id;
-    const modeHelp = el('p', 'look-help', 'Default follows Firefox’s light/dark preference.');
-    modeHelp.id = 'look-color-scheme-help';
-    modeField.append(modeLabel, mode, modeHelp);
-    content.append(modeField);
-    const controls = {};
-    for (const [key, text] of [
-      ['connectingLines', 'Show connecting lines'],
-      ['domains', 'Show the domain as a second line'],
-    ]) {
-      const label = el('label', 'look-option');
-      const checkbox = el('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = look[key];
-      controls[key] = checkbox;
-      label.append(checkbox, el('span', '', text));
-      content.append(label);
-    }
-    showDialog({
-      title: 'Appearance',
-      description: 'Choose your colours and tab list details.',
-      input: false,
-      content,
-
-      onSubmit: async () => {
-        const value = Object.fromEntries(
-          Object.entries(controls).map(([key, checkbox]) => [key, checkbox.checked]),
-        );
-        value.colorScheme = mode.value;
-        onChange(await request('setLook', { value }));
-      },
-    });
-    $('dialog-icon').replaceChildren(icon('list'));
-    mode.focus();
-  }
 
   function editAppearance({ group, container, onSubmit, onSave, onCancel }) {
     const state = getState();
@@ -593,7 +494,5 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
     groupContainerDialog,
     createContainerDialog,
     manageContainersDialog,
-    lookDialog,
-    aboutDialog,
   };
 }

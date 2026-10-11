@@ -29,8 +29,9 @@ try {
   await expect(toggle).toBeFocused();
   console.log('✓ Home toggle folds groups and tab trees, preserves pins and expands every depth');
 
-  // Folding all through the old group-only menu leaves hidden tab branches open.
-  await page.locator('#more').click();
+  // Folding folders through the blank-area menu leaves hidden tab branches open.
+  await page.locator('#tree').focus();
+  await page.keyboard.press('Shift+F10');
   await page.getByRole('menuitem', { name: 'Collapse all folders', exact: true }).click();
   await expect(toggle).toHaveAccessibleName('Expand all in Home');
   await work.getByRole('button', { name: 'Expand Work', exact: true }).click();

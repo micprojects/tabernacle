@@ -39,6 +39,8 @@ Choose a Firefox container for new tabs, or set a default container for each fol
 
 Switch between light and dark themes. Show website domains and lines connecting nested tabs.
 
+Click the **Settings** cog at the bottom of the sidebar, or use **Preferences** for Tabernacle in Firefox’s Add-ons Manager. Settings open in a full browser tab, with sections for Appearance, Containers, Shortcuts and About.
+
 <img src="assets/screenshots/05-dark-mode-ui.png" width="550" alt="The sidebar in dark mode with website domains and connecting lines.">
 
 ## Keep pinned tabs visible

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings · Tabernacle</title>
+    <link rel="icon" href="icons/tabernacle-toolbar-full.svg" type="image/svg+xml" sizes="any" />
+    <link rel="stylesheet" href="sidebar.css" />
+    <link rel="stylesheet" href="folder-icons.css" />
+    <link rel="stylesheet" href="settings.css" />
+    <script type="module" src="src/settings.js"></script>
+  </head>
+  <body class="settings-page">
+    <a class="skip-link" href="#settings-content">Skip to settings</a>
+    <div class="settings-layout">
+      <aside class="settings-navigation">
+        <div class="settings-brand">
+          <img src="icons/tabernacle-toolbar-full.svg" alt="" width="36" height="36" /><span
+            >Tabernacle</span
+          >
+        </div>
+        <h1>Settings</h1>
+        <nav aria-label="Settings sections">
+          <a href="#appearance" aria-current="page" data-icon="list">Appearance</a>
+          <a href="#containers" data-icon="container">Containers</a>
+          <a href="#shortcuts" data-icon="keyboard">Shortcuts</a>
+          <a href="#about" data-icon="info">About</a>
+        </nav>
+      </aside>
+      <main id="settings-content" tabindex="-1">
+        <p id="page-error" class="settings-error" role="alert" hidden></p>
+        <p id="demo-notice" class="settings-note" hidden>
+          Preview with sample data. Changes here do not affect Firefox.
+        </p>
+        <section id="appearance" aria-labelledby="appearance-title">
+          <h2 id="appearance-title" tabindex="-1">Appearance</h2>
+          <p class="section-description">
+            Choose the colours and details in your sidebar. Saved changes apply to every window.
+          </p>
+          <form id="appearance-form">
+            <fieldset id="appearance-fields" disabled>
+              <legend class="sr-only">Sidebar appearance</legend>
+              <div class="settings-card">
+                <h3>Colours</h3>
+                <div class="setting-row">
+                  <div>
+                    <label for="look-color-scheme">Colour mode</label>
+                    <p id="look-color-scheme-help" class="setting-help">
+                      Default follows Firefox’s light/dark preference.
+                    </p>
+                  </div>
+                  <select
+                    id="look-color-scheme"
+                    name="colorScheme"
+                    aria-describedby="look-color-scheme-help"
+                  >
+                    <option value="default">Default</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </div>
+              </div>
+              <div class="settings-card">
+                <h3>Tab details</h3>
+                <label class="setting-check"
+                  ><input
+                    name="connectingLines"
+                    type="checkbox"
+                    aria-labelledby="lines-label"
+                    aria-describedby="lines-help"
+                  /><span
+                    ><span id="lines-label">Show connecting lines</span
+                    ><span id="lines-help" class="setting-help"
+                      >Trace the relationship between nested tabs.</span
+                    ></span
+                  ></label
+                >
+                <label class="setting-check"
+                  ><input
+                    name="domains"
+                    type="checkbox"
+                    aria-labelledby="domains-label"
+                    aria-describedby="domains-help"
+                  /><span
+                    ><span id="domains-label">Show the domain as a second line</span
+                    ><span id="domains-help" class="setting-help"
+                      >See the website address beneath each tab title.</span
+                    ></span
+                  ></label
+                >
+              </div>
+            </fieldset>
+            <p id="appearance-error" class="settings-error" role="alert" hidden></p>
+            <div class="settings-actions">
+              <button class="settings-button primary" id="appearance-save" type="submit" disabled>
+                Save changes</button
+              ><button class="settings-button" id="appearance-reset" type="button" disabled>
+                Discard changes</button
+              ><span id="appearance-status" role="status" aria-live="polite"
+                >Loading settings…</span
+              >
+            </div>
+          </form>
+        </section>
+        <section id="containers" aria-labelledby="containers-title" hidden>
+          <h2 id="containers-title" tabindex="-1">Containers</h2>
+          <p class="section-description">
+            Manage the containers you use throughout Firefox. Each keeps its own sign-ins and site
+            data.
+          </p>
+          <div class="container-toolbar">
+            <label class="sr-only" for="container-search">Find a container</label
+            ><input id="container-search" type="search" placeholder="Find a container…" /><button
+              id="container-new"
+              class="settings-button primary"
+              type="button"
+            >
+              New container
+            </button>
+          </div>
+          <p id="containers-error" class="settings-error" role="alert" hidden></p>
+          <button id="containers-retry" class="settings-button" type="button" hidden>
+            Try again
+          </button>
+          <p id="containers-status" role="status" aria-live="polite"></p>
+          <div class="containers-layout">
+            <div id="container-list" class="settings-card" aria-label="Firefox containers"></div>
+            <div id="container-editor" class="settings-card" hidden></div>
+          </div>
+          <p class="settings-note">
+            To set a folder’s default container, right-click the folder in the sidebar and choose
+            “Default container…”.
+          </p>
+        </section>
+        <section id="shortcuts" aria-labelledby="shortcuts-title" hidden>
+          <h2 id="shortcuts-title" tabindex="-1">Shortcuts</h2>
+          <p class="section-description">Open the sidebar and find your tabs from the keyboard.</p>
+          <div class="settings-card">
+            <h3>Firefox shortcut</h3>
+            <div class="shortcut-row">
+              <span>Open or close Tabernacle</span><kbd id="sidebar-shortcut">Loading…</kbd>
+            </div>
+            <p class="setting-help">
+              Change this shortcut in Firefox’s extension shortcut settings.
+            </p>
+            <button id="shortcut-settings" class="settings-button" type="button">
+              Manage extension shortcuts
+            </button>
+            <p id="shortcuts-error" class="settings-error" role="alert" hidden></p>
+          </div>
+          <div class="settings-card">
+            <h3>In the sidebar</h3>
+            <dl class="shortcut-list">
+              <div>
+                <dt>Search tabs and folders</dt>
+                <dd><kbd id="search-shortcut">Ctrl K / ⌘ K</kbd></dd>
+              </div>
+              <div>
+                <dt>Close search or a menu</dt>
+                <dd><kbd>Esc</kbd></dd>
+              </div>
+              <div>
+                <dt>Go to the parent folder</dt>
+                <dd><kbd>Alt ←</kbd></dd>
+              </div>
+              <div>
+                <dt>Open a tab or folder menu</dt>
+                <dd><kbd>Shift F10</kbd></dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+        <section id="about" aria-labelledby="about-title" hidden>
+          <h2 id="about-title" tabindex="-1">About Tabernacle</h2>
+          <p class="section-description">
+            Organise your Firefox tabs with sidebar folders, nested tab trees and search.
+          </p>
+          <div class="settings-card">
+            <div class="about-heading">
+              <img src="icons/tabernacle-toolbar-full.svg" width="56" height="56" alt="" />
+              <div>
+                <h3>Tabernacle</h3>
+                <p id="extension-version" class="setting-help"></p>
+              </div>
+            </div>
+            <dl class="settings-about">
+              <dt>Website</dt>
+              <dd>
+                <a
+                  href="https://michaelprojects.com/tabernacle/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >michaelprojects.com/tabernacle</a
+                >
+              </dd>
+              <dt>Source code</dt>
+              <dd>
+                <a
+                  href="https://github.com/micprojects/tabernacle"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >github.com/micprojects/tabernacle</a
+                >
+              </dd>
+              <dt>Contact email</dt>
+              <dd>
+                <a href="mailto:tabernacle@michaelprojects.com">tabernacle@michaelprojects.com</a>
+              </dd>
+              <dt>Made by</dt>
+              <dd>
+                <a href="https://michaelprojects.com" target="_blank" rel="noopener noreferrer"
+                  >Michael Projects</a
+                >
+              </dd>
+            </dl>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -5,6 +5,7 @@ import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normalizeLook, requireLook } from './look.js';
 import { requireGroupAppearance } from './folder-appearance.js';
+import { internalPage, openInternalPage } from './internal-pages.js';
 import {
   MODEL_KEY,
   VIEW_KEY,
@@ -141,7 +142,7 @@ export function createController(api, notify = () => {}) {
     const failures = [];
     const records = await Promise.all(
       tabs
-        .filter((tab) => !tab.incognito)
+        .filter((tab) => !tab.incognito && !internalPage(api, tab.url))
         .map(async (tab) => {
           try {
             return { tab, value: (await membership(tab.id)) ?? {} };
@@ -388,7 +389,13 @@ export function createController(api, notify = () => {}) {
   async function recentlyClosedTabs(windowId) {
     const sessions = await cache.history();
     return sessions
-      .filter(({ tab }) => tab?.windowId === windowId && !tab.incognito && tab.sessionId)
+      .filter(
+        ({ tab }) =>
+          tab?.windowId === windowId &&
+          !tab.incognito &&
+          tab.sessionId &&
+          !internalPage(api, tab.url),
+      )
       .map(({ tab, lastModified }) => ({
         sessionId: tab.sessionId,
         title: tab.title || tab.url || 'New tab',
@@ -552,6 +559,15 @@ export function createController(api, notify = () => {}) {
     switch (type) {
       case 'snapshot':
         return snapshot(windowId);
+      case 'getSettings':
+        return { look: { ...model.look } };
+      case 'openPage':
+        return openInternalPage(api, message.page, windowId);
+      case 'claimSettingsPage': {
+        const tab = await checkedTab(message.id, windowId);
+        if (internalPage(api, tab.url) !== 'settings') throw new Error('Not a Settings page.');
+        return openInternalPage(api, 'settings', windowId, { claimingTabId: tab.id });
+      }
       case 'getGroupContents':
         return groupContents(message.id);
       case 'getContainers': {
@@ -989,7 +1005,9 @@ export function createController(api, notify = () => {}) {
         break;
       }
       case 'setLook': {
-        const look = requireLook(message.value);
+        const look = requireLook(
+          message.partial ? { ...model.look, ...message.value } : message.value,
+        );
         await changeModel((next) => {
           next.look = look;
         });
@@ -1028,7 +1046,7 @@ export function createController(api, notify = () => {}) {
     dispose: () => cache.dispose(),
     created: (tab) =>
       enqueue(async () => {
-        if (tab.incognito) return;
+        if (tab.incognito || internalPage(api, tab.url)) return;
         requestTabs = new Map();
         const saved = await membership(tab.id);
         if (saved && Object.hasOwn(saved, 'groupId')) {

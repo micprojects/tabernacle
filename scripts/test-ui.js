@@ -53,22 +53,28 @@ try {
       await page.screenshot({ path: 'test-results/navigation-capsule-search-home.png' });
     await page.keyboard.press('Escape');
     await expect(page.locator('#search-toggle')).toBeFocused();
-    await page.locator('#more').click();
-    await expect(page.locator('#more')).toHaveAttribute('aria-expanded', 'true');
-    const menu = await page.locator('#menu').boundingBox();
-    expect(menu.y).toBeGreaterThanOrEqual(8);
-    expect(menu.y + menu.height).toBeLessThan(dock.y);
-    expect(menu.x + menu.width).toBeLessThanOrEqual(viewport.width - 8);
-    if (viewport.width === 320)
-      await page.screenshot({ path: 'test-results/floating-dock-menu.png' });
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#more')).toBeFocused();
-    await expect(page.locator('#more')).toHaveAttribute('aria-expanded', 'false');
-    await page.locator('#more').click();
-    await page.locator('#more').click();
+    const settingsButton = page.getByRole('button', { name: 'Settings', exact: true });
+    await expect(settingsButton).not.toHaveAttribute('aria-haspopup');
+    await expect(settingsButton).not.toHaveAttribute('aria-expanded');
+    await expect(settingsButton.locator('svg')).toHaveAttribute('data-icon', 'settings-16');
+    await expect(settingsButton.locator('svg')).toHaveCSS('width', '16px');
+    await expect(settingsButton.locator('svg')).toHaveCSS('height', '16px');
+    await settingsButton.focus();
+    const [settings] = await Promise.all([
+      page.waitForEvent('popup'),
+      settingsButton.press('Enter'),
+    ]);
+    await expect(settings.locator('#appearance-fields')).toBeEnabled();
     await expect(page.locator('#menu')).toBeHidden();
+    await settings.close();
+    expect(await page.locator('.footer-actions').boundingBox()).toEqual(dock);
+    await settingsButton.hover();
+    if (viewport.width === 320)
+      await page.screenshot({ path: 'test-results/floating-dock-settings.png' });
   }
-  check('Header search and footer menus fit narrow and short sidebars without moving the dock');
+  check(
+    'Header search and the direct Settings button fit narrow sidebars; the Acorn cog opens settings by keyboard',
+  );
 
   const inlineActions = page.locator('#tree .new-tab-action');
   const homeAdd = page.locator('#tree > .new-tab-item .new-tab-action');
@@ -254,13 +260,14 @@ try {
     window.clipboardTest.fail = false;
   });
   check('Clipboard failures show an error without reporting success');
-  await page.locator('#more').click();
+  await page.locator('#tree').focus();
+  await page.keyboard.press('Shift+F10');
   await expect(
     page.getByRole('menuitem', { name: 'Import Firefox groups', exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: /^(Compact|Comfortable) rows$/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  check('Options menu no longer offers Firefox group import or row density');
+  check('The blank-area menu no longer offers Firefox group import or row density');
   const design = page.locator('[data-key="group:design"]');
   await design.locator('.label').click();
   await expect(design).toHaveAttribute('aria-expanded', 'false');

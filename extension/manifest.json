@@ -18,6 +18,10 @@
     "scripts": ["src/background.js"],
     "type": "module"
   },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
+  },
   "sidebar_action": {
     "default_title": "Tabernacle",
     "default_panel": "sidebar.html",
