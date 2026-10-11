@@ -101,6 +101,8 @@ try {
   assert.equal(optionsManifest.open_in_tab, true);
   assert.equal(optionsManifest.page, `moz-extension://${uuid}/settings.html`);
   await driver.executeScript(`
+    const source = document.getElementById('look-theme-source');
+    source.value = 'tabernacle'; source.dispatchEvent(new Event('change', {bubbles:true}));
     const mode = document.getElementById('look-color-scheme');
     mode.value = 'dark'; mode.dispatchEvent(new Event('change', {bubbles:true}));
     document.querySelector('[name="domains"]').click();
@@ -165,6 +167,7 @@ try {
     value: {
       connectingLines: true,
       domains: false,
+      themeSource: 'firefox',
       colorScheme: 'default',
     },
   });
@@ -508,7 +511,9 @@ try {
     '✓ Middle-click confirms parent branches and closes pinned leaves with Firefox autoscroll enabled',
   );
   await send('enterGroup', { id: design });
-  await send('setLook', { value: { connectingLines: true, domains: true, colorScheme: 'dark' } });
+  await send('setLook', {
+    value: { connectingLines: true, domains: true, colorScheme: 'dark', themeSource: 'tabernacle' },
+  });
   // Legacy saved records stay opaque, even if a newer/older format is unfamiliar.
   const legacy = await browserCall(
     `const key=arguments[0],model=(await browser.storage.local.get(key))[key];
@@ -525,6 +530,7 @@ try {
     connectingLines: true,
     domains: true,
     colorScheme: 'dark',
+    themeSource: 'tabernacle',
   });
   await driver.wait(
     async () =>

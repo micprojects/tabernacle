@@ -1,0 +1,86 @@
+/* These colour-only rules are inactive for the original Tabernacle palette. */
+:root[data-firefox-theme] .sidebar {
+  background-color: var(--background);
+  background-image: var(--theme-gradient);
+  background-size: var(--theme-background-size);
+  background-position: var(--theme-background-position);
+  background-repeat: var(--theme-background-repeat);
+}
+:root[data-firefox-theme] :is(header, footer) {
+  color: var(--toolbar-text);
+  background: var(--toolbar-surface);
+}
+:root[data-firefox-theme] :is(header, footer) button {
+  color: var(--toolbar-icon);
+}
+:root[data-firefox-theme] :is(header, footer) button:hover:not(:disabled) {
+  background: var(--toolbar-hover);
+}
+:root[data-firefox-theme] :is(header, footer) button:active:not(:disabled) {
+  background: var(--toolbar-active);
+}
+:root[data-firefox-theme] .pinned-tab,
+:root[data-firefox-theme] .pinned-tab.active {
+  color: var(--selected-text);
+  background: var(--selected);
+  border-color: var(--selected-border);
+}
+:root[data-firefox-theme] .navigation-capsule {
+  background: var(--field);
+  border-color: var(--field-line);
+}
+:root[data-firefox-theme] .navigation-capsule.search-open {
+  color: var(--field-text);
+}
+:root[data-firefox-theme] .navigation-capsule.search-open:focus-within {
+  background: var(--field-focus);
+  border-color: var(--field-focus-line);
+  --field-text: var(--field-focus-text);
+  --field: var(--field-focus);
+}
+:root[data-firefox-theme] .search-wrap input {
+  color: var(--field-text);
+}
+:root[data-firefox-theme] dialog {
+  --field: var(--panel);
+  --field-text: var(--panel-text);
+  --field-line: var(--panel-line);
+}
+:root[data-firefox-theme] .dialog-actions .primary {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+:root[data-firefox-theme='default']
+  :is(.row.active, .pinned-tab):not(.drop-before, .drop-after)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--selected-border-gradient);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+@media (forced-colors: active) {
+  :root {
+    --theme-gradient: none !important;
+    --selected-border-gradient: none !important;
+    --toolbar-surface: Canvas !important;
+    --toolbar-text: CanvasText !important;
+    --toolbar-hover: ButtonFace !important;
+    --toolbar-active: Highlight !important;
+    --field-focus: Field !important;
+    --field-focus-text: FieldText !important;
+    --field-focus-line: Highlight !important;
+    --accent-text: HighlightText !important;
+  }
+}
+
+:root[data-firefox-theme] .dialog-actions .primary:hover:not(:disabled) {
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 85%, var(--panel));
+}

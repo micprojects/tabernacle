@@ -1,0 +1,197 @@
+import { expect } from '@playwright/test';
+import sharp from 'sharp';
+import { startUiTest } from './ui-test.js';
+import { prepareSettings } from './settings-test.js';
+import { knownThemes } from '../extension/src/theme-palette.js';
+
+const { page, close, base } = await startUiTest({
+  viewport: { width: 300, height: 650 },
+  colorScheme: 'light',
+  reducedMotion: 'reduce',
+});
+const errors = [];
+page.on('pageerror', (error) => errors.push(error.message));
+
+let openAppearance, settings, source;
+const setTheme = (id, details = null) =>
+  page.evaluate(
+    async ({ id, details }) => {
+      const { knownThemes } = await import('/extension/src/theme-palette.js');
+      const selected = knownThemes.find((theme) => theme.id === id);
+      window.themeFixture.active = id
+        ? { type: 'theme', enabled: true, id, name: selected?.name || 'External' }
+        : null;
+      window.themeFixture.details = details;
+      window.themeFixture.emit();
+    },
+    { id, details },
+  );
+try {
+  await page.addInitScript(() => {
+    const notices = new Set(),
+      themes = new Set(),
+      enabled = new Set();
+    let ready;
+    window.themeFixture = {
+      active: null,
+      details: null,
+      failSave: false,
+
+      emit: () => {
+        for (const listener of themes) listener({});
+      },
+    };
+    window.browser = {
+      windows: { getCurrent: async () => ({ id: 1, focused: true }) },
+      management: {
+        getAll: async () => (window.themeFixture.active ? [window.themeFixture.active] : []),
+        onEnabled: {
+          addListener: (listener) => enabled.add(listener),
+          removeListener: (listener) => enabled.delete(listener),
+        },
+      },
+      theme: {
+        getCurrent: async () => window.themeFixture.details,
+        onUpdated: {
+          addListener: (listener) => themes.add(listener),
+          removeListener: (listener) => themes.delete(listener),
+        },
+      },
+      runtime: {
+        id: 'tabernacle-theme-test',
+        onMessage: { addListener: (listener) => notices.add(listener) },
+
+        sendMessage: async (message) => {
+          if (message.type === 'tabernacle:setLook' && window.themeFixture.failSave)
+            return { ok: false, error: 'Storage unavailable' };
+          ready ??= import('/preview/demo.js').then(({ createDemo }) =>
+            createDemo((notice) => {
+              for (const listener of notices) listener({ type: 'tabernacle:changed', ...notice });
+            }),
+          );
+          return {
+            ok: true,
+            data: await (
+              await ready
+            ).request({ ...message, type: message.type.slice('tabernacle:'.length) }),
+          };
+        },
+      },
+    };
+  });
+  await page.goto(`${base}/extension/sidebar.html`);
+  await expect(page.locator('.row.active')).toBeVisible();
+  const beforeGeometry = await page.locator('.row.active').boundingBox();
+  const cases = [{ id: null, name: 'Tabernacle fallback' }, ...knownThemes];
+  for (const dark of [false, true]) {
+    await page.emulateMedia({ colorScheme: dark ? 'dark' : 'light' });
+    const images = [];
+    for (const theme of cases) {
+      await setTheme(theme.id);
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.dataset.firefoxTheme || ''))
+        .toBe(theme.id ? (theme.id === 'default-theme@mozilla.org' ? 'default' : 'custom') : '');
+      if (theme.id) {
+        const frame = theme.manifest[dark ? 'dark_theme' : 'theme'].colors.frame;
+        await expect
+          .poll(() =>
+            page.evaluate(() => document.documentElement.style.getPropertyValue('--background')),
+          )
+          .toBe(Array.isArray(frame) ? `rgb(${frame.join(', ')})` : frame);
+      } else
+        await expect(page.locator('html')).toHaveCSS(
+          'background-color',
+          dark ? 'rgb(33, 29, 43)' : 'rgb(247, 246, 250)',
+        );
+      const geometry = await page.locator('.row.active').boundingBox();
+      expect(geometry).toEqual(beforeGeometry);
+      const pixels = await page.screenshot();
+      const title = Buffer.from(
+        `<svg width="300" height="28"><rect width="300" height="28" fill="white"/><text x="10" y="19" font-family="sans-serif" font-size="13">${theme.name} — ${dark ? 'dark' : 'light'}</text></svg>`,
+      );
+      const thumb = await sharp(pixels)
+        .resize(300, 650)
+        .extend({ top: 28, bottom: 0, left: 0, right: 0, background: 'white' })
+        .composite([{ input: title, top: 0, left: 0 }])
+        .png()
+        .toBuffer();
+      images.push({
+        input: thumb,
+        left: (images.length % 4) * 300,
+        top: Math.floor(images.length / 4) * 678,
+      });
+    }
+    await sharp({ create: { width: 1200, height: 2712, channels: 4, background: '#ddd' } })
+      .composite(images)
+      .png()
+      .toFile(`test-results/themes-${dark ? 'dark' : 'light'}-contact.png`);
+  }
+  openAppearance = await prepareSettings(page);
+  settings = await openAppearance();
+  source = settings.getByRole('combobox', { name: 'Theme', exact: true });
+  await setTheme('nova-sun@mozilla.org');
+  await openAppearance();
+  await expect(source).toBeVisible();
+  await expect(settings.locator('#look-theme-status')).toHaveText('Using Sun');
+  await source.selectOption('tabernacle');
+  await settings.locator('#appearance-reset').click();
+  await expect(page.locator('html')).toHaveAttribute('data-firefox-theme', 'custom');
+  await openAppearance();
+  await expect(source).toHaveValue('firefox');
+  await source.selectOption('tabernacle');
+  await page.evaluate(() => {
+    window.themeFixture.failSave = true;
+  });
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(settings.getByRole('alert')).toHaveText('Storage unavailable');
+  await expect(source).toHaveValue('tabernacle');
+  await expect(page.locator('html')).toHaveAttribute('data-firefox-theme', 'custom');
+  await page.evaluate(() => {
+    window.themeFixture.failSave = false;
+  });
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(33, 29, 43)');
+  await expect(page.locator('.sidebar')).toHaveCSS('background-image', 'none');
+  await setTheme('nova-pine@mozilla.org');
+  await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
+  await openAppearance();
+  await source.selectOption('firefox');
+  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-firefox-theme', 'custom');
+  await page.locator('#search-toggle').click();
+  await page.locator('#search').fill('firefox');
+  await page.screenshot({ path: 'test-results/theme-search.png' });
+  await page.keyboard.press('Escape');
+  await page.locator('#tree').focus();
+  await page.keyboard.press('Shift+F10');
+  await page.screenshot({ path: 'test-results/theme-menu.png' });
+  await page.keyboard.press('Escape');
+  await openAppearance();
+  await settings.setViewportSize({ width: 220, height: 400 });
+  expect(await settings.evaluate(() => document.documentElement.scrollWidth)).toBe(220);
+  await settings.screenshot({ path: 'test-results/theme-settings-narrow.png', fullPage: true });
+  await setTheme('nova-lavender@mozilla.org');
+  await expect(settings.locator('#look-theme-status')).toHaveText('Using Lavender');
+  await page.emulateMedia({ forcedColors: 'active' });
+  await expect(page.locator('.sidebar')).toHaveCSS('background-image', 'none');
+  await page.screenshot({ path: 'test-results/theme-forced-colours.png' });
+  await page.emulateMedia({ forcedColors: 'none' });
+  await expect(page.locator('.sidebar')).not.toHaveCSS('background-image', 'none');
+  await page.keyboard.press('Escape');
+  await setTheme('external', {
+    colors: { frame: '#123456', tab_selected: '#abcdef', tab_text: '#000000', popup: '#ffffff' },
+    images: { additional_backgrounds: ['https://example.com/never-load.png'] },
+  });
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
+  await expect(page.locator('.row.active')).toHaveCSS('background-color', 'rgb(171, 205, 239)');
+  await expect(page.locator('.sidebar')).toHaveCSS('background-image', 'none');
+  await setTheme('external', { colors: { frame: 'var(--bad)', toolbar: 'invalid' } });
+  await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
+  expect(errors).toEqual([]);
+  console.log(
+    '✓ 26 palettes, fixed geometry, automatic changes, override, cancel/retry, narrow layouts and forced colours',
+  );
+} finally {
+  await close();
+}

@@ -6,6 +6,7 @@
     <title>Settings · Tabernacle</title>
     <link rel="icon" href="icons/tabernacle-toolbar-full.svg" type="image/svg+xml" sizes="any" />
     <link rel="stylesheet" href="sidebar.css" />
+    <link rel="stylesheet" href="theme.css" />
     <link rel="stylesheet" href="folder-icons.css" />
     <link rel="stylesheet" href="settings.css" />
     <script type="module" src="src/settings.js"></script>
@@ -44,9 +45,26 @@
                 <h3>Colours</h3>
                 <div class="setting-row">
                   <div>
-                    <label for="look-color-scheme">Colour mode</label>
+                    <label for="look-theme-source">Theme</label>
+                    <p id="look-theme-status" class="setting-help" aria-live="polite">
+                      Loading your theme…
+                    </p>
+                  </div>
+                  <select
+                    id="look-theme-source"
+                    name="themeSource"
+                    aria-describedby="look-theme-status"
+                  >
+                    <option value="firefox">Follow Firefox</option>
+                    <option value="tabernacle">Tabernacle</option>
+                  </select>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <label for="look-color-scheme">Tabernacle colour mode</label>
                     <p id="look-color-scheme-help" class="setting-help">
-                      Default follows Firefox’s light/dark preference.
+                      Used for Tabernacle’s colours, including the fallback. Follow Firefox uses its
+                      light/dark preference.
                     </p>
                   </div>
                   <select
@@ -54,7 +72,7 @@
                     name="colorScheme"
                     aria-describedby="look-color-scheme-help"
                   >
-                    <option value="default">Default</option>
+                    <option value="default">Follow Firefox</option>
                     <option value="light">Light</option>
                     <option value="dark">Dark</option>
                   </select>

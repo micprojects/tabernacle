@@ -106,12 +106,12 @@ try {
 
   openLook = await prepareSettings(page);
   settings = await openLook();
-  mode = settings.getByRole('combobox', { name: 'Colour mode', exact: true });
+  mode = settings.getByRole('combobox', { name: 'Tabernacle colour mode', exact: true });
   await openLook();
-  await expect(settings.getByRole('combobox', { name: 'Colour mode', exact: true })).toBeVisible();
+  await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toBeVisible();
   await expect(mode).toHaveValue('default');
   await expect(mode).toHaveAccessibleDescription(
-    'Default follows Firefox’s light/dark preference.',
+    'Used for Tabernacle’s colours, including the fallback. Follow Firefox uses its light/dark preference.',
   );
   await mode.selectOption('light');
   await settings.getByRole('button', { name: 'Discard changes', exact: true }).click();
@@ -167,7 +167,7 @@ try {
   await checkPalette('light');
   expect(errors).toEqual([]);
   console.log(
-    '✓ Accessible compact palettes, live Default mode, saved overrides, cancellation, save retry, narrow layouts and forced colours work',
+    '✓ Accessible compact palettes, live Default mode, saved overrides, cancellation, save retry, narrow layouts and forced colours work when Firefox theme access fails',
   );
 } finally {
   await close();
