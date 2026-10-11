@@ -12,7 +12,28 @@ const { page, close, base } = await startUiTest({
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 
-let openAppearance, settings, source;
+let openAppearance, settings, source, activity;
+
+const palette = (tab) =>
+  tab.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const probe = document.createElement('span');
+    document.body.append(probe);
+    const values = { background: root.backgroundColor, text: root.color };
+    for (const token of ['accent', 'accent-text', 'focus', 'folder-icon', 'selected', 'panel']) {
+      probe.style.color = `var(--${token})`;
+      values[token] = getComputedStyle(probe).color;
+    }
+    probe.remove();
+    return values;
+  });
+
+const checkSharedPalette = async () => {
+  const expected = await palette(page);
+  await expect.poll(() => palette(settings)).toEqual(expected);
+  await expect.poll(() => palette(activity)).toEqual(expected);
+};
+
 const setTheme = (id, details = null) =>
   page.evaluate(
     async ({ id, details }) => {
@@ -81,10 +102,19 @@ try {
   });
   await page.goto(`${base}/extension/sidebar.html`);
   await expect(page.locator('.row.active')).toBeVisible();
+  openAppearance = await prepareSettings(page);
+  settings = await openAppearance();
+  const opened = page.waitForEvent('popup');
+  await page.evaluate(() => window.open('activity.html', 'theme-activity'));
+  activity = await opened;
+  await expect(activity.locator('#activity-results')).toHaveAttribute('aria-busy', 'false');
+  for (const tab of [settings, activity])
+    tab.on('pageerror', (error) => errors.push(error.message));
   const beforeGeometry = await page.locator('.row.active').boundingBox();
   const cases = [{ id: null, name: 'Tabernacle fallback' }, ...knownThemes];
   for (const dark of [false, true]) {
-    await page.emulateMedia({ colorScheme: dark ? 'dark' : 'light' });
+    for (const tab of [page, settings, activity])
+      await tab.emulateMedia({ colorScheme: dark ? 'dark' : 'light' });
     const images = [];
     for (const theme of cases) {
       await setTheme(theme.id);
@@ -105,7 +135,20 @@ try {
         );
       const geometry = await page.locator('.row.active').boundingBox();
       expect(geometry).toEqual(beforeGeometry);
+      await checkSharedPalette();
+      const newTab = page.locator('.new-tab-action').first();
+      await newTab.hover();
+      const expected = await palette(page);
+      await expect(newTab).toHaveCSS('color', theme.id ? expected.text : expected.accent);
+      await expect(newTab.locator('svg')).toHaveCSS(
+        'fill',
+        theme.id ? expected.text : expected.accent,
+      );
       const pixels = await page.screenshot();
+      await page.mouse.move(0, 0);
+      await newTab.focus();
+      await expect(newTab).toHaveCSS('color', theme.id ? expected.text : expected.accent);
+      await page.locator('#tree').focus();
       const title = Buffer.from(
         `<svg width="300" height="28"><rect width="300" height="28" fill="white"/><text x="10" y="19" font-family="sans-serif" font-size="13">${theme.name} — ${dark ? 'dark' : 'light'}</text></svg>`,
       );
@@ -126,8 +169,6 @@ try {
       .png()
       .toFile(`test-results/themes-${dark ? 'dark' : 'light'}-contact.png`);
   }
-  openAppearance = await prepareSettings(page);
-  settings = await openAppearance();
   source = settings.getByRole('combobox', { name: 'Theme', exact: true });
   await setTheme('nova-sun@mozilla.org');
   await openAppearance();
@@ -153,12 +194,14 @@ try {
   await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(33, 29, 43)');
   await expect(page.locator('.sidebar')).toHaveCSS('background-image', 'none');
+  await checkSharedPalette();
   await setTheme('nova-pine@mozilla.org');
   await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
   await openAppearance();
   await source.selectOption('firefox');
   await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-firefox-theme', 'custom');
+  await checkSharedPalette();
   await page.locator('#search-toggle').click();
   await page.locator('#search').fill('firefox');
   await page.screenshot({ path: 'test-results/theme-search.png' });
@@ -173,10 +216,11 @@ try {
   await settings.screenshot({ path: 'test-results/theme-settings-narrow.png', fullPage: true });
   await setTheme('nova-lavender@mozilla.org');
   await expect(settings.locator('#look-theme-status')).toHaveText('Using Lavender');
-  await page.emulateMedia({ forcedColors: 'active' });
+  for (const tab of [page, settings, activity]) await tab.emulateMedia({ forcedColors: 'active' });
+  await checkSharedPalette();
   await expect(page.locator('.sidebar')).toHaveCSS('background-image', 'none');
   await page.screenshot({ path: 'test-results/theme-forced-colours.png' });
-  await page.emulateMedia({ forcedColors: 'none' });
+  for (const tab of [page, settings, activity]) await tab.emulateMedia({ forcedColors: 'none' });
   await expect(page.locator('.sidebar')).not.toHaveCSS('background-image', 'none');
   await page.keyboard.press('Escape');
   await setTheme('external', {
@@ -186,11 +230,13 @@ try {
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
   await expect(page.locator('.row.active')).toHaveCSS('background-color', 'rgb(171, 205, 239)');
   await expect(page.locator('.sidebar')).toHaveCSS('background-image', 'none');
+  await checkSharedPalette();
   await setTheme('external', { colors: { frame: 'var(--bad)', toolbar: 'invalid' } });
   await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
+  await checkSharedPalette();
   expect(errors).toEqual([]);
   console.log(
-    '✓ 26 palettes, fixed geometry, automatic changes, override, cancel/retry, narrow layouts and forced colours',
+    '✓ 26 shared palettes, themed New tab hover/focus, fixed geometry, automatic changes, override, cancel/retry, narrow layouts and forced colours',
   );
 } finally {
   await close();

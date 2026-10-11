@@ -98,8 +98,21 @@ export function paletteFrom(details, dark, { bundled = false, isDefault = false,
     c.button_background_active = supplied.button_background_active || mix(c.icons, 30);
     c.popup_border = supplied.popup_border || mix(c.tab_background_text, 24);
   }
-  const accent = isDefault ? (dark ? '#b89cff' : '#764edd') : 'AccentColor';
-  const focus = isDefault ? accent : dark ? '#00ddff' : '#0061e0';
+  // Extension controls follow the selected palette rather than the OS accent.
+  // Keep primary button colours paired, including themes without a highlight.
+  const accent = isDefault
+    ? dark
+      ? '#b89cff'
+      : '#764edd'
+    : supplied.popup_highlight || c.popup_text;
+  const accentText = isDefault
+    ? dark
+      ? '#252428'
+      : '#ffffff'
+    : supplied.popup_highlight
+      ? supplied.popup_highlight_text || c.popup_text
+      : c.popup;
+  const focus = supplied.toolbar_field_border_focus || (isDefault ? accent : c.icons);
   const menuHover =
     supplied.popup_highlight ||
     (isDefault ? (dark ? '#75669f' : '#d2c8ec') : mix(c.popup_text, 17));
@@ -135,8 +148,11 @@ export function paletteFrom(details, dark, { bundled = false, isDefault = false,
     'selected-text': c.tab_text,
     'selected-border': c.tab_line,
     accent,
-    'accent-text': isDefault ? (dark ? '#252428' : '#ffffff') : 'AccentColorText',
+    'accent-text': accentText,
     focus,
+    'action-text': c.tab_background_text,
+    'action-hover': mix(c.tab_background_text, 17),
+    'folder-icon': 'currentColor',
     panel: c.popup,
     'panel-text': c.popup_text,
     'panel-muted': mix(c.popup_text, 72),

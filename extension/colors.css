@@ -1,0 +1,82 @@
+/* Shared appearance tokens for the sidebar, settings and activity page.
+   Firefox palettes override these on the root through theme-palette.js. */
+:root {
+  color-scheme: light dark;
+  --background: light-dark(#f7f6fa, #211d2b);
+  --text: light-dark(#24202d, #f3eff9);
+  --icon: var(--text);
+  --toolbar-icon: light-dark(#5b5b66, #fbfbfe);
+  --muted: color-mix(in srgb, var(--text) 72%, var(--background));
+  --line: color-mix(in srgb, var(--text) 14%, var(--background));
+  --subtle: color-mix(in srgb, var(--text) 7%, var(--background));
+  --hover: color-mix(in srgb, var(--text) 6%, var(--background));
+  --control: light-dark(#ffffff, #302938);
+  --selected: light-dark(#ffffff, #352e42);
+  --selected-border: light-dark(#c4b3df, #645575);
+  --selected-text: var(--text);
+  --accent: light-dark(#7542cc, #c4a1ff);
+  --accent-text: var(--background);
+  --focus: var(--accent);
+  --action-text: var(--accent);
+  --action-hover: color-mix(in srgb, var(--accent) 12%, var(--background));
+  --folder-icon: light-dark(#858585, #adadad);
+  --panel: var(--background);
+  --panel-text: var(--text);
+  --panel-muted: var(--muted);
+  --panel-line: var(--line);
+  --panel-hover: color-mix(in srgb, var(--panel-text) 12%, var(--panel));
+  --panel-hover-text: var(--panel-text);
+  --field: var(--panel);
+  --field-text: var(--panel-text);
+  --field-line: var(--panel-line);
+  /* Error colours retain their meaning in either appearance. */
+  --danger: light-dark(#a51d2d, #ff9aa2);
+}
+:root[data-color-scheme='light'] {
+  color-scheme: light;
+}
+:root[data-color-scheme='dark'] {
+  color-scheme: dark;
+}
+@media (forced-colors: active) {
+  :root {
+    color-scheme: light dark !important;
+    --background: Canvas !important;
+    --text: CanvasText !important;
+    --icon: CanvasText !important;
+    --toolbar-icon: CanvasText !important;
+    --muted: CanvasText !important;
+    --line: ButtonBorder !important;
+    --subtle: Canvas !important;
+    --hover: ButtonFace !important;
+    --control: ButtonFace !important;
+    --selected: Highlight !important;
+    --selected-border: Highlight !important;
+    --selected-text: HighlightText !important;
+    --accent: Highlight !important;
+    --accent-text: HighlightText !important;
+    --focus: Highlight !important;
+    --action-text: ButtonText !important;
+    --action-hover: ButtonFace !important;
+    --folder-icon: CanvasText !important;
+    --panel: Canvas !important;
+    --panel-text: CanvasText !important;
+    --panel-muted: CanvasText !important;
+    --panel-line: ButtonBorder !important;
+    --panel-hover: Highlight !important;
+    --panel-hover-text: HighlightText !important;
+    --field: Field !important;
+    --field-text: FieldText !important;
+    --field-line: ButtonBorder !important;
+    --danger: CanvasText !important;
+    --theme-gradient: none !important;
+    --selected-border-gradient: none !important;
+    --toolbar-surface: Canvas !important;
+    --toolbar-text: CanvasText !important;
+    --toolbar-hover: ButtonFace !important;
+    --toolbar-active: Highlight !important;
+    --field-focus: Field !important;
+    --field-focus-text: FieldText !important;
+    --field-focus-line: Highlight !important;
+  }
+}

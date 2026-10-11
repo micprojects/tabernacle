@@ -1,3 +1,4 @@
+@import url('colors.css');
 @import url('folder-icons.css');
 
 /* Independent in-content layout for the history-page experiment. Acorn's
@@ -5,28 +6,9 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 15px;
-  color-scheme: light dark;
-  --background: light-dark(#f9f9fb, #1c1b22);
-  --text: light-dark(#15141a, #fbfbfe);
-  --muted: light-dark(#62616d, #bfbfc9);
-  --line: light-dark(#e0e0e6, #42414d);
-  --control: light-dark(#fff, #23222b);
-  --hover: light-dark(#f0f0f4, #35343f);
-  --selected: light-dark(#e8efff, #343c56);
-  --selected-text: var(--text);
-  --selected-border: light-dark(#adc7ff, #607cc0);
-  --accent: light-dark(#0060df, #a4c1ff);
-  --focus: light-dark(#0060df, #a4c1ff);
-  --danger: light-dark(#a4000f, #ff9aa2);
   color: var(--text);
   background: var(--background);
   line-height: 1.5;
-}
-:root[data-color-scheme='light'] {
-  color-scheme: light;
-}
-:root[data-color-scheme='dark'] {
-  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -540,20 +522,6 @@ kbd {
   }
 }
 @media (forced-colors: active) {
-  :root {
-    --background: Canvas !important;
-    --text: CanvasText !important;
-    --muted: CanvasText !important;
-    --control: Canvas !important;
-    --line: ButtonBorder !important;
-    --hover: ButtonFace !important;
-    --accent: LinkText !important;
-    --focus: Highlight !important;
-    --selected: Highlight !important;
-    --selected-text: HighlightText !important;
-    --selected-border: Highlight !important;
-    --danger: CanvasText !important;
-  }
   .filter-link[aria-current] {
     outline: 2px solid Highlight;
   }

@@ -155,6 +155,35 @@ test('palette replacement clears every owned override, preserving unrelated inli
   assert.deepEqual(root.dataset, { colorScheme: 'dark' });
 });
 
+test('custom controls use theme roles instead of unrelated system accent colours', () => {
+  const colors = {
+    frame: '#f5ece0',
+    tab_background_text: '#321d0b',
+    icons: '#67421a',
+    popup: '#fff5e5',
+    popup_text: '#3a2200',
+    popup_highlight: '#775500',
+    popup_highlight_text: '#ffffee',
+    toolbar_field_border_focus: '#5a3100',
+  };
+  const { vars } = paletteFrom({ colors }, false);
+  assert.equal(vars['action-text'], colors.tab_background_text);
+  assert.equal(vars.accent, colors.popup_highlight);
+  assert.equal(vars['accent-text'], colors.popup_highlight_text);
+  assert.equal(vars.focus, colors.toolbar_field_border_focus);
+
+  const { popup_highlight, popup_highlight_text, toolbar_field_border_focus, ...partial } = colors;
+  const fallback = paletteFrom({ colors: partial }, false).vars;
+  assert.equal(fallback.accent, colors.popup_text);
+  assert.equal(fallback['accent-text'], colors.popup);
+  assert.equal(fallback.focus, colors.icons);
+  for (const theme of knownThemes)
+    for (const dark of [false, true]) {
+      const { palette } = resolveTheme({}, { active: theme }, dark);
+      assert.doesNotMatch(Object.values(palette.vars).join(' '), /AccentColor/);
+    }
+});
+
 test('observer scopes events, coalesces refreshes, ignores stale results and cleans up', async () => {
   const onUpdated = event(),
     onEnabled = event(),

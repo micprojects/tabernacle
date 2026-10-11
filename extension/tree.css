@@ -1,5 +1,4 @@
-/* Tab tree layout and optional Appearance details. Sidebar chrome and colour modes
-   tokens live in sidebar.css. */
+/* Tab tree layout and optional Appearance details. Shared colour tokens live in colors.css. */
 .pinned-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -124,8 +123,8 @@
   pointer-events: auto;
 }
 .new-tab-item:is(:hover, :focus-within) .new-tab-action {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--background));
+  color: var(--action-text);
+  background: var(--action-hover);
 }
 .new-folder-action:hover,
 .new-folder-action:focus-visible {
@@ -151,8 +150,8 @@
     pointer-events: auto;
   }
   .new-tab-action {
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, var(--background));
+    color: var(--action-text);
+    background: var(--action-hover);
   }
 }
 .row {
@@ -203,7 +202,7 @@
 }
 svg.folder-icon,
 .group-container-icon {
-  color: var(--folder-color, light-dark(#858585, #adadad));
+  color: var(--folder-color, var(--folder-icon));
 }
 .group-row > .label {
   font-size: 13px;
