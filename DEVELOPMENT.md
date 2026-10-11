@@ -7,7 +7,7 @@ bar, menus and dialogs live in `extension/sidebar.css`. Favicons come directly f
 reuses one live page across windows, without navigating or reloading it, so its
 section, scroll position and unsaved edits survive switching to another tab.
 `src/internal-pages.js` launches it through the controller's serialized queue and
-recreates it if closed. Settings pages are omitted from Tabernacle's
+recreates it if closed. Settings and activity pages are omitted from Tabernacle's
 tab tree, folder counts and recent activity, including recently closed tabs.
 They still exist in Firefox's native tab strip; Firefox cannot hide an active tab.
 New Settings documents claim the existing page before enabling editing, so opening
@@ -32,6 +32,32 @@ apply only to that folder and fall back to the effective container or standard
 folder icon. The catalogue and search keywords live in
 `src/folder-appearance.js`; the picker uses bundled, licensed Acorn symbols from
 `icons/ui/folder-icons.svg`. Firefox container identities keep their native choices.
+
+## Recent activity page experiment
+
+The history button opens `extension/activity.html` as a dedicated page hidden from
+Tabernacle's tab list, reusing it in the same window without resetting filters or
+scroll position. Its markup, styles, data helpers and rendering
+are independent of the original slide-up menu (`recently-closed.js` and
+`recent-history.js`), which is kept intact. Add `?history=panel` to the sidebar or
+preview URL to compare the original menu. Removing the `installActivityLauncher`
+call in `sidebar.js` restores the original button behaviour.
+
+The page offers Timeline, By type and Detail view layouts, using the same live
+controller messages as the sidebar. It excludes itself from activity and follows
+the window it is in. Viewed tabs are currently open tabs; closed tabs come from
+Firefox's session restore list. Folder activity merges the latest entry and
+deliberate expansion per folder, with separate filters. Expansion timestamps start
+with this experiment, are saved per window, and are bounded to 100 folders.
+
+Open `http://127.0.0.1:4173/preview/activity-mockups.html` after `npm run preview`
+to compare all three working layouts with sample activity. Run
+`node scripts/test-activity-page-ui.js` for the page and launcher tests.
+`node scripts/test-activity-firefox.js` verifies the same actions in an isolated
+native Firefox profile.
+The design follows Acorn's [in-content typography](https://acorn.firefox.com/latest/desktop/design-tokens/typography-Yo8yPRYS)
+and [button guidance](https://acorn.firefox.com/latest/desktop/components/button-gsFv3Uj9),
+with system fonts, existing Firefox icons, labelled actions and visible focus.
 
 Use the Node.js version in `.nvmrc` and install the locked dependencies:
 

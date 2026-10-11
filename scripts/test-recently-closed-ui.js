@@ -76,7 +76,7 @@ try {
       },
     };
   });
-  await page.goto(`${base}/extension/sidebar.html`);
+  await page.goto(`${base}/extension/sidebar.html?history=panel`);
   await trigger.click();
   await expect(popup.getByRole('heading', { level: 2 })).toHaveText('Recent');
   await expect(rows).toHaveCount(1);

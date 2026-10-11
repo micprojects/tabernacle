@@ -4,6 +4,7 @@ import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normalizeLook, requireLook } from './look.js';
+import { recordExpansions } from './folder-activity.js';
 import { requireGroupAppearance } from './folder-appearance.js';
 import { internalPage, openInternalPage } from './internal-pages.js';
 import {
@@ -752,6 +753,8 @@ export function createController(api, notify = () => {}) {
           ];
         view.scopeId = scopeId;
         if (scopeId !== null && typeof message.collapsed === 'boolean') {
+          if (!message.collapsed && view.collapsed.includes(scopeId))
+            recordExpansions(view, [scopeId]);
           view.collapsed = view.collapsed.filter((id) => id !== scopeId);
           if (message.collapsed) view.collapsed.push(scopeId);
         }
@@ -771,6 +774,7 @@ export function createController(api, notify = () => {}) {
       case 'toggleGroup': {
         requireGroup(model, message.id);
         const view = await viewFor(windowId);
+        if (view.collapsed.includes(message.id)) recordExpansions(view, [message.id]);
         view.collapsed = view.collapsed.includes(message.id)
           ? view.collapsed.filter((id) => id !== message.id)
           : [...view.collapsed, message.id];
@@ -779,6 +783,7 @@ export function createController(api, notify = () => {}) {
       }
       case 'collapseAll': {
         const view = await viewFor(windowId);
+        if (!message.collapsed) recordExpansions(view, view.collapsed);
         view.collapsed = message.collapsed ? model.groups.map((group) => group.id) : [];
         await saveView(windowId, view);
         break;
@@ -801,6 +806,11 @@ export function createController(api, notify = () => {}) {
           const failed = results.find((result) => result.status === 'rejected');
           if (failed) throw failed.reason;
         }
+        if (!message.collapsed)
+          recordExpansions(
+            view,
+            view.collapsed.filter((id) => branches.groupIds.has(id)),
+          );
         view.collapsed = view.collapsed.filter((id) => !branches.groupIds.has(id));
         if (message.collapsed) view.collapsed.push(...branches.groupIds);
         await saveView(windowId, view);

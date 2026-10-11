@@ -42,6 +42,20 @@ test('concurrent Settings launches reuse one page across windows without resetti
   controller.dispose();
 });
 
+test('History reuses its page only in the relevant window', async () => {
+  const { api, controller, send } = setup();
+  const first = await send('openPage', { page: 'activity' });
+  await api.tabs.update(first.tabId, { url: `${getURL('activity.html')}?layout=detail#closed` });
+  const second = await send('openPage', { page: 'activity', windowId: 2 });
+  assert.notEqual(first.tabId, second.tabId);
+  assert.deepEqual(await send('openPage', { page: 'activity' }), first);
+  assert.equal(
+    (await api.tabs.get(first.tabId)).url,
+    `${getURL('activity.html')}?layout=detail#closed`,
+  );
+  controller.dispose();
+});
+
 test('a new native options page hands back to the existing Settings page', async () => {
   const { api, controller, send } = setup();
   const first = await send('openPage', { page: 'settings' });
@@ -66,7 +80,9 @@ test('a new native options page hands back to the existing Settings page', async
 test('internal pages stay out of folders, tree snapshots and closed history', async () => {
   const { api, controller, send } = setup();
   await send('enterGroup', { id: 'work' });
-  const pages = await Promise.all(['settings'].map((page) => send('openPage', { page })));
+  const pages = await Promise.all(
+    ['settings', 'activity'].map((page) => send('openPage', { page })),
+  );
   for (const { tabId } of pages) {
     await controller.created(await api.tabs.get(tabId));
     assert.equal(await api.sessions.getTabValue(tabId, TAB_KEY), undefined);

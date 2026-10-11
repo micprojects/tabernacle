@@ -1,4 +1,5 @@
 import { normalizeLook } from './look.js';
+import { normalizeExpansions } from './folder-activity.js';
 
 // Storage namespace for the tabernacle@michaelprojects.com add-on identity.
 export const MODEL_KEY = 'tabernacle.model.v1';
@@ -91,6 +92,7 @@ export function removeGroup(model, id) {
 
 export function normalizeView(model, view = {}) {
   view ??= {};
+  const recentExpandedFolders = normalizeExpansions(model.groups, view.recentExpandedFolders);
   const seen = new Set();
   const recentFolders = (Array.isArray(view.recentFolders) ? view.recentFolders : [])
     .filter(
@@ -111,6 +113,7 @@ export function normalizeView(model, view = {}) {
       ? view.collapsed.filter((id) => groupById(model, id))
       : [],
     ...(recentFolders.length ? { recentFolders } : {}),
+    ...(recentExpandedFolders.length ? { recentExpandedFolders } : {}),
   };
 }
 

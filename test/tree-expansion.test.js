@@ -74,7 +74,13 @@ test('bulk folding includes nested groups and tab trees only within the requeste
   assert.deepEqual(saved.view, state.view);
   const expanded = await send('collapseTree', { scopeId: 'work', collapsed: false });
   assert.deepEqual(expanded.tabs, before.tabs);
-  assert.deepEqual(expanded.view, before.view);
+  const { recentExpandedFolders, ...expandedView } = expanded.view;
+  assert.deepEqual(expandedView, before.view);
+  assert.deepEqual(
+    recentExpandedFolders.map(({ id }) => id),
+    ['design'],
+  );
+  assert(recentExpandedFolders[0].expandedAt > 0);
 });
 
 test('Home folding includes ungrouped trees and expansion opens all hidden descendants', async () => {

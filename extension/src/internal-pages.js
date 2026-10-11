@@ -1,4 +1,4 @@
-const paths = { settings: 'settings.html' };
+const paths = { settings: 'settings.html', activity: 'activity.html' };
 const documentUrl = (url) => url?.split(/[?#]/)[0];
 
 export function internalPage(api, url) {
@@ -11,8 +11,8 @@ export function internalPage(api, url) {
 // Call inside the controller queue so simultaneous clicks cannot create duplicates.
 export async function openInternalPage(api, page, windowId, { claimingTabId } = {}) {
   if (!Object.hasOwn(paths, page)) throw new Error('Unknown Tabernacle page.');
-  // Preferences are shared across windows.
-  const query = {};
+  // Preferences are shared; activity describes the window it belongs to.
+  const query = page === 'settings' ? {} : { windowId };
   const candidates = (await api.tabs.query(query)).filter(
     (tab) => !tab.incognito && internalPage(api, tab.url) === page,
   );
