@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { screenshotFrameColor } from './screenshot-layout.js';
 
 export function screenshotFiles(fixture) {
   return fixture.shots.flatMap(({ file }) => [
@@ -43,10 +44,17 @@ export async function verifyScreenshots(fixture, sources, destination) {
     assert.equal(ui.info.height, h + outputScale * 2);
     assert.equal(ui.data[3], 0, `${uiFile}: corners must be transparent`);
     const border = (ui.info.width + Math.floor(ui.info.width / 2)) * 4;
+    const borderColor = screenshotFrameColor(shot.composition.dark);
     assert.deepEqual(
       [...ui.data.subarray(border, border + 4)],
-      [129, 153, 141, 255],
-      `${uiFile}: missing fine green border`,
+      [
+        ...borderColor
+          .slice(1)
+          .match(/../g)
+          .map((value) => parseInt(value, 16)),
+        255,
+      ],
+      `${uiFile}: missing ${borderColor} frame`,
     );
     // Exclude only the rounded mask and frame. The entire rectangular interior
     // must match the real capture after the exporter's normal downsampling.

@@ -226,7 +226,8 @@ npm run screenshots:refresh
 
 This refreshes all seven promotional screenshots and their transparent `-ui` variants in
 `assets/screenshots/`, in PNG and lossless WebP. It preserves the existing copy, rounded
-corners, fine green border and output widths used by the README and website. To inspect
+corners and output widths used by the README and website. The fine lavender-grey frame
+uses a light or dark shade to suit each screenshot. To inspect
 the result before replacing tracked images:
 
 ```sh
@@ -271,7 +272,7 @@ sidebar, capture fails instead of silently cutting it off. Increase the fixture'
 and capture height or revise the scene if necessary.
 
 Before publishing any images, the runner checks stable frames, source dimensions, crop
-bounds, transparent corners, the green border, lossless WebP pixels and that the UI
+bounds, transparent corners, the matching frame colour, lossless WebP pixels and that the UI
 interior matches the native capture after downsampling. It also rejects inputs edited
 during capture. Failed captures or exports leave the current images in place. Captures
 are repeatable with the same Firefox version, OS and installed fonts; platform or browser

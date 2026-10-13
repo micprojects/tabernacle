@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+export const screenshotFrameColor = (dark) => (dark ? '#625873' : '#cdc5dc');
+
 // Rectangles come from Firefox; only the presentation crop changes, never the UI.
 export function resolveScreenshotCrop(framing, measured, sourceOrigin) {
   let left = 0,
