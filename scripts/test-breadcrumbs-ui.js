@@ -31,7 +31,7 @@ try {
   const overflow = page.locator('#path-overflow');
   const menu = page.getByRole('menu', { name: 'Full folder path' });
   const current = page.locator('#scope-heading');
-  await expect(crumbs).toHaveText(['']);
+  await expect(crumbs).toHaveText(['Home']);
   await page.locator('[data-key="group:design"]').dblclick();
   await expect(crumbs).toHaveText(['', 'Work', 'Design']);
   await expect(overflow).toHaveCount(0);
@@ -292,7 +292,7 @@ try {
   await expect(current).toHaveText('Star Trek');
   await expect(current).toBeFocused();
   await page.locator('#home').click();
-  await expect(crumbs).toHaveText(['']);
+  await expect(crumbs).toHaveText(['Home']);
   await expect(overflow).toHaveCount(0);
   expect(errors).toEqual([]);
   console.log(

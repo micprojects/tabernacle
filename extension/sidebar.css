@@ -224,7 +224,12 @@ header {
   color: var(--toolbar-icon);
 }
 #home[aria-current] {
+  width: auto;
+  padding: 0 6px;
   background: transparent;
+}
+#home .crumb-label {
+  color: var(--muted);
 }
 #search-toggle {
   pointer-events: auto;

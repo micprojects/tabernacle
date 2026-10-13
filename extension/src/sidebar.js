@@ -168,6 +168,7 @@ const pathOverflow = breadcrumbMenuButton(
 );
 pathOverflow.id = 'path-overflow';
 const pathOverflowSeparator = folderChevron(null, 'Home');
+const homeLabel = el('span', 'crumb-label', 'Home');
 
 function announce(message, error = false) {
   clearTimeout(toastTimer);
@@ -1058,8 +1059,13 @@ function render() {
     ),
   );
   $('pinned-tabs').hidden = !pins.length;
-  if (scope) $('home').removeAttribute('aria-current');
-  else $('home').setAttribute('aria-current', 'location');
+  if (scope) {
+    $('home').removeAttribute('aria-current');
+    homeLabel.remove();
+  } else {
+    $('home').setAttribute('aria-current', 'location');
+    if (!homeLabel.isConnected) $('home').append(homeLabel);
+  }
   const crumbs = groupPath(state, state.view.scopeId);
   const scopeContainer = scope && groupContainerDetails(scope);
   const scopeAudio = audioInGroups.get(scope?.id);
