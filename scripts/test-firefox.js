@@ -203,31 +203,21 @@ try {
       .sort((a, b) => a.index - b.index)
       .map((item) => item.id);
 
-  async function dispatchDrag(source, target, { x, y }) {
-    // macOS Marionette starts native drags but can omit drop/dragend and
-    // ignore target offsets. These HTML events exercise Firefox's handlers
-    // and real tab APIs; the Chromium UI suites also use pointer dragging.
-    await driver.executeScript(
-      (source, target, x, y) => {
-        const dataTransfer = new DataTransfer();
-        const rect = target.getBoundingClientRect();
-        const options = {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer,
-          clientX: rect.left + x,
-          clientY: rect.top + y,
-        };
-        source.dispatchEvent(new DragEvent('dragstart', options));
-        target.dispatchEvent(new DragEvent('dragover', options));
-        target.dispatchEvent(new DragEvent('drop', options));
-        source.dispatchEvent(new DragEvent('dragend', options));
-      },
-      source,
-      target,
-      x,
-      y,
-    );
+  async function pointerDrag(source, target, { x, y }) {
+    const rect = await target.getRect();
+    await driver
+      .actions()
+      .move({ origin: source })
+      .press(Button.LEFT)
+      .move({ origin: source, y: 8, duration: 100 })
+      .move({
+        origin: target,
+        x: Math.round(x - rect.width / 2),
+        y: Math.round(y - rect.height / 2),
+        duration: 200,
+      })
+      .release(Button.LEFT)
+      .perform();
   }
 
   const dragPin = async (sourceId, targetId, offset) => {
@@ -239,19 +229,8 @@ try {
       until.elementLocated(By.css(`.pinned-tab[data-key="tab:${targetId}"]`)),
       5000,
     );
-    if (process.platform === 'darwin') {
-      const rect = await target.getRect();
-      await dispatchDrag(source, target, { x: rect.width / 2 + offset, y: rect.height / 2 });
-    } else {
-      await driver
-        .actions()
-        .move({ origin: source })
-        .press(Button.LEFT)
-        .move({ origin: source, y: 8 })
-        .move({ origin: target, x: offset })
-        .release(Button.LEFT)
-        .perform();
-    }
+    const rect = await target.getRect();
+    await pointerDrag(source, target, { x: rect.width / 2 + offset, y: rect.height / 2 });
   };
 
   await dragPin(testPins[2], testPins[0], -10);
@@ -353,7 +332,7 @@ try {
   const movingRow = By.css(`.tab-row[data-key="tab:${reordered.id}"]`);
   const childRow = By.css(`.tab-row[data-key="tab:${child.id}"]`);
   await driver.wait(until.elementLocated(childRow), 5000);
-  await dispatchDrag(await driver.findElement(movingRow), await driver.findElement(childRow), {
+  await pointerDrag(await driver.findElement(movingRow), await driver.findElement(childRow), {
     x: 60,
     y: 2,
   });

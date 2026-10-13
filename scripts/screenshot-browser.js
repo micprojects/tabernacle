@@ -13,7 +13,8 @@ export class ScreenshotBrowser {
     this.root = await mkdtemp(join(tmpdir(), 'tabernacle-screenshots-'));
     const appData = join(this.root, 'app-data');
     await mkdir(appData);
-    const options = new firefox.Options().addArguments('-headless', '-no-remote').enableBidi();
+    const options = new firefox.Options().addArguments('-no-remote').enableBidi();
+    if (!fixture.headed) options.addArguments('-headless');
     if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
     else if (process.platform === 'darwin')
       options.setBinary('/Applications/Firefox.app/Contents/MacOS/firefox');

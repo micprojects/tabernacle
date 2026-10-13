@@ -166,6 +166,8 @@ try {
         );
       }
       await page.mouse.move(0, 0);
+      // Establish keyboard modality before asserting :focus-visible styles.
+      await page.keyboard.press('Tab');
       await newTab.focus();
       await expect(newTab).toHaveCSS('color', theme.id ? expected.text : expected.accent);
       await page.locator('#tree').focus();
