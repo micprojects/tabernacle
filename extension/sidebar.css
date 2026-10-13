@@ -568,14 +568,11 @@ footer {
   min-width: 16px;
   color: var(--panel-muted);
 }
-.recent-count,
 .recently-closed-time {
   flex-shrink: 0;
   color: var(--panel-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-}
-.recently-closed-time {
   min-width: 3ch;
   text-align: right;
 }
