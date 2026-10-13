@@ -60,6 +60,11 @@ export function createGroupCreation({
       return identity.icon || identity.iconUrl || identity.colorCode ? identity : undefined;
     }
 
+    function appearanceGroup() {
+      // Include explicit selections (including a new container draft) in icon previews.
+      return { ...draft, defaultCookieStoreId: draft.selection };
+    }
+
     function showGroup(restoreFocus = false) {
       const content = el('div');
       const field = el('div', 'group-container-field');
@@ -88,7 +93,7 @@ export function createGroupCreation({
       appearance.addEventListener('click', () => {
         draft.name = $('dialog-input').value;
         editAppearance({
-          group: draft,
+          group: appearanceGroup(),
           container: appearanceContainer(),
 
           onSave: (value) => {
@@ -119,7 +124,7 @@ export function createGroupCreation({
         details.replaceChildren(name, el('span', 'group-container-note', note));
         summary.replaceChildren(containerListIcon(identity), details, change);
         appearance.replaceChildren(
-          folderIcon(draft, appearanceContainer(), { state: getState() }),
+          folderIcon(appearanceGroup(), appearanceContainer(), { state: getState() }),
           el('span', '', 'Icon and colour'),
           icon('chevron'),
         );

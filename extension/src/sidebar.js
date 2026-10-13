@@ -526,6 +526,7 @@ function groupNode(group, query, ancestorMatch = false) {
       [
         group.name,
         group.appearance?.icon,
+        group.defaultCookieStoreId,
         folderAppearance(group, container, state).color,
         count(group.id),
         audioInGroups.get(group.id) || 0,
@@ -715,6 +716,7 @@ function pinnedFolder(pin) {
       current,
       appearance.icon,
       appearance.color,
+      group.defaultCookieStoreId,
       container?.iconUrl,
       container?.icon,
     ],
