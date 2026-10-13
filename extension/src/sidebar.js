@@ -885,37 +885,11 @@ function newTabItem(groupId, parentTab = null) {
     add.dataset.key = key;
     const slot = el('span', 'icon-slot');
     slot.append(icon('plus'));
-    add.append(slot, el('span', 'new-action-label', 'New tab'));
-    const addFolder =
-      parentTabId === null
-        ? button(
-            `New folder in ${group?.name || 'Home'}`,
-            'groupPlus',
-            () => {
-              cancelGroupClick();
-              createDialog(groupId);
-            },
-            'new-folder-action',
-          )
-        : null;
-    if (addFolder) {
-      addFolder.dataset.key = `new-group:${groupId}`;
-      addFolder.append(el('span', 'new-action-label', 'New folder'));
-      addFolder.addEventListener('keydown', (event) => {
-        if (moveTreeFocus(event, add)) return;
-        if (event.key === 'ArrowLeft' && !event.altKey) {
-          event.preventDefault();
-          add.focus();
-        }
-      });
-    }
+    add.append(slot);
     add.addEventListener('contextmenu', (event) => newTabMenu(event, groupId, parentTabId));
     add.addEventListener('keydown', (event) => {
       if (newTabMenu(event, groupId, parentTabId) || moveTreeFocus(event, add)) return;
-      if (event.key === 'ArrowRight' && addFolder) {
-        event.preventDefault();
-        addFolder.focus();
-      } else if (event.key === 'ArrowLeft' && !event.altKey) {
+      if (event.key === 'ArrowLeft' && !event.altKey) {
         event.preventDefault();
         const parentKey = parentTabId !== null ? `tab:${parentTabId}` : `group:${groupId}`;
         const parentRow = tree.querySelector(`[data-key="${parentKey}"]`);
@@ -923,7 +897,7 @@ function newTabItem(groupId, parentTab = null) {
         else parent();
       }
     });
-    item.append(add, ...(addFolder ? [addFolder] : []));
+    item.append(add);
     dropTarget(item, parentTab ? 'tab' : 'inside', parentTabId ?? groupId);
     return item;
   });
