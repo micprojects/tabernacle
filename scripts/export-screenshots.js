@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { fitScreenshotImage } from './screenshot-layout.js';
+import { fitScreenshotImage, screenshotFrameColor } from './screenshot-layout.js';
 
 const fixture = JSON.parse(
   await readFile(process.argv[4] || 'assets/screenshots/screenshots.json', 'utf8'),
@@ -98,11 +98,11 @@ for (const [index, shot] of fixture.shots.entries()) {
     .webp({ lossless: true, effort: 6 })
     .toFile(join(destination, shot.file.replace('.png', '.webp')));
 
-  // Retain the existing one-pixel green frame on standalone website images.
+  // A quiet lavender-grey frame follows the screenshot's light or dark palette.
   const uiWidth = px(image.width + 2);
   const uiHeight = px(imageHeight + 2);
   const frame = Buffer.from(
-    `<svg width="${uiWidth}" height="${uiHeight}"><rect x="${outputScale / 2}" y="${outputScale / 2}" width="${uiWidth - outputScale}" height="${uiHeight - outputScale}" rx="${px(17.5)}" fill="none" stroke="#81998d" stroke-width="${outputScale}"/></svg>`,
+    `<svg width="${uiWidth}" height="${uiHeight}"><rect x="${outputScale / 2}" y="${outputScale / 2}" width="${uiWidth - outputScale}" height="${uiHeight - outputScale}" rx="${px(17.5)}" fill="none" stroke="${screenshotFrameColor(dark)}" stroke-width="${outputScale}"/></svg>`,
   );
   const standalone = await sharp({
     create: { width: uiWidth, height: uiHeight, channels: 4, background: '#00000000' },
