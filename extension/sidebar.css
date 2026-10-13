@@ -488,9 +488,9 @@ footer {
 }
 .recent-filter[aria-pressed='true'],
 .recent-filter[aria-pressed='true']:hover {
-  color: var(--panel);
-  background: var(--panel-text);
-  border-color: var(--panel-text);
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .recent-more {
   display: flex;
