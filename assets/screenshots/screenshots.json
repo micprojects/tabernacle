@@ -460,7 +460,7 @@
       },
       "framing": {
         "top": "#navigation-capsule",
-        "paddingTop": 6,
+        "paddingTop": 2,
         "bottom": "[data-key=\"new-tab:c7999750-3d73-4d2b-8daa-11fcd598e005\"]",
         "paddingBottom": 11
       }
