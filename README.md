@@ -39,6 +39,8 @@ Choose a Firefox container for new tabs, or set a default container for each fol
 
 Tabernacle follows your Firefox theme automatically. It recognises Firefox Default and Mozilla’s Sun, Spark, Flame, Flare, Lavender, Dusk, Lagoon, Pine, Tide, Ash and Smoke themes, using bundled light/dark palettes and gradients. Other themes use the colours Firefox exposes; Firefox may return their base palette even when a separate dark variant is displayed. Third-party background images are not loaded.
 
+The pinned toolbar and Firefox sidebar icons follow Firefox’s theme colours, including when Tabernacle’s sidebar uses Monochrome. The add-on listing keeps a fixed violet icon, with PNG exports for each display size.
+
 Click the **Settings** cog at the bottom of the sidebar, or use **Preferences** for Tabernacle in Firefox’s Add-ons Manager. Settings open in a full browser tab, with sections for Appearance, Containers, Backup and restore, Shortcuts and About.
 
 In **Settings → Appearance**, choose **Follow Firefox** or **Monochrome**. **Monochrome colour mode** controls the neutral palette when selected manually or used as a fallback: **Follow Firefox**, **Light** or **Dark**. Save applies your preferences to every window. You can also show website domains and lines connecting nested tabs.
