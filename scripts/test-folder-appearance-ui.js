@@ -135,6 +135,51 @@ try {
   const created = await send('createContainer', { name: 'Team', icon: 'briefcase', color: 'blue' });
   await send('setGroupContainer', { id: 'work', cookieStoreId: created.createdCookieStoreId });
   await expect(glyph('work')).toHaveClass(/group-container-icon/);
+  await row('work').click();
+  await expect(glyph('design')).toHaveAttribute('data-icon', 'book-16');
+  await expect(glyph(leaf)).toHaveAttribute('data-icon', 'folder-open-16');
+  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-16');
+  await button('Expand Research').click();
+  await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-open-16');
+  await expect(glyph('research')).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await open('research');
+  await expect(choice('Folder icon')).toHaveAttribute('aria-checked', 'true');
+  await expect(choice('Container icon')).toHaveCount(0);
+  await expect(choice('Container colour')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.appearance-summary')).toHaveText('Folder icon · container colour');
+  await choice('Music').click();
+  await button('Save').click();
+  await expect(glyph('research')).toHaveAttribute('data-icon', 'musical-note-16');
+  await expect(glyph('research')).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await open('research');
+  await button('Reset icon and colour').click();
+  await button('Save').click();
+
+  // Selecting the same inherited container explicitly must invalidate both icon caches.
+  await send('setGroupPin', { id: 'research', action: 'open' });
+  const pinnedGlyph = page.locator('[data-key="pin:group:research"] .folder-glyph');
+  await expect(pinnedGlyph).toHaveAttribute('data-icon', 'folder-16');
+  await send('setGroupContainer', { id: 'research', cookieStoreId: created.createdCookieStoreId });
+  await expect(glyph('research')).toHaveClass(/group-container-icon/);
+  await expect(pinnedGlyph).toHaveClass(/group-container-icon/);
+  await open('research');
+  await choice('Folder').click();
+  await button('Save').click();
+  await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-open-16');
+  await expect(pinnedGlyph).toHaveAttribute('data-icon', 'folder-16');
+  await send('setGroupAppearance', { id: 'research', appearance: {} });
+  await expect(pinnedGlyph).toHaveClass(/group-container-icon/);
+  await send('setGroupContainer', { id: 'research', cookieStoreId: null });
+  await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-open-16');
+  await expect(pinnedGlyph).toHaveAttribute('data-icon', 'folder-16');
+  await expect(pinnedGlyph).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await send('setGroupPin', { id: 'research', action: null });
+  await page.screenshot({ path: 'test-results/folder-container-icon-inheritance.png' });
+  console.log(
+    '✓ Inherited colour, local icons, explicit container toggles and pinned icon updates',
+  );
+
   await open('work');
   await page.getByRole('combobox', { name: 'Icon category' }).selectOption('Technology');
   await expect(choice('Keyboard')).toBeVisible();

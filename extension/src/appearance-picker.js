@@ -1,5 +1,5 @@
 import { icon } from './icons.js';
-import { folderIcon, folderSymbol } from './folder-icons.js';
+import { folderContainerIconUrl, folderIcon, folderSymbol } from './folder-icons.js';
 import {
   folderIcons,
   folderColors,
@@ -29,12 +29,13 @@ export function createAppearancePicker({ group, container, state }) {
   details.append(name, summary);
   preview.append(sample, details);
   const usesContainer = Boolean(container);
+  const usesContainerIcon = Boolean(folderContainerIconUrl(group, container));
   const defaultGroup = { ...group, appearance: {} };
   const inheritsColor = Boolean(folderAppearance(defaultGroup, undefined, state).color);
   const reset = el(
     'button',
     'appearance-reset',
-    inheritsColor
+    inheritsColor || (usesContainer && !usesContainerIcon)
       ? 'Reset icon and colour'
       : usesContainer
         ? 'Use container icon and colour'
@@ -59,7 +60,7 @@ export function createAppearancePicker({ group, container, state }) {
         name:
           key === 'color' && inheritsColor
             ? 'Inherited colour'
-            : `${usesContainer ? 'Container' : 'Folder'} ${title.toLowerCase()}`,
+            : `${(key === 'icon' ? usesContainerIcon : usesContainer) ? 'Container' : 'Folder'} ${title.toLowerCase()}`,
       },
       ...entries,
     ].map((entry) => {
@@ -185,7 +186,7 @@ export function createAppearancePicker({ group, container, state }) {
     const iconName = folderIcons.find((item) => item.id === value.icon)?.name;
     const colorName = folderColors.find((item) => item.id === value.color)?.name;
     summary.textContent = [
-      iconName || (usesContainer ? `${container.name} icon` : 'Folder icon'),
+      iconName || (usesContainerIcon ? `${container.name} icon` : 'Folder icon'),
       colorName ||
         (inheritsColor
           ? 'inherited colour'

@@ -86,8 +86,9 @@ fall back to the effective container or the standard folder colour. An explicit
 colour overrides inheritance for that folder and its subfolders; reset removes
 the override. Inherited colours are resolved when rendered, so edits and moves
 update descendants without copying colours into their saved appearance. Icons
-apply only to that folder and fall back to the effective container or standard
-folder icon. The catalogue and search keywords live in
+apply only to that folder and fall back to its explicitly assigned container's icon,
+or the standard folder icon when its container is inherited. Custom icons override
+either default. The catalogue and search keywords live in
 `src/folder-appearance.js`; the picker uses bundled, licensed Acorn symbols followed
 by custom A–Z and 0–9 symbols from `icons/ui/folder-icons.svg`. The final Letters &
 numbers category includes all 36 characters; searching a character or its label

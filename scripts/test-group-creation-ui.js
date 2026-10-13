@@ -88,12 +88,46 @@ try {
   await name.fill('Client project');
   await chooseDestination('Work');
   await expect(page.locator('.group-container-details')).toHaveText('WorkInherited from Work');
+  const appearanceGlyph = page.locator('#change-group-appearance .folder-glyph');
+  await expect(appearanceGlyph).toHaveAttribute('data-icon', 'folder-16');
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await button('Change folder appearance').click();
+  await expect(page.getByRole('radio', { name: 'Folder icon', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await expect(page.locator('.appearance-sample .folder-glyph')).toHaveAttribute(
+    'data-icon',
+    'folder-16',
+  );
+  await button('Save').click();
   await page.screenshot({ path: 'test-results/group-creation-summary.png' });
   await change.click();
   await button('Personal').click();
   await expect(name).toHaveValue('Client project');
   await expect(page.getByLabel('Create in', { exact: true })).toHaveText('Home / Work');
   await expect(change).toBeFocused();
+  await expect(appearanceGlyph).toHaveClass(/group-container-icon/);
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(81, 205, 0)');
+  await button('Change folder appearance').click();
+  await expect(page.getByRole('radio', { name: 'Container icon', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await expect(page.locator('.appearance-sample .folder-glyph')).toHaveClass(
+    /group-container-icon/,
+  );
+  await button('Save').click();
+  await change.click();
+  await button('No container').click();
+  await expect(appearanceGlyph).toHaveAttribute('data-icon', 'folder-16');
+  expect(await appearanceGlyph.evaluate((node) => node.style.color)).toBe('');
+  await change.click();
+  await button('Inherit (Work)').click();
+  await expect(appearanceGlyph).toHaveAttribute('data-icon', 'folder-16');
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await change.click();
+  await button('Personal').click();
   await button('Create folder').click();
   await expect(page.getByRole('dialog')).toBeHidden();
   let state = await snapshot();
@@ -121,6 +155,16 @@ try {
   await expect(page.locator('.group-container-details')).toHaveText(
     'Research accountNew container · ready to create',
   );
+  await expect(appearanceGlyph).toHaveClass(/group-container-icon/);
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await button('Change folder appearance').click();
+  await expect(page.locator('.appearance-sample .folder-glyph')).toHaveClass(
+    /group-container-icon/,
+  );
+  await expect(page.locator('.appearance-summary')).toHaveText(
+    'Research account icon · container colour',
+  );
+  await button('Save').click();
   expect((await snapshot()).containers).toHaveLength(2);
   await change.click();
   await button('Edit new container…').click();

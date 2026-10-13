@@ -431,11 +431,9 @@ try {
   );
   const subgroup = page.locator(`[data-key="group:${subgroupId}"]`);
   await expect(subgroup).toHaveAttribute('title', /Default container: Work \(inherited\)/);
-  await expect(subgroup.locator('.group-container-icon')).toHaveCSS('color', 'rgb(0, 167, 224)');
-  await expect(subgroup.locator('.group-container-icon')).toHaveCSS(
-    'mask-image',
-    /\/icons\/containers\/fingerprint\.svg/,
-  );
+  await expect(subgroup.locator('.folder-icon')).toHaveCSS('color', 'rgb(0, 167, 224)');
+  await expect(subgroup.locator('.folder-icon')).toHaveAttribute('data-icon', 'folder-open-16');
+  await expect(subgroup.locator('.group-container-icon')).toHaveCount(0);
   await expect(subgroup).toHaveAccessibleName(
     'Nested, 0 tabs, default container: Work (inherited)',
   );
@@ -443,23 +441,31 @@ try {
     window.containerTest.identities[0].icon = 'briefcase';
     window.containerTest.notify();
   });
-  for (const row of [group, subgroup])
-    await expect(row.locator('.group-container-icon')).toHaveCSS(
-      'mask-image',
-      /\/icons\/containers\/briefcase\.svg/,
-    );
+  await expect(group.locator('.group-container-icon')).toHaveCSS(
+    'mask-image',
+    /\/icons\/containers\/briefcase\.svg/,
+  );
+  await expect(subgroup.locator('.folder-icon')).toHaveAttribute('data-icon', 'folder-open-16');
   await group.locator('.group-container-icon').click();
   await expect(group).toHaveAttribute('aria-expanded', 'false');
   await expect(group.locator('.group-container-icon')).toBeVisible();
   await group.locator('.group-container-icon').click();
   await expect(group).toHaveAttribute('aria-expanded', 'true');
-  await expect(subgroup.locator('.group-container-icon')).toBeVisible();
+  await expect(subgroup.locator('.folder-icon')).toBeVisible();
+  await subgroup.locator('.folder-icon').click();
+  await expect(subgroup.locator('.folder-icon')).toHaveAttribute('data-icon', 'folder-16');
+  await subgroup.locator('.folder-icon').click();
+  await expect(subgroup.locator('.folder-icon')).toHaveAttribute('data-icon', 'folder-open-16');
   check(
-    'Folder icons follow inherited containers and icon-only updates, while still toggling folders',
+    'Only explicit containers supply icons; inherited folders keep coloured, togglable folder icons',
   );
   await openGroupPicker(subgroup);
   await expect(page.getByRole('radio', { name: 'Inherit (Work) Current' })).toBeChecked();
-  await page.locator('#dialog-cancel').click();
+  await saveDefault('Shopping');
+  await expect(subgroup.locator('.group-container-icon')).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await openGroupPicker(subgroup);
+  await saveDefault('Inherit (Work)');
+  await expect(subgroup.locator('.folder-icon')).toHaveCSS('color', 'rgb(0, 167, 224)');
   await subgroup.dblclick();
   const heading = page.locator('#scope-heading');
   await expect(heading).toHaveAttribute('title', 'Default container: Work (inherited)');
@@ -509,7 +515,7 @@ try {
   await expect(heading).toHaveAttribute('title', 'Default container: Team (inherited)');
   await page.locator('#home').click();
   await expect(subgroup).toHaveAttribute('title', /Default container: Team \(inherited\)/);
-  await expect(subgroup.locator('.group-container-icon')).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await expect(subgroup.locator('.folder-icon')).toHaveCSS('color', 'rgb(175, 81, 245)');
   await page.screenshot({ path: 'test-results/group-container-inheritance.png' });
   for (const color of [undefined, 'not-a-colour']) {
     await page.evaluate((color) => {
@@ -517,10 +523,7 @@ try {
       window.containerTest.notify();
     }, color);
     await expect(group.locator('.group-container-icon')).toHaveCSS('color', 'rgb(173, 173, 173)');
-    await expect(subgroup.locator('.group-container-icon')).toHaveCSS(
-      'color',
-      'rgb(173, 173, 173)',
-    );
+    await expect(subgroup.locator('.folder-icon')).toHaveCSS('color', 'rgb(173, 173, 173)');
   }
   await page.evaluate(() => {
     window.containerTest.identities[0].colorCode = '#af51f5';
