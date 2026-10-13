@@ -120,12 +120,45 @@ try {
   });
   await page.goto(`${base}/extension/sidebar.html`);
   await expect(page.locator('.row').first()).toBeVisible();
-  const opened = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Recent activity', exact: true }).click();
+  await expect(page.locator('#recently-closed')).toBeVisible();
+  await expect(page.locator('.recently-closed-row')).toHaveCount(18);
+  expect(await page.evaluate(() => window.activityTest.tabs.length)).toBe(0);
+  await page.setViewportSize({ width: 360, height: 760 });
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: 'test-results/recent-popup-light.png', animations: 'disabled' });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.screenshot({ path: 'test-results/recent-popup-dark.png', animations: 'disabled' });
+  await page.emulateMedia({ forcedColors: 'active' });
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.screenshot({
+    path: 'test-results/recent-popup-forced-colours.png',
+    animations: 'disabled',
+  });
+  await page.emulateMedia({ colorScheme: 'light', forcedColors: 'none' });
+  const popupOrder = await page
+    .locator('.recently-closed-row')
+    .evaluateAll((nodes) => nodes.map((node) => node.dataset.recentKey));
+  const opened = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   const activity = await opened;
   await expect(activity.locator('.activity-row')).toHaveCount(18);
+  expect(
+    await activity
+      .locator('.item-button')
+      .evaluateAll((nodes) => nodes.slice(0, 50).map((node) => node.dataset.key)),
+  ).toEqual(popupOrder);
+  await expect(activity.locator('[data-key="folder:research"] .item-kind')).toHaveText('Expanded');
+  const times = await activity
+    .locator('.item-time')
+    .evaluateAll((nodes) => nodes.map((node) => Date.parse(node.dateTime)));
+  expect(times.every((time, i) => i === 0 || time <= times[i - 1])).toBe(true);
   await expect(page.locator('#recently-closed')).toBeHidden();
   await page.getByRole('button', { name: 'Recent activity', exact: true }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   expect(await page.evaluate(() => window.activityTest.tabs.length)).toBe(1);
   await expect
     .poll(() =>
@@ -134,6 +167,16 @@ try {
       ),
     )
     .toBe(1);
+  await page.evaluate(() => {
+    window.activityTest.fail = 'tabernacle:openPage';
+  });
+  await page.getByRole('button', { name: 'Recent activity', exact: true }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.locator('#toast')).toContainText('Could not open recent activity');
+  await expect(page.locator('#recently-closed-toggle')).toBeFocused();
+  await page.evaluate(() => {
+    window.activityTest.fail = null;
+  });
   await activity.getByRole('link', { name: /^Closed tabs/ }).click();
   await page.evaluate(() => {
     window.activityTest.fail = 'tabernacle:restoreClosedTab';
@@ -182,9 +225,38 @@ try {
   await activity.getByRole('button', { name: 'Try again' }).click();
   await expect(activity.getByRole('alert')).toBeHidden();
   await expect(activity.locator('.activity-row').first()).toBeVisible();
+
+  // A folder expanded in the sidebar becomes the latest activity on both screens.
+  await activity.getByRole('link', { name: /^All activity/ }).click();
+  await page.evaluate(async () => {
+    const controller = await window.activityTest.ready;
+    const send = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
+    const state = await send('snapshot');
+    if (!state.view.collapsed.includes('personal')) await send('toggleGroup', { id: 'personal' });
+    await send('toggleGroup', { id: 'personal' });
+  });
+  await expect(activity.locator('.item-button').first()).toHaveAttribute(
+    'data-key',
+    'folder:personal',
+  );
+  await expect(activity.locator('.item-kind').first()).toHaveText('Expanded');
+  await page.getByRole('button', { name: 'Recent activity', exact: true }).click();
+  await expect(page.locator('.recently-closed-row').first()).toHaveAttribute(
+    'data-recent-key',
+    'folder:personal',
+  );
+  expect(
+    await page
+      .locator('.recently-closed-row')
+      .evaluateAll((nodes) => nodes.map((node) => node.dataset.recentKey)),
+  ).toEqual(
+    await activity
+      .locator('.item-button')
+      .evaluateAll((nodes) => nodes.slice(0, 50).map((node) => node.dataset.key)),
+  );
   expect(errors).toEqual([]);
   console.log(
-    '✓ Launcher opens/reuses one tab; restore, activation, folder navigation, live updates and error recovery',
+    '✓ Recent popup opens first; More opens/reuses the activity page with launcher errors, item actions and live updates covered',
   );
 } finally {
   await close();

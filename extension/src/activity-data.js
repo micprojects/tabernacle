@@ -1,5 +1,5 @@
-// The page experiment deliberately does not import the slide-up panel's helpers.
 import { groupPath, isWithin } from './model.js';
+import { activityEntries } from './recent-history.js';
 
 export const activityKinds = {
   viewed: { label: 'Viewed tabs', event: 'Viewed', action: 'Switch to tab', icon: 'globe' },
@@ -7,85 +7,29 @@ export const activityKinds = {
   folder: { label: 'Folders', event: 'Opened', action: 'Open folder', icon: 'group' },
 };
 
-function domain(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
-
 export function activityItems(state, { folderEvent = 'all', pageUrl = '' } = {}) {
-  const items = [];
   const isPage = (url) => pageUrl && url?.split(/[?#]/)[0] === pageUrl;
-  for (const tab of state.tabs ?? []) {
-    if (tab.incognito || !(tab.lastAccessed > 0) || isPage(tab.url)) continue;
-    items.push({
-      ...tab,
-      key: `viewed:${tab.id}`,
-      kind: 'viewed',
-      timestamp: tab.lastAccessed,
-      title: tab.title || tab.url || 'New tab',
-      detail: domain(tab.url),
-      path: groupPath(state, tab.groupId)
-        .map((group) => group.name)
-        .join(' / '),
-    });
-  }
-  for (const tab of state.recentlyClosed ?? []) {
-    if (tab.incognito || isPage(tab.url)) continue;
-    items.push({
-      ...tab,
-      key: `closed:${tab.sessionId}`,
-      kind: 'closed',
-      timestamp: tab.closedAt || 0,
-      title: tab.title || tab.url || 'New tab',
-      detail: domain(tab.url),
-    });
-  }
-  const entered = new Map(
-    (state.view?.recentFolders ?? []).map((entry) => [entry.id, entry.enteredAt]),
-  );
-  const expanded = new Map(
-    (state.view?.recentExpandedFolders ?? []).map((entry) => [entry.id, entry.expandedAt]),
-  );
-  for (const group of state.groups) {
-    const enteredAt = entered.get(group.id) || 0;
-    const expandedAt = expanded.get(group.id) || 0;
-    const timestamp =
-      folderEvent === 'entered'
-        ? enteredAt
-        : folderEvent === 'expanded'
-          ? expandedAt
-          : Math.max(enteredAt, expandedAt);
-    if (!timestamp) continue;
-    const event =
-      folderEvent === 'all'
-        ? expandedAt > enteredAt
-          ? 'Expanded'
-          : 'Opened'
-        : folderEvent === 'expanded'
-          ? 'Expanded'
-          : 'Opened';
-    items.push({
-      key: `folder:${group.id}`,
-      id: group.id,
-      kind: 'folder',
-      title: group.name,
-      detail:
-        groupPath(state, group.parentId)
-          .map((parent) => parent.name)
-          .join(' / ') || 'Top level',
-      timestamp,
-      enteredAt,
-      expandedAt,
-      event,
-      tabCount: (state.tabs ?? []).filter(
-        (tab) => !tab.incognito && !isPage(tab.url) && isWithin(state, tab.groupId, group.id),
-      ).length,
-    });
-  }
-  return items.sort((a, b) => b.timestamp - a.timestamp || a.key.localeCompare(b.key));
+  return activityEntries(state, { folderEvent, pageUrl }).map((item) => {
+    if (item.kind === 'folder')
+      return {
+        ...item,
+        detail: item.detail || 'Top level',
+        tabCount: (state.tabs ?? []).filter(
+          (tab) => !tab.incognito && !isPage(tab.url) && isWithin(state, tab.groupId, item.id),
+        ).length,
+      };
+    return {
+      ...item,
+      detail: item.detail.replace(/^www\./, ''),
+      ...(item.kind === 'viewed'
+        ? {
+            path: groupPath(state, item.groupId)
+              .map((group) => group.name)
+              .join(' / '),
+          }
+        : {}),
+    };
+  });
 }
 
 export function filterActivity(

@@ -171,6 +171,42 @@ test('timeline merges event times and searches titles, paths and URLs within eac
   assert.equal(recentItems(state, 'viewed', 'notes example.com')[0].id, 1);
 });
 
+test('folder activity uses the latest opening or expansion once per folder in both lists', () => {
+  const state = {
+    groups: [
+      { id: 'work', name: 'Work', parentId: null },
+      { id: 'research', name: 'Research', parentId: 'work' },
+      { id: 'personal', name: 'Personal', parentId: null },
+    ],
+    tabs: [{ id: 1, title: 'Notes', lastAccessed: 3500 }],
+    view: {
+      recentFolders: [
+        { id: 'work', enteredAt: 1000 },
+        { id: 'research', enteredAt: 3000 },
+      ],
+      recentExpandedFolders: [
+        { id: 'missing', expandedAt: 6000 },
+        { id: 'personal', expandedAt: 5000 },
+        { id: 'work', expandedAt: 4000 },
+        { id: 'research', expandedAt: 2000 },
+      ],
+    },
+  };
+  const folders = recentItems(state, 'folder');
+  assert.deepEqual(
+    folders.map(({ id, timestamp, event }) => [id, timestamp, event]),
+    [
+      ['personal', 5000, 'Expanded'],
+      ['work', 4000, 'Expanded'],
+      ['research', 3000, 'Opened'],
+    ],
+  );
+  assert.deepEqual(
+    recentItems(state).map(({ key }) => key),
+    ['folder:personal', 'folder:work', 'viewed:1', 'folder:research'],
+  );
+});
+
 test('day groups use local calendar dates and relative times handle unknown and future times', () => {
   const now = new Date(2026, 9, 10, 0, 10).getTime();
   assert.equal(recentDay(now - 5 * 60_000, now), 'Today');

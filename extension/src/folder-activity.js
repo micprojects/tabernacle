@@ -1,5 +1,5 @@
-// Expansion activity is separate from entered folders so the original history
-// panel keeps its existing contents. Only deliberate expansions are recorded.
+// Keep expansion activity separate from folder visits so the activity page can
+// filter either event. Only deliberate expansions are recorded.
 export function recordExpansions(view, ids, now = Date.now()) {
   const expanded = new Set(ids);
   if (!expanded.size) return;
