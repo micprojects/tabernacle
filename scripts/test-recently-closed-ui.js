@@ -234,7 +234,6 @@ try {
   });
   await trigger.click();
   await expect(rows).toHaveCount(50);
-  await expect(popup.locator('.recent-count')).toHaveText('50');
   expect(
     await rows.evaluateAll((nodes) => nodes.every((node) => node.dataset.kind === 'closed')),
   ).toBe(true);

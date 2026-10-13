@@ -44,13 +44,12 @@ export function createRecentActivity({
   const heading = el('div', 'recently-closed-heading');
   const title = el('h2', '', 'Recent activity');
   title.id = 'recently-closed-title';
-  const count = el('span', 'recent-count');
   const dismiss = el('button', 'icon-button');
   dismiss.type = 'button';
   dismiss.title = 'Close recent activity';
   dismiss.setAttribute('aria-label', dismiss.title);
   dismiss.append(icon('close'));
-  heading.append(title, count, dismiss);
+  heading.append(title, dismiss);
   const filters = el('div', 'recent-filters');
   filters.setAttribute('role', 'group');
   filters.setAttribute('aria-label', 'Filter recent activity');
@@ -132,7 +131,6 @@ export function createRecentActivity({
     ]);
     if (key !== renderKey) {
       renderKey = key;
-      count.textContent = items.length;
       const focused = document.activeElement;
       const focusedKey = focused?.dataset.recentKey;
       const oldIndex = [...list.querySelectorAll('button')].indexOf(focused);
