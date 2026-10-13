@@ -56,18 +56,19 @@
 /* Controls sit on the full theme background, with quiet appearance-led borders.
    Forced colours retain the system roles from colors.css. */
 @media (forced-colors: none) {
-  /* Match Firefox's native header surface, then reveal the chosen theme below.
-     The shared edge keeps the fade continuous when pins wrap or disappear. */
-  :root[data-firefox-theme] .sidebar {
-    --header-edge: color-mix(in srgb, Canvas 65%, transparent);
-  }
-
+  /* Keep Home on Firefox's native header surface, then blend through the
+     first row of pins. Wrapped pins continue on the full theme colour. */
   :root[data-firefox-theme] header {
-    background: linear-gradient(Canvas 40px, var(--header-edge));
+    background: linear-gradient(Canvas 38px, transparent 70px);
   }
 
-  :root[data-firefox-theme] .tree {
-    background-image: linear-gradient(var(--header-edge), transparent calc(2 * var(--row-height)));
+  /* With no pins, blend below Home without leaving a hard edge at the tree. */
+  :root[data-firefox-theme] header:has(.pinned-tabs[hidden]) {
+    background: Canvas;
+  }
+
+  :root[data-firefox-theme] header:has(.pinned-tabs[hidden]) + .tree {
+    background-image: linear-gradient(Canvas, transparent 28px);
   }
 
   :root[data-firefox-theme='default'] .sidebar {

@@ -10,10 +10,12 @@ when no highlight is supplied. Custom folder and container colours remain explic
 Favicons come directly from Firefox.
 
 In Follow Firefox, the sidebar continues the selected theme's frame colour across
-the tab list and footer. The search and pins area starts at the system Canvas colour
-(white in light appearance) and fades into the theme through the first two list rows,
-softening the transition from Firefox's own header. The fade follows the actual header
-height, including wrapped or hidden pins, and is disabled in forced colours.
+the tab list and footer. Home and search sit on the system Canvas colour
+(white in light appearance), continuing Firefox's own header. A short fade starts
+in the gap below Home at 38px and reaches the full appearance colour at 70px,
+through the first row of pinned icons. Wrapped pins continue on the full theme
+surface. With no pins, the search area stays on Canvas and the fade moves into the
+first 28px of the tab list. The fade is disabled in forced colours.
 Bundled themes add their leading gradient
 stop as a flat overlay, including its original opacity; external themes use their
 exposed frame colour. Theme and light/dark changes repaint this surface through
