@@ -31,7 +31,8 @@
     "test:backup": "node scripts/test-backup-ui.js",
     "test:backup:firefox": "node scripts/test-backup-firefox.js",
     "test:themes": "node scripts/test-themes-ui.js",
-    "test:themes:firefox": "node scripts/test-themes-firefox.js"
+    "test:themes:firefox": "node scripts/test-themes-firefox.js",
+    "test:toolbar:firefox": "node scripts/test-toolbar-icon-firefox.js"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

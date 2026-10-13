@@ -1,14 +1,17 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
+import { toolbarIconSVG } from '../extension/src/toolbar-icon.js';
 
-// The same full-canvas vector powers Firefox's toolbar, add-on listings and previews.
-const source = await readFile('extension/icons/tabernacle-toolbar-full.svg');
+// Store artwork stays fixed; the transparent toolbar symbol follows Firefox.
+const source = await readFile('extension/icons/tabernacle.svg');
+await writeFile('extension/icons/tabernacle-toolbar.svg', toolbarIconSVG());
 const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 1024];
 for (const size of sizes) {
   const path =
     size === 1024 ? 'assets/tabernacle-1024.png' : `extension/icons/tabernacle-${size}.png`;
-  // Rasterize the 16-unit SVG at the output resolution instead of enlarging a bitmap.
-  await sharp(source, { density: (72 * size) / 16 })
+  // Supersample the vector, then downsample once for smoother curve coverage.
+  // Keep transparency so the violet edge works on both light and dark surfaces.
+  await sharp(source, { density: (72 * size * 4) / 256 })
     .resize(size, size)
     .png()
     .toFile(path);

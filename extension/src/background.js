@@ -1,4 +1,7 @@
 import { createController } from './controller.js';
+import { followToolbarTheme } from './toolbar-icon.js';
+
+followToolbarTheme(browser);
 
 let notificationTimer;
 let pendingWindows = new Set();

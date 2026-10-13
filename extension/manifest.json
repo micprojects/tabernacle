@@ -33,21 +33,21 @@
   "sidebar_action": {
     "default_title": "Tabernacle",
     "default_panel": "sidebar.html",
-    "default_icon": "icons/tabernacle-toolbar-full.svg",
+    "default_icon": "icons/tabernacle-toolbar.svg",
     "open_at_install": true
   },
   "action": {
     "default_title": "Show/hide Tabernacle",
-    "default_icon": "icons/tabernacle-toolbar-full.svg"
+    "default_icon": "icons/tabernacle-toolbar.svg"
   },
   "icons": {
-    "16": "icons/tabernacle-toolbar-full.svg",
-    "32": "icons/tabernacle-toolbar-full.svg",
-    "48": "icons/tabernacle-toolbar-full.svg",
-    "64": "icons/tabernacle-toolbar-full.svg",
-    "96": "icons/tabernacle-toolbar-full.svg",
-    "128": "icons/tabernacle-toolbar-full.svg",
-    "256": "icons/tabernacle-toolbar-full.svg"
+    "16": "icons/tabernacle-16.png",
+    "32": "icons/tabernacle-32.png",
+    "48": "icons/tabernacle-48.png",
+    "64": "icons/tabernacle-64.png",
+    "96": "icons/tabernacle-96.png",
+    "128": "icons/tabernacle-128.png",
+    "256": "icons/tabernacle-256.png"
   },
   "commands": {
     "_execute_sidebar_action": {

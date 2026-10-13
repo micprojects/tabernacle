@@ -33,7 +33,17 @@ test('background validates messages and forwards container and session lifecycle
     api.tabs[name] = event();
   for (const name of ['onCreated', 'onUpdated', 'onRemoved'])
     api.contextualIdentities[name] = event();
-  api.action = { onClicked: event() };
+  api.action = {
+    onClicked: event(),
+
+    setIcon: async () => {},
+  };
+  api.sidebarAction = { setIcon: async () => {} };
+  api.theme = { getCurrent: async () => ({}), onUpdated: event() };
+  api.management = { getAll: async () => [] };
+  for (const name of ['onEnabled', 'onDisabled', 'onInstalled', 'onUninstalled'])
+    api.management[name] = event();
+  for (const name of ['onCreated', 'onRemoved']) api.windows[name] = event();
   const previous = globalThis.browser;
   globalThis.browser = api;
   try {
