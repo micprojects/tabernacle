@@ -598,7 +598,7 @@
     />
   </symbol>
   <!-- Original Tabernacle badges: rounded squares with centred, transparent character cut-outs. -->
-  <symbol id="letter-a-16" viewBox="0 0 16 16">
+  <symbol id="letter-a-16" viewBox="1 1 14 14">
     <mask
       id="letter-a-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -629,7 +629,7 @@
       mask="url(#letter-a-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-b-16" viewBox="0 0 16 16">
+  <symbol id="letter-b-16" viewBox="1 1 14 14">
     <mask
       id="letter-b-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -660,7 +660,7 @@
       mask="url(#letter-b-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-c-16" viewBox="0 0 16 16">
+  <symbol id="letter-c-16" viewBox="1 1 14 14">
     <mask
       id="letter-c-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -691,7 +691,7 @@
       mask="url(#letter-c-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-d-16" viewBox="0 0 16 16">
+  <symbol id="letter-d-16" viewBox="1 1 14 14">
     <mask
       id="letter-d-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -722,7 +722,7 @@
       mask="url(#letter-d-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-e-16" viewBox="0 0 16 16">
+  <symbol id="letter-e-16" viewBox="1 1 14 14">
     <mask
       id="letter-e-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -753,7 +753,7 @@
       mask="url(#letter-e-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-f-16" viewBox="0 0 16 16">
+  <symbol id="letter-f-16" viewBox="1 1 14 14">
     <mask
       id="letter-f-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -784,7 +784,7 @@
       mask="url(#letter-f-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-g-16" viewBox="0 0 16 16">
+  <symbol id="letter-g-16" viewBox="1 1 14 14">
     <mask
       id="letter-g-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -815,7 +815,7 @@
       mask="url(#letter-g-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-h-16" viewBox="0 0 16 16">
+  <symbol id="letter-h-16" viewBox="1 1 14 14">
     <mask
       id="letter-h-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -846,7 +846,7 @@
       mask="url(#letter-h-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-i-16" viewBox="0 0 16 16">
+  <symbol id="letter-i-16" viewBox="1 1 14 14">
     <mask
       id="letter-i-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -877,7 +877,7 @@
       mask="url(#letter-i-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-j-16" viewBox="0 0 16 16">
+  <symbol id="letter-j-16" viewBox="1 1 14 14">
     <mask
       id="letter-j-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -908,7 +908,7 @@
       mask="url(#letter-j-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-k-16" viewBox="0 0 16 16">
+  <symbol id="letter-k-16" viewBox="1 1 14 14">
     <mask
       id="letter-k-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -939,7 +939,7 @@
       mask="url(#letter-k-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-l-16" viewBox="0 0 16 16">
+  <symbol id="letter-l-16" viewBox="1 1 14 14">
     <mask
       id="letter-l-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -970,7 +970,7 @@
       mask="url(#letter-l-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-m-16" viewBox="0 0 16 16">
+  <symbol id="letter-m-16" viewBox="1 1 14 14">
     <mask
       id="letter-m-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1001,7 +1001,7 @@
       mask="url(#letter-m-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-n-16" viewBox="0 0 16 16">
+  <symbol id="letter-n-16" viewBox="1 1 14 14">
     <mask
       id="letter-n-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1032,7 +1032,7 @@
       mask="url(#letter-n-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-o-16" viewBox="0 0 16 16">
+  <symbol id="letter-o-16" viewBox="1 1 14 14">
     <mask
       id="letter-o-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1063,7 +1063,7 @@
       mask="url(#letter-o-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-p-16" viewBox="0 0 16 16">
+  <symbol id="letter-p-16" viewBox="1 1 14 14">
     <mask
       id="letter-p-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1094,7 +1094,7 @@
       mask="url(#letter-p-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-q-16" viewBox="0 0 16 16">
+  <symbol id="letter-q-16" viewBox="1 1 14 14">
     <mask
       id="letter-q-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1125,7 +1125,7 @@
       mask="url(#letter-q-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-r-16" viewBox="0 0 16 16">
+  <symbol id="letter-r-16" viewBox="1 1 14 14">
     <mask
       id="letter-r-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1156,7 +1156,7 @@
       mask="url(#letter-r-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-s-16" viewBox="0 0 16 16">
+  <symbol id="letter-s-16" viewBox="1 1 14 14">
     <mask
       id="letter-s-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1187,7 +1187,7 @@
       mask="url(#letter-s-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-t-16" viewBox="0 0 16 16">
+  <symbol id="letter-t-16" viewBox="1 1 14 14">
     <mask
       id="letter-t-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1218,7 +1218,7 @@
       mask="url(#letter-t-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-u-16" viewBox="0 0 16 16">
+  <symbol id="letter-u-16" viewBox="1 1 14 14">
     <mask
       id="letter-u-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1249,7 +1249,7 @@
       mask="url(#letter-u-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-v-16" viewBox="0 0 16 16">
+  <symbol id="letter-v-16" viewBox="1 1 14 14">
     <mask
       id="letter-v-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1280,7 +1280,7 @@
       mask="url(#letter-v-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-w-16" viewBox="0 0 16 16">
+  <symbol id="letter-w-16" viewBox="1 1 14 14">
     <mask
       id="letter-w-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1311,7 +1311,7 @@
       mask="url(#letter-w-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-x-16" viewBox="0 0 16 16">
+  <symbol id="letter-x-16" viewBox="1 1 14 14">
     <mask
       id="letter-x-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1342,7 +1342,7 @@
       mask="url(#letter-x-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-y-16" viewBox="0 0 16 16">
+  <symbol id="letter-y-16" viewBox="1 1 14 14">
     <mask
       id="letter-y-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1373,7 +1373,7 @@
       mask="url(#letter-y-16-cutout)"
     />
   </symbol>
-  <symbol id="letter-z-16" viewBox="0 0 16 16">
+  <symbol id="letter-z-16" viewBox="1 1 14 14">
     <mask
       id="letter-z-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1404,7 +1404,7 @@
       mask="url(#letter-z-16-cutout)"
     />
   </symbol>
-  <symbol id="number-0-16" viewBox="0 0 16 16">
+  <symbol id="number-0-16" viewBox="1 1 14 14">
     <mask
       id="number-0-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1435,7 +1435,7 @@
       mask="url(#number-0-16-cutout)"
     />
   </symbol>
-  <symbol id="number-1-16" viewBox="0 0 16 16">
+  <symbol id="number-1-16" viewBox="1 1 14 14">
     <mask
       id="number-1-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1466,7 +1466,7 @@
       mask="url(#number-1-16-cutout)"
     />
   </symbol>
-  <symbol id="number-2-16" viewBox="0 0 16 16">
+  <symbol id="number-2-16" viewBox="1 1 14 14">
     <mask
       id="number-2-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1497,7 +1497,7 @@
       mask="url(#number-2-16-cutout)"
     />
   </symbol>
-  <symbol id="number-3-16" viewBox="0 0 16 16">
+  <symbol id="number-3-16" viewBox="1 1 14 14">
     <mask
       id="number-3-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1528,7 +1528,7 @@
       mask="url(#number-3-16-cutout)"
     />
   </symbol>
-  <symbol id="number-4-16" viewBox="0 0 16 16">
+  <symbol id="number-4-16" viewBox="1 1 14 14">
     <mask
       id="number-4-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1559,7 +1559,7 @@
       mask="url(#number-4-16-cutout)"
     />
   </symbol>
-  <symbol id="number-5-16" viewBox="0 0 16 16">
+  <symbol id="number-5-16" viewBox="1 1 14 14">
     <mask
       id="number-5-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1590,7 +1590,7 @@
       mask="url(#number-5-16-cutout)"
     />
   </symbol>
-  <symbol id="number-6-16" viewBox="0 0 16 16">
+  <symbol id="number-6-16" viewBox="1 1 14 14">
     <mask
       id="number-6-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1621,7 +1621,7 @@
       mask="url(#number-6-16-cutout)"
     />
   </symbol>
-  <symbol id="number-7-16" viewBox="0 0 16 16">
+  <symbol id="number-7-16" viewBox="1 1 14 14">
     <mask
       id="number-7-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1652,7 +1652,7 @@
       mask="url(#number-7-16-cutout)"
     />
   </symbol>
-  <symbol id="number-8-16" viewBox="0 0 16 16">
+  <symbol id="number-8-16" viewBox="1 1 14 14">
     <mask
       id="number-8-16-cutout"
       maskUnits="userSpaceOnUse"
@@ -1683,7 +1683,7 @@
       mask="url(#number-8-16-cutout)"
     />
   </symbol>
-  <symbol id="number-9-16" viewBox="0 0 16 16">
+  <symbol id="number-9-16" viewBox="1 1 14 14">
     <mask
       id="number-9-16-cutout"
       maskUnits="userSpaceOnUse"
