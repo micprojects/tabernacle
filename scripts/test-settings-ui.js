@@ -144,7 +144,7 @@ try {
   await expect(settings.locator('#look-color-scheme')).toHaveValue('dark');
   await expect(lines).not.toBeChecked();
   await settings.getByRole('link', { name: 'About', exact: true }).click();
-  await expect(settings.locator('#extension-version')).toContainText('Version 0.1.5');
+  await expect(settings.locator('#extension-version')).toContainText('Version 0.1.6');
   await settings.goBack();
   await expect(lines).not.toBeChecked();
   await settings.locator('#appearance-save').click();
