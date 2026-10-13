@@ -149,7 +149,7 @@ try {
   console.log('✓ Wrapped pins share one marker at row boundaries and keep the first slot visible');
 
   const savedOrder = await order();
-  await pin(last).dragTo(page.locator('#home'));
+  await pin(last).dragTo(page.locator('#settings'));
   await expect.poll(order).toEqual(savedOrder);
   await expect(shelf.locator('.dragging, .drop-before, .drop-after')).toHaveCount(0);
   expect((await snapshot()).tabs.find((tab) => tab.id === last).pinned).toBe(true);

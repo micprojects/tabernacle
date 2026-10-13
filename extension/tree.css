@@ -312,11 +312,101 @@ svg.folder-icon,
 }
 
 .row.drop-inside,
-.empty-child.drop-inside {
+.empty-child.drop-inside,
+.new-tab-item.drop-inside,
+.pinned-tabs.drop-inside,
+.pinned-folder.drop-inside {
   background: var(--selected);
   color: var(--selected-text);
   outline: 1.5px dashed var(--focus);
   outline-offset: -1px;
+}
+.moving-item,
+.moving-item * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.moving-item.move-invalid,
+.moving-item.move-invalid * {
+  cursor: not-allowed !important;
+}
+.drop-invalid {
+  outline: 1px dashed var(--danger);
+  outline-offset: -1px;
+}
+.move-preview {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(280px, calc(100vw - 12px));
+  padding: 8px 10px;
+  border: 1px solid var(--focus);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--panel-text);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  box-shadow: 0 2px 8px #0002;
+}
+.move-marker {
+  position: fixed;
+  z-index: 999;
+  height: 2px;
+  background: var(--focus);
+  pointer-events: none;
+}
+.move-marker::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -3px;
+  top: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--focus);
+}
+.move-marker.offscreen {
+  height: 0;
+  border-top: 2px dashed var(--focus);
+}
+.move-complete {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.pinned-tabs.empty-pins {
+  min-height: 28px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+.pinned-tabs.empty-pins::before {
+  content: 'Drop here to pin';
+  margin: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.move-field {
+  display: grid;
+  gap: 5px;
+  margin-block: 10px;
+  min-width: 0;
+}
+.move-field select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.move-summary {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.toast-action {
+  text-decoration: underline;
+  color: inherit;
+  padding: 2px 5px;
 }
 .row.drop-before::before,
 .row.drop-after::after {
@@ -360,6 +450,22 @@ svg.folder-icon,
   }
 }
 @media (forced-colors: active) {
+  /* Keep the system highlight and its text together: automatic backplates
+     otherwise paint Canvas behind HighlightText on nested row labels. */
+  .drop-inside {
+    forced-color-adjust: none;
+    color: HighlightText !important;
+    background: Highlight !important;
+  }
+  .drop-inside * {
+    forced-color-adjust: none;
+    color: HighlightText !important;
+  }
+  .move-marker,
+  .move-marker::before,
+  .move-preview {
+    forced-color-adjust: none;
+  }
   .tab-toggle-badge {
     color: ButtonText;
     background: Canvas;

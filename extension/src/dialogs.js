@@ -6,6 +6,7 @@ import { createGroupCreation } from './group-creation.js';
 import { createAppearancePicker } from './appearance-picker.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
 import { pinActionLabels } from './pinned-items.js';
+import { createMovePicker } from './move-dialog.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -17,7 +18,7 @@ function el(tag, className, text) {
 }
 
 // Own modal state here; the sidebar owns the current snapshot and rendering.
-export function createDialogs({ getState, request, closeMenu, onChange }) {
+export function createDialogs({ getState, request, closeMenu, onChange, onMove }) {
   let dialogAction, dialogContext, dialogCancel, dialogComplete, dialogCleanup;
   let dialogBusy = false;
 
@@ -404,6 +405,51 @@ export function createDialogs({ getState, request, closeMenu, onChange }) {
   }
 
   function moveDialog(kind, id) {
+    if (kind !== 'contents') {
+      const picker = createMovePicker(getState, kind, id);
+      let operationId = crypto.randomUUID();
+      let message;
+      const openingRow = document.querySelector(
+        kind === 'pin-group'
+          ? `[data-pin-kind="group"][data-pin-id="${CSS.escape(id)}"]`
+          : `[data-key="${kind}:${CSS.escape(String(id))}"]`,
+      );
+      picker.node.addEventListener('change', () => {
+        message = undefined;
+        operationId = crypto.randomUUID();
+      });
+      showDialog({
+        title: kind === 'tab' ? 'Move tab' : kind === 'pin-group' ? 'Move shortcut' : 'Move folder',
+        description:
+          kind === 'tab'
+            ? 'The tab and its children move together. Pinning changes only this tab.'
+            : 'Choose a destination and position.',
+        input: false,
+        content: picker.node,
+        submit: 'Move',
+
+        onSubmit: async () => {
+          // Keep an identical request on retry when the response was lost.
+          if (!message) {
+            const plan = picker.plan();
+            message = {
+              operationId,
+              source: plan.source,
+              expected: plan.expected,
+              destination: picker.intent(),
+            };
+          }
+          const next = await request('moveItem', message);
+          onChange(next);
+          return next;
+        },
+
+        afterSubmit: onMove,
+        onCancel: () => openingRow?.isConnected && openingRow.focus({ preventScroll: true }),
+      });
+      picker.focus();
+      return;
+    }
     const current =
       kind !== 'tab'
         ? groupById(getState(), id).parentId

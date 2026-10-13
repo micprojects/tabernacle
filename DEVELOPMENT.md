@@ -78,6 +78,34 @@ Run `node scripts/test-pinned-folders-ui.js` and
 `node scripts/test-pinned-folders-firefox.js` for the new interactions and native
 multi-window/session checks. Core behaviour is included in `npm test`.
 
+## Moving tabs and folders
+
+`src/move-plan.js` resolves drag and keyboard destinations to the same typed slot.
+Tabs always go inside folders; their own rows offer before, inside and after.
+Folder ordering remains separate from tab ordering. The Move tab dialog also
+offers parent tabs, exact sibling positions and the mixed pinned strip.
+
+`src/pointer-move.js` captures the pointer on the persistent sidebar after 5px
+of movement. It owns the floating preview, insertion marker, edge scrolling and
+600ms hover navigation. Temporary expansion and scope changes are projected over
+fresh snapshots and discarded on cancellation; they do not activate pages or
+write folder activity. A successful move reveals and highlights its result.
+
+`moveItem` validates an expected placement against fresh state in the controller's
+serialized queue. Version 2 move recovery journals membership changes, native
+pin changes and affected layout slots; version 1 records remain readable.
+Recovery patches only the fields or positions owned by the operation. The latest
+receipt per window makes retries after a lost response idempotent. A failed
+reveal is reported separately from a committed move and offers a Show retry.
+
+Run `node scripts/test-drag-ui.js` for destination geometry, continuous hierarchy
+navigation, cancellation, keyboard positions, themes and 100/500/1,000-tab scrolling.
+The unit suite injects failures and restarts at compound-operation write boundaries.
+`npm run test:firefox` also tests continuous dragging in Firefox's actual sidebar.
+For a visible, isolated-profile check, run
+`FIREFOX_DRAG_HEADED=1 node scripts/test-drag-firefox.js`; preview and result captures
+are saved under `test-results/`. The temporary profile is removed on completion.
+
 ## Folder appearance
 
 Folders may store an optional `appearance` with independent `icon` and palette
@@ -159,9 +187,8 @@ npm run test:ui
 `test:ui` runs the sidebar and settings UI suites. `npm run test:settings` runs just
 the settings suite. `npm run test:firefox` runs integration tests with
 temporary Firefox profile and app-data directories; it requires Firefox and downloads
-GeckoDriver when needed. On macOS, those integration tests dispatch HTML drag events
-because Marionette can fail to complete pointer drags. The Chromium UI suites exercise
-pointer dragging.
+GeckoDriver when needed. Both the Firefox integration and Chromium UI suites use
+real pointer sequences through the shared drag controller, including on macOS.
 Set `FIREFOX_BINARY` or `GECKODRIVER_BINARY` to use a specific local executable.
 
 ## Release build

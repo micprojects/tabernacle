@@ -7,18 +7,11 @@ import { createDialogs } from './dialogs.js';
 import { folderIcon } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
 import { pinActionLabels } from './pinned-items.js';
+import { createPointerMove } from './pointer-move.js';
 import { createRecentActivity } from './recently-closed.js';
 import { createActivityLauncher } from './activity-launcher.js';
 import { openDemoPage } from './internal-pages.js';
-import {
-  groupById,
-  groupPath,
-  isWithin,
-  children,
-  sortTabs,
-  tabChildren,
-  tabSubtree,
-} from './model.js';
+import { groupById, groupPath, isWithin, sortTabs, tabChildren, tabSubtree } from './model.js';
 
 const $ = (id) => document.getElementById(id);
 const tree = $('tree');
@@ -83,6 +76,8 @@ function renderAppearance() {
 forcedColors.addEventListener('change', renderAppearance);
 let state, request, windowId, selected, drag, refreshTimer, toastTimer, menuReturnFocus;
 let confirmedState;
+let pointerMoves;
+let movingItem = false;
 let actionQueue = Promise.resolve();
 let activeActions = 0;
 let notifiedRevision = -1;
@@ -197,8 +192,9 @@ const {
   groupContainerDialog,
 } = createDialogs({
   getState: () => state,
-  request: (...args) => request(...args),
+  request: (...args) => (args[0] === 'moveItem' ? requestMove(args[1]) : request(...args)),
   closeMenu,
+  onMove: moveFeedback,
 
   onChange(next, key) {
     acceptState(next);
@@ -207,6 +203,18 @@ const {
     render();
   },
 });
+
+async function requestMove(args) {
+  try {
+    return await request('moveItem', args);
+  } catch (error) {
+    // A write may have committed before a response/snapshot failed. Only retry
+    // a confirmed receipt, using the same operation identity.
+    const receipt = await request('moveStatus').catch(() => null);
+    if (receipt?.operationId === args.operationId) return request('moveItem', args);
+    throw error;
+  }
+}
 
 function action(type, args = {}) {
   const viewAction = ['toggleGroup', 'enterGroup'].includes(type) ? { type, args } : null;
@@ -223,7 +231,7 @@ function action(type, args = {}) {
 
   const result = actionQueue.then(async () => {
     try {
-      const next = await request(type, args);
+      const next = await (type === 'moveItem' ? requestMove(args) : request(type, args));
       finishViewAction();
       acceptState(next);
       render();
@@ -314,7 +322,7 @@ tree.addEventListener(
 
 async function refresh() {
   refreshTimer = null;
-  if (drag || pointerHeld || activeActions) {
+  if (pointerHeld || activeActions) {
     refreshAgain = true;
     return;
   }
@@ -336,7 +344,7 @@ async function refresh() {
     announce(error.message, true);
   } finally {
     refreshing = false;
-    if (refreshAgain && !drag) {
+    if (refreshAgain) {
       refreshAgain = false;
       scheduleRefresh();
     }
@@ -403,7 +411,7 @@ function rowBase(kind, id) {
   row.dataset.id = id;
   row.tabIndex = 0;
   row.setAttribute('role', 'treeitem');
-  row.draggable = true;
+  row.draggable = false;
   row.classList.toggle('selected', selected === row.dataset.key);
   row.addEventListener('click', () => selectRow(row));
   row.addEventListener('contextmenu', (event) => {
@@ -413,20 +421,6 @@ function rowBase(kind, id) {
     contextMenu(kind, id, event.clientX, event.clientY);
   });
   row.addEventListener('keydown', (event) => rowKey(event, row, kind, id));
-  row.addEventListener('dragstart', (event) => {
-    cancelGroupClick();
-    drag = { kind, id, windowId };
-    event.dataTransfer.setData('application/x-tabernacle', JSON.stringify(drag));
-    event.dataTransfer.effectAllowed = 'move';
-    row.classList.add('dragging');
-  });
-  row.addEventListener('dragend', () => {
-    drag = null;
-    pointerHeld = false;
-    clearDrops();
-    row.classList.remove('dragging');
-    if (refreshAgain) scheduleRefresh();
-  });
   dropTarget(row, kind, id);
   return row;
 }
@@ -650,21 +644,7 @@ function closeOnMiddleClick(node, id) {
 function pinnedDrag(node, item) {
   node.dataset.pinKind = item.kind;
   node.dataset.pinId = item.id;
-  node.draggable = true;
-  node.addEventListener('dragstart', (event) => {
-    cancelGroupClick();
-    drag = { kind: 'pin', item, windowId };
-    event.dataTransfer.setData('application/x-tabernacle-pin', JSON.stringify(drag));
-    event.dataTransfer.effectAllowed = 'move';
-    node.classList.add('dragging');
-  });
-  node.addEventListener('dragend', () => {
-    drag = null;
-    pointerHeld = false;
-    node.classList.remove('dragging');
-    clearDrops();
-    if (renderPending || refreshAgain) scheduleRefresh();
-  });
+  node.draggable = false;
 }
 
 function pinnedMenu(node, kind, id) {
@@ -1031,12 +1011,13 @@ function render() {
   $('recently-closed-toggle').disabled = false;
   // A refresh may finish after dragstart. Keep the source/targets in the DOM
   // until dragend so native HTML drag-and-drop is not cancelled mid-gesture.
-  if (drag || pointerHeld) {
+  if (pointerHeld) {
     renderPending = true;
     refreshAgain = true;
     return;
   }
   renderPending = false;
+  state = pointerMoves?.project(state) || state;
   recentlyClosed?.render();
   tree.classList.toggle('show-connecting-lines', state.look.connectingLines);
   tree.classList.toggle('show-domains', state.look.domains);
@@ -1060,7 +1041,8 @@ function render() {
       pin.kind === 'tab' ? pinnedTab(tabPins.get(pin.id)) : pinnedFolder(folderPins.get(pin.id)),
     ),
   );
-  $('pinned-tabs').hidden = !pins.length;
+  $('pinned-tabs').hidden = !pins.length && !drag;
+  $('pinned-tabs').classList.toggle('empty-pins', !pins.length && Boolean(drag));
   if (scope) {
     $('home').removeAttribute('aria-current');
     homeLabel.remove();
@@ -1121,6 +1103,7 @@ function render() {
     [...document.querySelectorAll('[data-key]')]
       .find((row) => row.dataset.key === focusedKey)
       ?.focus({ preventScroll: true });
+  pointerMoves?.refresh();
 }
 
 function showSearch(show = true, { restoreFocus = true } = {}) {
@@ -1422,6 +1405,7 @@ async function copyUrls(kind, id) {
 }
 
 function contextMenu(kind, id, x, y) {
+  if (movingItem) return;
   if (kind === 'group')
     menu(
       [
@@ -1430,6 +1414,7 @@ function contextMenu(kind, id, x, y) {
         ...(state.folderPins.some((item) => item.id === id)
           ? [
               { label: 'Change default action…', icon: 'pin', run: () => pinFolderDialog(id) },
+              { label: 'Move shortcut…', icon: 'pin', run: () => moveDialog('pin-group', id) },
               {
                 label: 'Unpin folder',
                 icon: 'pin',
@@ -1501,7 +1486,7 @@ function contextMenu(kind, id, x, y) {
           : []),
         null,
         {
-          label: 'Move to folder…',
+          label: 'Move tab…',
           icon: 'group',
           run: () => moveDialog(kind, id),
         },
@@ -1539,167 +1524,99 @@ function contextMenu(kind, id, x, y) {
   }
 }
 
-function clearDrops() {
-  document
-    .querySelectorAll('.drop-before,.drop-after,.drop-inside')
-    .forEach((node) => node.classList.remove('drop-before', 'drop-after', 'drop-inside'));
-}
-
-function pinnedDropPosition(event) {
-  const pins = [...$('pinned-tabs').querySelectorAll('.pinned-tab')];
-  for (const [index, node] of pins.entries()) {
-    const rect = node.getBoundingClientRect();
-    if (event.clientY < rect.top || (event.clientY <= rect.bottom && event.clientX < rect.right)) {
-      const after = event.clientY >= rect.top && event.clientX >= rect.left + rect.width / 2;
-      const before = after ? pins[index + 1] : node;
-      return {
-        node: before || node,
-        after: !before,
-        before: before ? { kind: before.dataset.pinKind, id: before.dataset.pinId } : null,
-      };
-    }
-  }
-  return { node: pins.at(-1), after: true, before: null };
-}
-
-$('pinned-tabs').addEventListener('dragover', (event) => {
-  if (!event.dataTransfer.types.includes('application/x-tabernacle-pin')) return;
-  event.preventDefault();
-  event.stopPropagation();
-  event.dataTransfer.dropEffect = 'move';
-  clearDrops();
-  const { node, after } = pinnedDropPosition(event);
-  if (!node) return;
-  const shelf = $('pinned-tabs');
-  const bounds = shelf.getBoundingClientRect();
-  const rect = node.getBoundingClientRect();
-  const previous = node.previousElementSibling?.getBoundingClientRect();
-  const gap = parseFloat(getComputedStyle(shelf).columnGap);
-  const x = after
-    ? rect.right + gap / 2
-    : previous?.top === rect.top
-      ? (previous.right + rect.left) / 2
-      : rect.left;
-  // One marker per insertion slot, centered in its gap and visible at row edges.
-  const markerX = Math.max(bounds.left + 1, Math.min(x, bounds.left + shelf.clientWidth - 1));
-  node.style.setProperty('--pin-drop-x', `${markerX - rect.left - node.clientLeft}px`);
-  node.classList.add(after ? 'drop-after' : 'drop-before');
-});
-$('pinned-tabs').addEventListener('dragleave', (event) => {
-  if (!$('pinned-tabs').contains(event.relatedTarget)) clearDrops();
-});
-$('pinned-tabs').addEventListener('drop', async (event) => {
-  if (!event.dataTransfer.types.includes('application/x-tabernacle-pin')) return;
-  event.preventDefault();
-  event.stopPropagation();
-  clearDrops();
-  let source;
-  try {
-    source = JSON.parse(event.dataTransfer.getData('application/x-tabernacle-pin'));
-  } catch {
-    return;
-  }
-  if (
-    source?.kind !== 'pin' ||
-    !['group', 'tab'].includes(source.item?.kind) ||
-    typeof source.item.id !== 'string'
-  )
-    return;
-  if (source.windowId !== windowId) {
-    announce('Reorder pins in their own window.', true);
-    return;
-  }
-  const { before } = pinnedDropPosition(event);
-  drag = null;
-  pointerHeld = false;
-  await action('movePinnedItem', { item: source.item, before });
-});
-
-function dropPosition(event, node, kind) {
-  if (kind === 'inside' || node.classList.contains('new-tab-item')) return 'inside';
-  const rect = node.getBoundingClientRect(),
-    fraction = (event.clientY - rect.top) / rect.height;
-  return (kind === 'group' || kind === 'tab') && fraction > 0.25 && fraction < 0.75
-    ? 'inside'
-    : fraction < 0.5
-      ? 'before'
-      : 'after';
-}
-
 function dropTarget(node, kind, id) {
-  node.addEventListener('dragover', (event) => {
-    if (!event.dataTransfer.types.includes('application/x-tabernacle')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = 'move';
-    clearDrops();
-    node.classList.add(`drop-${dropPosition(event, node, kind)}`);
-  });
-  node.addEventListener('dragleave', (event) => {
-    if (!node.contains(event.relatedTarget)) clearDrops();
-  });
-  node.addEventListener('drop', async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    clearDrops();
-    let source;
-    try {
-      source = JSON.parse(event.dataTransfer.getData('application/x-tabernacle'));
-    } catch {
-      return;
-    }
-    drag = null;
-    if (source.windowId !== windowId) {
-      announce('Move tabs between windows in Firefox first.', true);
-      return;
-    }
-    if (!['tab', 'group'].includes(source.kind)) return;
-    const position = dropPosition(event, node, kind);
-    if (source.kind === kind && source.id === id) return;
-    if (kind === 'tab' && position === 'inside') {
-      if (source.kind !== 'tab') {
-        announce('Folders cannot be nested under tabs. Drop onto a folder or Home instead.', true);
-        return;
-      }
-      await action('nestTab', { id: source.id, parentTabId: id });
-      return;
-    }
-    let parentId,
-      parentTabId = null,
-      beforeId = null;
-    if (kind === 'inside' || position === 'inside') parentId = id;
-    else if (kind === 'group') {
-      const target = groupById(state, id);
-      if (!target) return;
-      parentId = target.parentId;
-      if (source.kind === 'group') {
-        const siblings = children(state, parentId);
-        beforeId =
-          position === 'before' ? id : (siblings[siblings.indexOf(target) + 1]?.id ?? null);
-      }
-    } else {
-      const target = treeTabs.find((tab) => tab.id === id);
-      if (!target) return;
-      parentId = target.groupId;
-      if (source.kind === 'tab') {
-        parentTabId = target.parentTabId;
-        const siblings = sortTabs(
-          treeTabs.filter((tab) => tab.groupId === parentId && tab.parentTabId === parentTabId),
-        );
-        beforeId =
-          position === 'before'
-            ? id
-            : (siblings[siblings.findIndex((tab) => tab.id === id) + 1]?.id ?? null);
-      }
-    }
-    await action(
-      source.kind === 'group' ? 'moveGroup' : 'moveTab',
-      source.kind === 'group'
-        ? { id: source.id, parentId, beforeId }
-        : { id: source.id, groupId: parentId, parentTabId, beforeId },
-    );
-  });
+  node.dataset.dropKind = kind;
+  node.dataset.dropId = id ?? '';
 }
+
+function showMovedItem(source) {
+  if (!source) return false;
+  const selector =
+    source.kind === 'pin-group'
+      ? `[data-pin-kind="group"][data-pin-id="${CSS.escape(source.id)}"]`
+      : `[data-key="${source.kind}:${CSS.escape(String(source.id))}"]`;
+  const node = document.querySelector(selector);
+  if (!node) return false;
+  node.scrollIntoView({ block: 'nearest' });
+  node.focus({ preventScroll: true });
+  node.classList.add('move-complete');
+  setTimeout(() => node.classList.remove('move-complete'), 1600);
+  return true;
+}
+
+function moveFeedback(next) {
+  const result = next?.moveResult;
+  if (!result) return;
+  const shown = showMovedItem(result.source);
+  const revealError = result.revealError || !shown;
+  announce(result.label + (revealError ? ' Could not show the destination.' : ''));
+  if (revealError) {
+    const show = button(
+      'Show',
+      null,
+      async () => {
+        const revealed = await action('revealItem', { source: result.source });
+        if (revealed) {
+          moveFeedback({
+            moveResult: { ...result, source: revealed.revealedItem, revealError: null },
+          });
+        }
+      },
+      'toast-action',
+    );
+    show.textContent = 'Show';
+    $('toast').append(' ', show);
+  }
+}
+
+async function commitMove(plan, destination) {
+  if (movingItem) return;
+  movingItem = true;
+  document.querySelector('.sidebar').setAttribute('aria-busy', 'true');
+  announce('Moving…');
+  const args = {
+    source: plan.source,
+    destination,
+    expected: plan.expected,
+    operationId: crypto.randomUUID(),
+  };
+  try {
+    const next = await action('moveItem', args);
+    if (next) moveFeedback(next);
+  } finally {
+    movingItem = false;
+    document.querySelector('.sidebar').removeAttribute('aria-busy');
+  }
+}
+
+pointerMoves = createPointerMove({
+  root: document.querySelector('.sidebar'),
+  tree,
+  shelf: $('pinned-tabs'),
+  getState: () => confirmedState,
+  canStart: () => Boolean(state) && !movingItem && !activeActions && !$('dialog').open,
+  announce,
+  commit: commitMove,
+
+  onStart() {
+    cancelGroupClick();
+    closeMenu();
+    drag = true;
+    pointerHeld = false;
+    if (searchOpen) showSearch(false, { restoreFocus: false });
+  },
+
+  onViewChange() {
+    acceptState(confirmedState);
+    render();
+  },
+
+  onEnd() {
+    drag = null;
+    pointerHeld = false;
+    if (refreshAgain) scheduleRefresh();
+  },
+});
 
 $('home').append(icon('home'));
 $('search-toggle').append(icon('search'));

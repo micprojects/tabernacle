@@ -1,11 +1,18 @@
 import { createMoveRecovery } from './move-recovery.js';
+import { resolveMove } from './move-plan.js';
 import { createBrowserCache } from './browser-cache.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normalizeLook, requireLook } from './look.js';
 import { recordExpansions } from './folder-activity.js';
-import { normalizeFolderPins, reconcilePins, movePin, pinActionLabels } from './pinned-items.js';
+import {
+  normalizeFolderPins,
+  reconcilePins,
+  movePin,
+  pinActionLabels,
+  pinKey,
+} from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
 import { internalPage, openInternalPage } from './internal-pages.js';
 import { createFolderBackupController, folderBackupActions } from './folder-backup-controller.js';
@@ -34,6 +41,7 @@ import {
 /** All writes are serialized, including new-tab events, so sidebar windows cannot
  * overwrite one another. Durable state lives in storage/sessions, not tab IDs. */
 export function createController(api, notify = () => {}) {
+  const receiptKey = 'tabernacle.move-receipts.v1';
   let model;
   let treeOwners = new Map();
   let tabTreeKeys = new Map();
@@ -71,14 +79,99 @@ export function createController(api, notify = () => {}) {
     readRecords,
     saveMembership,
     publish,
+    applyEffects,
+    saveReceipt,
 
-    async saveGroups(groups) {
+    async saveGroups(groups, source) {
+      if (source?.kind === 'group') {
+        // Recovery owns this folder's placement only. A rename, appearance
+        // change or newly created folder must survive a background restart.
+        if (!groupById(model, source.id)) return;
+        const desired = groups.find((group) => group.id === source.id);
+        if (!desired) throw new Error('The saved folder destination is unavailable.');
+        const siblings = groups.filter((group) => group.parentId === desired.parentId);
+        const following = siblings
+          .slice(siblings.indexOf(desired) + 1)
+          .find((group) => groupById(model, group.id)?.parentId === desired.parentId);
+        await changeModel((next) =>
+          moveGroup(next, source.id, desired.parentId, following?.id ?? null),
+        );
+        return;
+      }
       if (JSON.stringify(model.groups) !== JSON.stringify(groups))
         await changeModel((next) => {
           next.groups = structuredClone(groups);
         });
     },
   });
+
+  async function saveReceipt(receipt) {
+    const saved = (await api.storage.local.get(receiptKey))[receiptKey] || {};
+    const windows = new Set((await api.windows.getAll()).map((window) => String(window.id)));
+    const receipts = Object.fromEntries(Object.entries(saved).filter(([id]) => windows.has(id)));
+    receipts[receipt.windowId] = receipt;
+    await api.storage.local.set({ [receiptKey]: receipts });
+  }
+
+  async function applyEffects(effects, direction) {
+    if (effects.pin) {
+      const records = await readRecords(await api.tabs.query({}));
+      const matches = records.filter(({ value }) => value.treeId === effects.pin.treeId);
+      if (matches.length > 1) throw new Error('Move recovery found duplicated tab identities.');
+      const source = matches[0]?.tab;
+      if (source) {
+        if (source.windowId !== effects.windowId)
+          throw new Error(
+            'The moving tab changed windows. Return it to its original window to finish recovery.',
+          );
+        const desired = effects.pin[direction];
+        if (Boolean(source.pinned) !== desired.pinned)
+          await writeTab(effects.windowId, 'update', source.id, { pinned: desired.pinned });
+        if (desired.pinned) {
+          const before = records.find(
+            ({ tab, value }) =>
+              value.treeId === desired.beforeTreeId &&
+              tab.windowId === source.windowId &&
+              tab.pinned,
+          )?.tab;
+          await moveNativePin(effects.windowId, source.id, before?.id ?? null);
+        }
+      }
+    }
+    if (effects.folderPins) {
+      const order = effects.folderPins[direction];
+      const byId = new Map(model.folderPins.map((pin) => [pin.id, pin]));
+      const folderPins = [
+        ...order.flatMap((pin) => (byId.has(pin.id) ? [byId.get(pin.id)] : [])),
+        ...model.folderPins.filter((pin) => !order.some((item) => item.id === pin.id)),
+      ];
+      // Reordering does not remove slots. Other windows reconcile their own
+      // mixed layouts against this shared folder order on their next snapshot.
+      const next = { ...model, folderPins };
+      await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
+      model = next;
+    }
+    if (effects.layout) {
+      const view = await viewFor(effects.windowId);
+      const desired = effects.layout[direction];
+      const key = pinKey(effects.layout.item);
+      const current = (view.pinLayout || effects.layout.before).filter(
+        (item) => pinKey(item) !== key,
+      );
+      const index = desired.findIndex((item) => pinKey(item) === key);
+      if (index >= 0) {
+        const next = desired
+          .slice(index + 1)
+          .find((item) => current.some((pin) => pinKey(pin) === pinKey(item)));
+        const slot = next
+          ? current.findIndex((item) => pinKey(item) === pinKey(next))
+          : current.length;
+        current.splice(slot, 0, desired[index]);
+      }
+      view.pinLayout = current;
+      await saveView(effects.windowId, view);
+    }
+  }
 
   function initialize() {
     ready ??= (async () => {
@@ -562,7 +655,7 @@ export function createController(api, notify = () => {}) {
     }
   }
 
-  async function moveTab(tabId, groupId, windowId, beforeId = null, parentTabId = null) {
+  async function planTabMove(tabId, groupId, windowId, beforeId = null, parentTabId = null) {
     await checkedTab(tabId, windowId);
     requireGroup(model, groupId);
     const allTabs = await listTabs(windowId);
@@ -574,7 +667,7 @@ export function createController(api, notify = () => {}) {
       throw new Error('The parent tab has moved. Try again.');
     if (moving.has(parentTabId))
       throw new Error('A tab cannot nest under itself or one of its children.');
-    if (beforeId === tabId) return;
+    if (beforeId === tabId) return [];
     // Root ordering includes children exposed beneath pinned tabs.
     const candidates = parentTabId === null ? unpinnedTabTree(allTabs) : allTabs;
     const siblings = sortTabs(
@@ -618,7 +711,131 @@ export function createController(api, notify = () => {}) {
       if (!membershipMatches(before, update))
         changes.push({ id, before, after: { ...before, ...update } });
     }
-    await moves.apply(changes);
+    return changes;
+  }
+
+  async function moveTab(tabId, groupId, windowId, beforeId = null, parentTabId = null) {
+    await moves.apply(await planTabMove(tabId, groupId, windowId, beforeId, parentTabId));
+  }
+
+  async function revealItem(source, windowId) {
+    if (source.kind === 'tab') {
+      const tab = (await listTabs(windowId)).find((tab) =>
+        source.treeId ? tab.treeId === source.treeId : tab.id === source.id,
+      );
+      if (!tab) throw new Error('That tab has closed or moved to another window.');
+      if (!tab.pinned) await revealTab(tab.id, windowId);
+      return { kind: 'tab', id: tab.id, treeId: tab.treeId };
+    }
+    const group = groupById(model, requireGroup(model, source.id));
+    if (!group) throw new Error('That folder no longer exists.');
+    if (source.kind !== 'pin-group') {
+      const view = await viewFor(windowId);
+      if (view.scopeId === group.id || !isWithin(model, group.id, view.scopeId))
+        view.scopeId = group.parentId;
+      const parents = new Set(groupPath(model, group.parentId).map((item) => item.id));
+      view.collapsed = view.collapsed.filter((id) => !parents.has(id));
+      await saveView(windowId, view);
+    }
+    return source;
+  }
+
+  async function moveItem(message) {
+    const { windowId, operationId } = message;
+    if (typeof operationId !== 'string' || !operationId || operationId.length > 128)
+      throw new Error('Choose a valid move operation.');
+    let receipt = ((await api.storage.local.get(receiptKey))[receiptKey] || {})[windowId];
+    if (receipt?.operationId !== operationId) {
+      const current = await snapshot(windowId);
+      const plan = resolveMove(current, message.source, message.destination);
+      if (message.expected !== plan.expected)
+        throw new Error('The source or destination has moved. Try again.');
+      const destination = plan.destination;
+      let changes = [],
+        groups = null,
+        effects = null;
+      if (!plan.noOp) {
+        if (destination.kind === 'tree') {
+          changes = await planTabMove(
+            plan.source.id,
+            destination.groupId,
+            windowId,
+            destination.beforeId,
+            destination.parentTabId,
+          );
+        } else if (destination.kind === 'folder') {
+          const next = structuredClone(model);
+          moveGroup(next, plan.source.id, destination.parentId, destination.beforeId);
+          groups = { before: model.groups, after: next.groups };
+        }
+        const tab = current.tabs.find(
+          (tab) => tab.id === plan.source.id && plan.source.kind === 'tab',
+        );
+        if (destination.kind === 'pins' || tab?.pinned) {
+          effects = { windowId };
+          if (tab) {
+            const nativePins = current.tabs
+              .filter((tab) => tab.pinned)
+              .sort((a, b) => a.index - b.index);
+            const ordered = (plan.pinItems || []).filter((item) => item.kind === 'tab');
+            effects.pin = {
+              treeId: tab.treeId,
+              before: {
+                pinned: Boolean(tab.pinned),
+                beforeTreeId:
+                  nativePins[nativePins.findIndex((item) => item.id === tab.id) + 1]?.treeId ??
+                  null,
+              },
+              after: {
+                pinned: plan.pinned,
+                beforeTreeId: plan.pinned
+                  ? (ordered[ordered.findIndex((item) => item.id === tab.treeId) + 1]?.id ?? null)
+                  : null,
+              },
+            };
+          }
+          const layout =
+            destination.kind === 'pins'
+              ? plan.pinItems
+              : current.pins.filter((item) => item.kind !== 'tab' || item.id !== tab.treeId);
+          if (current.folderPins.length || current.view.pinLayout)
+            effects.layout = {
+              item: { kind: tab ? 'tab' : 'group', id: tab ? tab.treeId : plan.source.id },
+              before: current.view.pinLayout || current.pins,
+              after: layout,
+            };
+          if (plan.source.kind === 'pin-group') {
+            const pins = new Map(model.folderPins.map((pin) => [pin.id, pin]));
+            effects.folderPins = {
+              before: model.folderPins,
+              after: plan.pinItems
+                .filter((item) => item.kind === 'group')
+                .map((item) => pins.get(item.id)),
+            };
+          }
+        }
+      }
+      receipt = {
+        windowId,
+        operationId,
+        source: plan.source,
+        label: plan.noOp
+          ? 'Already in this position.'
+          : plan.label
+              .replace(/^Unpin and move/, 'Unpinned and moved')
+              .replace(/^Move/, 'Moved')
+              .replace(/^Pin /, 'Pinned ')
+              .replace(/^Reorder /, 'Reordered '),
+      };
+      await moves.apply(changes, groups, { effects, receipt });
+    }
+    let revealError;
+    try {
+      receipt = { ...receipt, source: await revealItem(receipt.source, windowId) };
+    } catch (error) {
+      revealError = error.message;
+    }
+    return { ...receipt, committed: true, revealError };
   }
 
   async function expandAncestors(tabs, id) {
@@ -640,6 +857,14 @@ export function createController(api, notify = () => {}) {
     if (folderBackupActions.has(type)) return folderBackup(message);
     let extra = {};
     switch (type) {
+      case 'moveStatus':
+        return ((await api.storage.local.get(receiptKey))[receiptKey] || {})[windowId] ?? null;
+      case 'moveItem':
+        extra.moveResult = await moveItem(message);
+        break;
+      case 'revealItem':
+        extra.revealedItem = await revealItem(message.source, windowId);
+        break;
       case 'snapshot':
         return snapshot(windowId);
       case 'getSettings':
@@ -1165,7 +1390,8 @@ export function createController(api, notify = () => {}) {
         'setGroupPin',
         'movePinnedItem',
         'setLook',
-      ].includes(type)
+      ].includes(type) ||
+        (type === 'moveItem' && message.source?.kind !== 'tab')
         ? undefined
         : windowId,
     );

@@ -318,10 +318,11 @@ try {
   await expect(page.locator('.tab-row')).toHaveCount(2);
   check('New tab is created inside the focused group');
   await page.locator('[data-key="tab:2"]').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Move to folder…' }).click();
-  await page.getByLabel('Destination folder').selectOption('design');
+  await page.getByRole('menuitem', { name: 'Move tab…' }).click();
+  await page.getByLabel('Destination', { exact: true }).selectOption('design');
   await page.getByRole('button', { name: 'Move', exact: true }).click();
-  await expect(page.locator('.tab-row')).toHaveCount(1);
+  await expect(page.locator('#scope-heading')).toHaveText('Design');
+  await expect(page.locator('[data-key="tab:2"]')).toBeVisible();
   check('Accessible move menu offers an alternative to dragging');
   await page.locator('#breadcrumbs').getByRole('button', { name: 'Home', exact: true }).click();
   await project.click({ button: 'right' });
@@ -406,7 +407,7 @@ try {
   await expect(branch.locator('.tab-row')).toHaveCount(2);
   check('Closing a parent tab confirms and closes its nested tabs together');
   await parent.dragTo(page.locator('#home'));
-  await expect(page.locator('.tab-row')).toHaveCount(0);
+  await expect(page.locator('#tree > .tab-node > [data-key="tab:1"]')).toBeVisible();
   await page.locator('#home').click();
   await expect(parent.locator('..').locator(':scope > .tab-branch .tab-row')).toHaveCount(2);
   await expect(page.locator('#tree > .tab-node > [data-key="tab:1"]')).toBeVisible();
