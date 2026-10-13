@@ -20,9 +20,10 @@ The following Tabernacle additions and adaptations are not official Acorn assets
   bar with the same 1.25px weight and rounded ends.
 - letter-a-16 through letter-z-16 and number-0-16 through number-9-16 are original
   Tabernacle drawings, released under the project's MIT licence (root LICENSE).
-  They use native 16px view boxes, centred characters, 1.5px strokes and rounded
-  ends and joins to sit alongside the Acorn icons. The characters are SVG paths,
-  with no font dependency; these are not official Acorn assets.
+  They use native 16px view boxes and 14px rounded squares filled with the folder
+  colour. Centred SVG path characters are scaled to 75% with rounded 1.75-unit
+  strokes and cut out with luminance masks, showing the underlying surface in
+  every theme. They have no font dependency; these are not official Acorn assets.
 
 All UI icons render at their native 12, 16 or 20 CSS pixel size. The registry
 in ../../src/icons.js maps Tabernacle actions to these symbols. The existing
