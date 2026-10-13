@@ -98,8 +98,8 @@ export async function setupScreenshotDemo(
     value: {
       connectingLines: true,
       domains: false,
-      themeSource: 'tabernacle',
-      colorScheme: 'light',
+      themeSource: 'firefox',
+      colorScheme: 'default',
     },
   });
   await send('enterGroup', { id: null });
@@ -118,6 +118,7 @@ export async function setupScreenshotDemo(
 
 // Runs in the real extension document through Firefox's in-process DevTools API.
 export async function showScreenshotScene(fixture, session, index) {
+  globalThis.tabernacleScreenshotRestoreActivityTimes?.();
   const shot = fixture.shots[index];
   const windowId = (await browser.windows.getCurrent()).id;
 
@@ -140,6 +141,8 @@ export async function showScreenshotScene(fixture, session, index) {
   };
 
   if (document.querySelector('#dialog').open) document.querySelector('#dialog-cancel').click();
+  if (document.querySelector('#recently-closed-toggle').getAttribute('aria-expanded') === 'true')
+    document.querySelector('#recently-closed-toggle').click();
   if (document.querySelector('#search-toggle').getAttribute('aria-expanded') === 'true')
     document.querySelector('#search-close').click();
   const scopeId = session.groups[shot.scope] || null;
@@ -148,8 +151,8 @@ export async function showScreenshotScene(fixture, session, index) {
     value: {
       connectingLines: true,
       domains: Boolean(shot.domains),
-      themeSource: 'tabernacle',
-      colorScheme: shot.colorScheme,
+      themeSource: 'firefox',
+      colorScheme: 'default',
     },
   });
   const state = await send('snapshot');
@@ -163,6 +166,7 @@ export async function showScreenshotScene(fixture, session, index) {
   await waitFor(
     () =>
       document.querySelector(`[data-key="tab:${session.tabs[fixture.activeTab]}"]`) &&
+      document.documentElement.dataset.firefoxTheme === 'default' &&
       document.documentElement.dataset.colorScheme === shot.colorScheme &&
       Boolean(document.querySelector('#home[aria-current]')) === !scopeId,
     'the sidebar scene',
@@ -189,11 +193,87 @@ export async function showScreenshotScene(fixture, session, index) {
     button.click();
     await waitFor(() => document.querySelector('#dialog').open, 'the folder dialog');
   }
+  if (shot.activity) {
+    // Generate history through real actions in this demo session. Run this scene
+    // after the tree captures, since closed demo tabs stay closed.
+    for (const { kind, key } of shot.activity) {
+      if (kind === 'folder') await send('enterGroup', { id: session.groups[key] });
+      else if (kind === 'viewed') await browser.tabs.update(session.tabs[key], { active: true });
+      else if (kind === 'closed') await browser.tabs.remove(session.tabs[key]);
+      else throw new Error(`Unsupported screenshot activity: ${kind}`);
+      // Keep Firefox session timestamps distinct and their ordering repeatable.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (shot.activityMinutesAgo) {
+      // Fixture only the ages of these real demo records at the API boundary.
+      // The unchanged popup sorts the records and formats its own time labels.
+      const now = Date.now();
+      const ages = shot.activityMinutesAgo;
+      const timestamp = (kind, key, fallback = 120) =>
+        now - (ages[kind]?.[key] ?? fallback) * 60000;
+      const tabKeys = new Map(Object.entries(session.tabs).map(([key, id]) => [id, key]));
+      const groupKeys = new Map(Object.entries(session.groups).map(([key, id]) => [id, key]));
+      const urlKeys = new Map(fixture.tabs.map(({ key, url }) => [url, key]));
+      const originalSend = browser.runtime.sendMessage;
+      browser.runtime.sendMessage = async (...args) => {
+        const result = await originalSend.apply(browser.runtime, args);
+        const data = result?.ok && result.data;
+        if (data?.tabs && data.view) {
+          for (const tab of data.tabs) tab.lastAccessed = timestamp('viewed', tabKeys.get(tab.id));
+          for (const tab of data.recentlyClosed ?? [])
+            tab.closedAt = timestamp('closed', urlKeys.get(tab.url));
+          for (const folder of data.view.recentFolders ?? [])
+            folder.enteredAt = timestamp('folder', groupKeys.get(folder.id));
+          for (const folder of data.view.recentExpandedFolders ?? [])
+            folder.expandedAt = timestamp('folder', groupKeys.get(folder.id));
+        }
+        return result;
+      };
+      globalThis.tabernacleScreenshotRestoreActivityTimes = () => {
+        browser.runtime.sendMessage = originalSend;
+        delete globalThis.tabernacleScreenshotRestoreActivityTimes;
+      };
+    }
+    document.querySelector('#recently-closed-toggle').click();
+    await waitFor(() => {
+      const rows = [...document.querySelectorAll('.recently-closed-row')].slice(0, 10);
+      return (
+        !document.querySelector('#recently-closed').hidden &&
+        rows.length === 10 &&
+        (!shot.activityMinutesAgo ||
+          new Set(rows.map((row) => row.querySelector('time').textContent)).size >= 4) &&
+        ['viewed', 'closed', 'folder'].every((kind) =>
+          rows.some((row) => row.dataset.kind === kind),
+        )
+      );
+    }, 'viewed tabs, closed tabs and folders in recent activity');
+    document.activeElement.blur();
+  }
   document.querySelector('#tree').scrollTop = 0;
   await document.fonts.ready;
   await Promise.all([...document.querySelectorAll('img')].map((image) => image.decode()));
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  return { scene: shot.file, width: innerWidth, height: innerHeight };
+  const surface = getComputedStyle(document.querySelector('.sidebar'));
+  return {
+    scene: shot.file,
+    width: innerWidth,
+    height: innerHeight,
+    theme: document.documentElement.dataset.firefoxTheme,
+    colorScheme: document.documentElement.dataset.colorScheme,
+    background: surface.backgroundColor,
+    gradient: surface.backgroundImage,
+    ...(shot.activity
+      ? {
+          activity: [...document.querySelectorAll('.recently-closed-row')]
+            .slice(0, 10)
+            .map((row) => ({
+              kind: row.dataset.kind,
+              title: row.querySelector('.recently-closed-label').textContent,
+              time: row.querySelector('time').textContent,
+            })),
+        }
+      : {}),
+  };
 }
 
 export function measureScreenshotRegion(framing) {

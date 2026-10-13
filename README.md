@@ -64,3 +64,9 @@ Pin the sites and folders you use most. Their icons stay visible in every folder
 Drag folder and tab pins into any order. Folder pins, their default actions and their relative order are shared across windows. Each window keeps its own arrangement of folder and tab positions, with tabs following Firefox’s pinned-tab order.
 
 <img src="assets/screenshots/06-pinned-tabs-ui.png" width="602" alt="Pinned sites above the folder path and tabs.">
+
+## Pick up where you left off
+
+Return to viewed tabs and folders. Reopen tabs you’ve closed.
+
+<img src="assets/screenshots/07-recent-activity-ui.png" width="550" alt="Recent activity showing viewed tabs, closed tabs and folders, with filters and a link to the full activity page.">

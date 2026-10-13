@@ -74,7 +74,7 @@ const sigint = () => interrupt('SIGINT'),
 process.once('SIGINT', sigint);
 process.once('SIGTERM', sigterm);
 const check = () => controller.signal.throwIfAborted();
-const report = { inputDigest: digest, preview: args.includes('--preview'), output };
+const report = { inputDigest: digest, preview: args.includes('--preview'), output, captures: [] };
 
 try {
   console.log('Starting an isolated headless Firefox…');
@@ -116,7 +116,8 @@ try {
     if (captured.has(sourceFile(shot))) continue;
     check();
     console.log(`Capturing ${shot.file}…`);
-    await browser.evaluate(showScreenshotScene, fixture, session, index);
+    await browser.setColorScheme(shot.colorScheme);
+    report.captures.push(await browser.evaluate(showScreenshotScene, fixture, session, index));
     for (const related of resolvedFixture.shots.filter(
       (item) => sourceFile(item) === sourceFile(shot),
     )) {
@@ -171,7 +172,7 @@ try {
   await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile('output/screenshots/latest.json', JSON.stringify({ output }, null, 2) + '\n');
   console.log(
-    `${report.preview ? 'Preview ready' : 'Refreshed all 24 screenshot assets'} in ${report.seconds}s.\nPreview: ${join(output, 'contact-sheet.png')}\nCompositions: ${join(output, 'compositions.png')}\nReport: ${join(output, 'report.json')}`,
+    `${report.preview ? 'Preview ready' : `Refreshed all ${screenshotFiles(fixture).length} screenshot assets`} in ${report.seconds}s.\nPreview: ${join(output, 'contact-sheet.png')}\nCompositions: ${join(output, 'compositions.png')}\nReport: ${join(output, 'report.json')}`,
   );
 } catch (error) {
   report.success = false;

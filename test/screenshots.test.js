@@ -81,7 +81,7 @@ test('every demo page has local favicon bytes and an escaped deterministic title
     /<title>RESTAURANT BARR, Copenhagen - 2026 Reviews &amp; Information<\/title>/,
   );
   for (const { data } of responses.values()) assert(data.length > 0);
-  assert.equal(screenshotFiles(fixture).length, 24);
+  assert.equal(screenshotFiles(fixture).length, fixture.shots.length * 4);
   fixture.tabs[0].favicon = '../../LICENSE';
   await assert.rejects(loadScreenshotResponses(fixture, directory), /Invalid favicon path/);
 });

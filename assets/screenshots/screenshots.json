@@ -432,7 +432,7 @@
     },
     {
       "file": "05-dark-mode.png",
-      "caption": "Choose how the sidebar looks. Switch between light and dark themes. Show website domains and lines connecting nested tabs.",
+      "caption": "Choose how the sidebar looks. Follow Firefox in light or dark mode. Show website domains and lines connecting nested tabs.",
       "scope": "trip",
       "collapsedGroups": ["work", "recipes", "reading"],
       "colorScheme": "dark",
@@ -440,7 +440,7 @@
       "composition": {
         "title": ["Choose how", "the sidebar looks"],
         "body": [
-          "Switch between light and dark themes.",
+          "Follow Firefox in light or dark mode.",
           "Show website domains and lines",
           "connecting nested tabs."
         ],
@@ -493,6 +493,49 @@
         "bottom": "[data-key=\"new-tab:c7999750-3d73-4d2b-8daa-11fcd598e006\"]",
         "paddingBottom": 1
       }
+    },
+    {
+      "file": "07-recent-activity.png",
+      "caption": "Pick up where you left off. Return to viewed tabs and folders. Reopen tabs you’ve closed.",
+      "scope": "trip",
+      "collapsedGroups": ["work", "recipes", "reading"],
+      "colorScheme": "light",
+      "activity": [
+        { "kind": "viewed", "key": "openlibrary" },
+        { "kind": "folder", "key": "reading" },
+        { "kind": "viewed", "key": "nasa" },
+        { "kind": "folder", "key": "website" },
+        { "kind": "viewed", "key": "mdn" },
+        { "kind": "closed", "key": "sourdough-science" },
+        { "kind": "folder", "key": "trip" },
+        { "kind": "closed", "key": "seriouseats" },
+        { "kind": "viewed", "key": "nyhavn" }
+      ],
+      "activityMinutesAgo": {
+        "viewed": { "nyhavn": 0, "mdn": 4, "flexbox": 12, "nasa": 18, "openlibrary": 37 },
+        "closed": { "seriouseats": 2, "sourdough-science": 9 },
+        "folder": { "trip": 6, "website": 25, "reading": 48 }
+      },
+      "composition": {
+        "title": ["Pick up where", "you left off"],
+        "body": ["Return to viewed tabs and folders.", "Reopen tabs you’ve closed."],
+        "feature": "RECENT ACTIVITY",
+        "crop": {
+          "left": 49,
+          "top": 332,
+          "width": 372,
+          "height": 465
+        },
+        "image": {
+          "left": 644,
+          "top": 58,
+          "width": 548
+        },
+        "dark": false
+      },
+      "framing": {
+        "element": "#recently-closed"
+      }
     }
   ],
   "capture": {
@@ -510,5 +553,5 @@
     }
   },
   "browserTheme": "Default",
-  "browserAppearance": "Light for captures; Tabernacle dark mode for shot 5"
+  "browserAppearance": "Follow Firefox Default: light for captures, dark for shot 5"
 }
