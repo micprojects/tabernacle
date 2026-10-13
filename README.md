@@ -35,6 +35,14 @@ Choose a Firefox container for new tabs, or set a default container for each fol
 
 <img src="assets/screenshots/04-folder-containers-ui.png" width="550" alt="The default container dialog with Work selected.">
 
+### Folder containers apply to new tabs
+
+A folder’s default container is used for new tabs you create in that folder through Tabernacle. Setting a default or dragging existing tabs between folders doesn’t change those tabs’ containers.
+
+For example, if a folder’s default is **Work**, new tabs created there use Work. Dragging a **Personal** tab into that folder leaves it in Personal, with its existing sign-ins.
+
+To change an existing tab’s container, right-click it and choose **Reopen in container…**.
+
 ## Keep pinned tabs and folders visible
 
 Pin the sites and folders you use most. Their icons stay visible in every folder.
