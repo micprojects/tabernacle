@@ -76,13 +76,21 @@ try {
       },
     };
   });
-  await page.goto(`${base}/extension/sidebar.html?history=panel`);
+  await page.goto(`${base}/extension/sidebar.html`);
   await trigger.click();
-  await expect(popup.getByRole('heading', { level: 2 })).toHaveText('Recent');
+  await expect(popup.getByRole('heading', { level: 2 })).toHaveText('Recent activity');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(popup.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(popup.getByRole('searchbox')).toHaveCount(0);
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Switch to Keep open');
-  await popup.getByRole('button', { name: 'Closed tabs', exact: true }).click();
+  await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await expect(popup.getByText('No recently closed tabs.', { exact: true })).toBeVisible();
+  await popup.getByRole('button', { name: 'Folders', exact: true }).click();
+  await expect(popup.getByRole('status')).toHaveText('No recently opened or expanded folders.');
   await page.keyboard.press('Escape');
   await expect(popup).toBeHidden();
   await expect(trigger).toBeFocused();
@@ -92,11 +100,18 @@ try {
     await window.closedTabsTest.send('closeTab', { id: 2 });
   });
   await trigger.click();
+  await expect(popup.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(rows).toHaveCount(3);
+  await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await expect(rows).toHaveCount(2);
   await expect(rows.locator('.recently-closed-label')).toHaveText([
     'Restaurant Barr — Copenhagen',
     'Nyhavn — Wikipedia',
   ]);
+  await page.keyboard.press('ArrowDown');
   await expect(rows.first()).toBeFocused();
   expect(await popup.textContent()).not.toMatch(/This window|Newest first|Click a tab|2 tabs/);
   await page.keyboard.press('End');
@@ -108,6 +123,8 @@ try {
   await expect(page.locator('[data-key="group:work"]')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('treeitem', { name: /Nyhavn/ })).toBeVisible();
   await trigger.click();
+  await popup.getByRole('button', { name: 'Closed', exact: true }).click();
+  await page.keyboard.press('ArrowDown');
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Reopen Restaurant Barr — Copenhagen');
 
@@ -126,9 +143,11 @@ try {
     window.closedTabsTest.failRestore = true;
   });
   await trigger.click();
+  await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await rows.first().click();
   await expect(page.locator('#toast')).toHaveText('Firefox refused restore');
   await trigger.click();
+  await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await expect(rows).toHaveCount(2);
   await popup.getByRole('button', { name: 'Close recent activity' }).click();
   await page.evaluate(() => {
@@ -144,28 +163,29 @@ try {
     window.closedTabsTest.api.sessions.onChanged.emit();
   });
 
-  // The timeline keeps all three kinds together and each filter searches its own list.
+  // Expanding a folder without entering it adds it to All and Folders.
+  const work = page.locator('[data-key="group:work"]');
+  await work.locator('.disclosure').click();
+  await expect(work).toHaveAttribute('aria-expanded', 'false');
+  await work.locator('.disclosure').click();
+  await expect(work).toHaveAttribute('aria-expanded', 'true');
   await page.evaluate(async () => {
-    await window.closedTabsTest.send('enterGroup', { id: 'work' });
-    await window.closedTabsTest.send('enterGroup', { id: null });
     await window.closedTabsTest.send('createGroup', { name: 'Personal', parentId: null });
   });
   await trigger.click();
   await popup.getByRole('button', { name: 'All', exact: true }).click();
   await expect(rows).toHaveCount(4);
-  await expect(rows.locator('.recent-item-detail')).toContainText([
-    /Viewed tab|Opened folder|Closed tab/,
-    /Viewed tab|Opened folder|Closed tab/,
-    /Viewed tab|Opened folder|Closed tab/,
-    /Viewed tab|Opened folder|Closed tab/,
+  expect(await rows.evaluateAll((nodes) => nodes.map((node) => node.dataset.kind).sort())).toEqual([
+    'closed',
+    'closed',
+    'folder',
+    'viewed',
   ]);
-  const search = popup.getByRole('searchbox', { name: 'Search recent activity' });
-  await search.fill('Work');
+  await popup.getByRole('button', { name: 'Folders', exact: true }).click();
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Open Work');
-  await expect(search).toBeFocused();
-  await page.keyboard.press('Home');
-  await expect(search).toBeFocused();
+  await expect(rows.first()).toHaveAttribute('title', /Expanded folder/);
+  await expect(popup.getByRole('button', { name: 'Folders', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(rows.first()).toBeFocused();
   await page.keyboard.press('Enter');
@@ -174,13 +194,9 @@ try {
     await page.evaluate(async () => (await window.closedTabsTest.send('snapshot')).view.scopeId),
   ).toBe('work');
   await trigger.click();
-  await search.fill('');
   await popup.getByRole('button', { name: 'Folders', exact: true }).click();
   await expect(rows).toHaveCount(1);
-  await search.fill('no such folder');
-  await expect(rows).toHaveCount(0);
-  await expect(popup.getByRole('status')).toHaveText('No matching recent activity.');
-  await search.fill('');
+  await expect(rows.first()).toHaveAttribute('title', /Opened folder/);
   await page.keyboard.press('Escape');
   await page.evaluate(async () => {
     const state = await window.closedTabsTest.send('snapshot');
@@ -188,7 +204,7 @@ try {
     await window.closedTabsTest.send('enterGroup', { id: personal.id });
   });
   await trigger.click();
-  await popup.getByRole('button', { name: 'Viewed tabs', exact: true }).click();
+  await popup.getByRole('button', { name: 'Viewed', exact: true }).click();
   await expect(rows).toHaveCount(1);
   await rows.first().click();
   await expect(popup).toBeHidden();
@@ -203,12 +219,12 @@ try {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.screenshot({ path: 'test-results/recent-timeline-dark.png' });
   await page.emulateMedia({ colorScheme: 'light' });
-  await popup.getByRole('button', { name: 'Closed tabs', exact: true }).click();
+  await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await page.keyboard.press('Escape');
 
-  // Dense history uses available height and adapts while open on resize.
+  // Each filter contains up to 50 matching items in the original ten-row viewport.
   await page.evaluate(async () => {
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       const tab = await window.closedTabsTest.api.tabs.create({
         title: `Long recently closed tab title ${i} — detailed page name`,
         favIconUrl: 'data:image/png;base64,broken',
@@ -217,13 +233,53 @@ try {
     }
   });
   await trigger.click();
-  await expect(rows).toHaveCount(32);
+  await expect(rows).toHaveCount(50);
+  await expect(popup.locator('.recent-count')).toHaveText('50');
+  expect(
+    await rows.evaluateAll((nodes) => nodes.every((node) => node.dataset.kind === 'closed')),
+  ).toBe(true);
+  const list = popup.locator('.recently-closed-list');
+  const headingBounds = await popup.locator('.recently-closed-heading').boundingBox();
+  const moreBounds = await popup.locator('.recent-more').boundingBox();
+  expect(await list.evaluate((node) => node.clientHeight)).toBe(320);
+  await list.hover();
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  await expect(rows.nth(15)).toBeInViewport();
+  expect(await popup.locator('.recently-closed-heading').boundingBox()).toEqual(headingBounds);
+  expect(await popup.locator('.recent-more').boundingBox()).toEqual(moreBounds);
+  await page.screenshot({ path: 'test-results/recent-popup-scrolled.png', animations: 'disabled' });
+  await page.keyboard.press('Escape');
+  await trigger.click();
+  await expect(rows.first()).toBeFocused();
+  expect(await list.evaluate((node) => node.scrollTop)).toBe(0);
+  await page.keyboard.press('End');
+  await expect(rows.last()).toBeFocused();
+  expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  await popup.getByRole('button', { name: 'Viewed', exact: true }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toHaveAttribute('data-kind', 'viewed');
+  await popup.getByRole('button', { name: 'Folders', exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await popup.getByRole('button', { name: 'Closed', exact: true }).click();
+  await expect(rows).toHaveCount(50);
+  expect(await list.evaluate((node) => node.scrollTop)).toBe(0);
+  const latestClosed = await page.evaluate(async () =>
+    (await window.closedTabsTest.send('snapshot')).recentlyClosed
+      .slice(0, 50)
+      .map((tab) => tab.title),
+  );
+  await expect(rows.locator('.recently-closed-label')).toHaveText(latestClosed);
   const fullHeight = await popup.evaluate((node) => node.getBoundingClientRect().height);
-  expect(fullHeight).toBeGreaterThan(450);
-  expect(fullHeight).toBeLessThanOrEqual(640);
+  expect(fullHeight).toBeGreaterThan(350);
+  expect(fullHeight).toBeLessThanOrEqual(500);
   await page.screenshot({ path: 'test-results/recent-timeline-full-height.png' });
+  await page.setViewportSize({ width: 520, height: 800 });
+  await expect(popup).toHaveCSS('width', '504px');
+  await page.screenshot({ path: 'test-results/recent-popup-wide.png' });
   await page.setViewportSize({ width: 220, height: 320 });
   await page.emulateMedia({ colorScheme: 'dark' });
+  await page.keyboard.press('ArrowDown');
   await page.keyboard.press('End');
   await expect(rows.last()).toBeFocused();
   // Viewport changes dispatch resize asynchronously; measure the settled layout.
@@ -259,6 +315,8 @@ try {
   expect(bounds.overflow).toBe(false);
   expect(bounds.scrolls).toBe(true);
   expect(bounds.scrolled).toBe(true);
+  await expect(popup.getByRole('button', { name: 'More', exact: true })).toBeInViewport();
+  await expect(popup.getByRole('button', { name: 'Folders', exact: true })).toBeInViewport();
   await page.screenshot({ path: 'test-results/recently-closed-narrow-dark.png' });
   await page.keyboard.press('Escape');
   await trigger.click();
@@ -266,10 +324,16 @@ try {
   expect(await popup.locator('.recently-closed-list').evaluate((node) => node.scrollTop)).toBe(0);
   await page.keyboard.press('End');
   await page.keyboard.press('Tab');
+  await expect(popup.getByRole('button', { name: 'More', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(popup).toBeHidden();
+  await trigger.focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(rows.first()).toBeFocused();
+  expect(await list.evaluate((node) => node.scrollTop)).toBe(0);
   expect(errors).toEqual([]);
   console.log(
-    '✓ Recent timeline supports filters, search, folder entry, tab switching, restore, live updates, errors, keyboard navigation and narrow layouts',
+    '✓ Recent popup scrolls through up to 50 items, keeps its compact size, resets on reopening and filtering, and preserves actions and focus',
   );
 } finally {
   await close();

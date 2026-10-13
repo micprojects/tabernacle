@@ -11,7 +11,7 @@ const groups = [
   { id: 'design', name: 'Design', parentId: 'work' },
 ];
 
-test('expansions are window-local, persisted, deduplicated, and leave the old panel unchanged', async (t) => {
+test('expansions are window-local, persisted, deduplicated, and included in the popup', async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: 10000 });
   const api = memoryBrowser({
     groups,
@@ -27,7 +27,10 @@ test('expansions are window-local, persisted, deduplicated, and leave the old pa
   await send('toggleGroup', { id: 'work' });
   let snapshot = await send('snapshot');
   assert.equal(activityItems(snapshot)[0].event, 'Expanded');
-  assert.equal(recentItems(snapshot, 'folder').length, 0);
+  assert.deepEqual(
+    recentItems(snapshot, 'folder').map(({ id, event, timestamp }) => ({ id, event, timestamp })),
+    [{ id: 'work', event: 'Expanded', timestamp: 10000 }],
+  );
   assert.equal(activityItems(await send('snapshot', {}, 2)).length, 0);
   t.mock.timers.tick(1000);
   await send('enterGroup', { id: 'work' });
@@ -69,6 +72,121 @@ test('explicit expand-all records only collapsed folders; failed writes do not r
   await assert.rejects(send('toggleGroup', { id: 'work' }), /Cannot save/);
   assert.equal((await send('snapshot')).view.recentExpandedFolders, undefined);
   controller.dispose();
+});
+
+test('both screens follow interleaved tab views, closures, folder visits and expansions to the millisecond', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 20_000 });
+  const api = memoryBrowser({
+    groups,
+    events: true,
+    tabs: [
+      { id: 1, windowId: 1, title: 'Viewed' },
+      { id: 2, windowId: 1, title: 'Closed' },
+    ],
+  });
+  const controller = createController(api);
+  const send = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
+  const sequence = (items) => items.map(({ title, timestamp, event }) => [title, timestamp, event]);
+  await send('enterGroup', { id: 'work' });
+  t.mock.timers.tick(1);
+  await api.tabs.update(1, { active: true });
+  t.mock.timers.tick(1);
+  await send('toggleGroup', { id: 'design' });
+  await send('toggleGroup', { id: 'design' });
+  t.mock.timers.tick(1);
+  await send('closeTab', { id: 2 });
+  let snapshot = await send('snapshot');
+  const expected = [
+    ['Closed', 20_003, undefined],
+    ['Design', 20_002, 'Expanded'],
+    ['Viewed', 20_001, undefined],
+    ['Work', 20_000, 'Opened'],
+  ];
+  assert.deepEqual(sequence(activityItems(snapshot)), expected);
+  assert.deepEqual(sequence(recentItems(snapshot)), expected);
+  for (const kind of ['viewed', 'closed', 'folder'])
+    assert.deepEqual(
+      sequence(filterActivity(activityItems(snapshot), { kind })),
+      sequence(recentItems(snapshot, kind)),
+    );
+
+  // Revisiting moves the existing folder to the top without duplicating it.
+  t.mock.timers.tick(1);
+  await send('enterGroup', { id: 'design' });
+  snapshot = await send('snapshot');
+  const revisited = [expected[1], expected[0], expected[2], expected[3]];
+  revisited[0] = ['Design', 20_004, 'Opened'];
+  assert.deepEqual(sequence(activityItems(snapshot)), revisited);
+  assert.deepEqual(sequence(recentItems(snapshot)), revisited);
+  // The page's Expanded filter keeps the expansion's own time, not the later visit.
+  assert.deepEqual(
+    sequence(
+      filterActivity(activityItems(snapshot, { folderEvent: 'expanded' }), { kind: 'folder' }),
+    ),
+    [['Design', 20_002, 'Expanded']],
+  );
+  controller.dispose();
+});
+
+test('equal timestamps preserve native closed-session and saved folder recency on both screens', () => {
+  const state = {
+    groups,
+    tabs: [{ id: 1, title: 'Viewed', lastAccessed: 2000 }],
+    view: {
+      recentFolders: [{ id: 'work', enteredAt: 1000 }],
+      recentExpandedFolders: [
+        { id: 'design', expandedAt: 3000 },
+        { id: 'work', expandedAt: 3000 },
+      ],
+    },
+    recentlyClosed: [
+      { sessionId: 'z-newest', title: 'Latest close', closedAt: 4000 },
+      { sessionId: 'a-older', title: 'Previous close', closedAt: 4000 },
+    ],
+  };
+  const expected = [
+    'closed:z-newest',
+    'closed:a-older',
+    'folder:design',
+    'folder:work',
+    'viewed:1',
+  ];
+  for (const items of [activityItems(state), recentItems(state)])
+    assert.deepEqual(
+      items.map(({ key }) => key),
+      expected,
+    );
+  assert.deepEqual(
+    filterActivity(activityItems(state, { folderEvent: 'expanded' }), { kind: 'folder' }).map(
+      ({ key }) => key,
+    ),
+    ['folder:design', 'folder:work'],
+  );
+});
+
+test('invalid timestamps cannot disrupt chronological ordering and undated closures stay last', () => {
+  const state = {
+    groups,
+    tabs: [
+      { id: 1, lastAccessed: Infinity },
+      { id: 2, lastAccessed: NaN },
+      { id: 3, lastAccessed: '3000' },
+      { id: 4, lastAccessed: 1000 },
+    ],
+    view: {
+      recentFolders: [{ id: 'work', enteredAt: Infinity }],
+      recentExpandedFolders: [{ id: 'work', expandedAt: 2000 }],
+    },
+    recentlyClosed: [
+      { sessionId: 'undated', closedAt: NaN },
+      { sessionId: 'dated', closedAt: 3000 },
+    ],
+  };
+  for (const items of [activityItems(state), recentItems(state)])
+    assert.deepEqual(
+      items.map(({ key }) => key),
+      ['closed:dated', 'folder:work', 'viewed:4', 'closed:undated'],
+    );
 });
 
 test('expansion records discard invalid, deleted and duplicate IDs and stay bounded', () => {

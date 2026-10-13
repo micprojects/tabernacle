@@ -64,15 +64,20 @@ try {
   // Activation refreshes the live list; reacquire a row if it was replaced
   // between WebDriver finding it and dispatching the click.
   const clickRow = (selector) =>
-    driver.wait(async () => {
-      try {
-        await driver.findElement(By.css(selector)).click();
-        return true;
-      } catch (error) {
-        if (['StaleElementReferenceError', 'NoSuchElementError'].includes(error.name)) return false;
-        throw error;
-      }
-    }, 5000);
+    driver.wait(
+      async () => {
+        try {
+          await driver.findElement(By.css(selector)).click();
+          return true;
+        } catch (error) {
+          if (['StaleElementReferenceError', 'NoSuchElementError'].includes(error.name))
+            return false;
+          throw error;
+        }
+      },
+      5000,
+      `Click activity row: ${selector}`,
+    );
 
   const groupId = crypto.randomUUID();
   await send('createGroup', { id: groupId, name: 'Activity test folder' });
@@ -89,24 +94,44 @@ try {
     async () =>
       (await call('return browser.tabs.get(arguments[0]);', closed.id)).status === 'complete',
     5000,
+    'Load the fixture tab before closing it',
   );
   await send('closeTab', { id: closed.id });
-  const before = await driver.wait(async () => {
-    const state = await send('snapshot');
-    return state.recentlyClosed.length ? state : false;
-  }, 5000);
+  const before = await driver.wait(
+    async () => {
+      const state = await send('snapshot');
+      return state.recentlyClosed.length ? state : false;
+    },
+    5000,
+    'Closed fixture tab appears in the session list',
+  );
   const sessionId = before.recentlyClosed[0].sessionId;
   await driver.switchTo().window(sidebar);
   await driver.findElement(By.id('recently-closed-toggle')).click();
-  const activityHandle = await driver.wait(async () => {
-    for (const handle of await driver.getAllWindowHandles()) {
-      await driver.switchTo().window(handle);
-      if ((await driver.getCurrentUrl()).startsWith(`${extensionUrl}activity.html`)) return handle;
-    }
-    return false;
-  }, 5000);
+  await driver.wait(until.elementLocated(By.css('#recently-closed:not([hidden])')), 5000);
+  await driver.findElement(By.css('.recent-more')).click();
+  const activityHandle = await driver.wait(
+    async () => {
+      for (const handle of await driver.getAllWindowHandles()) {
+        await driver.switchTo().window(handle);
+        if ((await driver.getCurrentUrl()).startsWith(`${extensionUrl}activity.html`))
+          return handle;
+      }
+      return false;
+    },
+    5000,
+    'More opens the full activity page',
+  );
   await driver.wait(until.elementLocated(By.css('.activity-row')), 10000);
   assert.equal(await driver.getTitle(), 'Recent activity · Tabernacle');
+  assert.equal(
+    await driver.findElement(By.css(`[data-key="folder:${groupId}"] .item-kind`)).getText(),
+    'Expanded',
+  );
+  const times = await driver.executeScript(
+    'return [...document.querySelectorAll(".item-time")].map(node => Date.parse(node.dateTime));',
+  );
+  assert(times.every((time, i) => i === 0 || time <= times[i - 1]));
   const activityId = (await call('return browser.tabs.getCurrent();')).id;
   assert.equal((await driver.findElements(By.css(`[data-key="viewed:${activityId}"]`))).length, 0);
   assert.equal(
@@ -118,6 +143,7 @@ try {
   const count = (await driver.getAllWindowHandles()).length;
   await driver.switchTo().window(sidebar);
   await driver.findElement(By.id('recently-closed-toggle')).click();
+  await driver.findElement(By.css('.recent-more')).click();
   assert.equal((await driver.getAllWindowHandles()).length, count);
   await driver.switchTo().window(activityHandle);
   assert.equal(await driver.executeScript('return window.activityVisit;'), 'retained');
@@ -138,6 +164,7 @@ try {
   await driver.wait(
     async () => !(await send('snapshot')).recentlyClosed.some((tab) => tab.sessionId === sessionId),
     5000,
+    'Restored tab disappears from the closed-session list',
   );
   await driver.switchTo().window(activityHandle);
   await driver.findElement(By.css('[data-kind="viewed"].filter-link')).click();

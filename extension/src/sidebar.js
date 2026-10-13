@@ -8,7 +8,7 @@ import { folderIcon } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
 import { pinActionLabels } from './pinned-items.js';
 import { createRecentActivity } from './recently-closed.js';
-import { installActivityLauncher } from './activity-launcher.js';
+import { createActivityLauncher } from './activity-launcher.js';
 import { openDemoPage } from './internal-pages.js';
 import {
   groupById,
@@ -1734,6 +1734,11 @@ recentlyClosed = createRecentActivity({
   restore: (sessionId) => blankAreaAction('restoreClosedTab', { sessionId }),
   activate: (id) => blankAreaAction('activateTab', { id, reveal: true }),
   enter: (id) => enter(id),
+  openMore: createActivityLauncher({
+    demo,
+    request: (type, args) => request(type, args),
+    onError: (message) => announce(message, true),
+  }),
 
   beforeOpen() {
     closeMenu();
@@ -1742,13 +1747,6 @@ recentlyClosed = createRecentActivity({
   },
 });
 $('home').addEventListener('click', () => enter(null));
-installActivityLauncher({
-  trigger: $('recently-closed-toggle'),
-  demo,
-  request: (type, args) => request(type, args),
-  beforeOpen: () => closeMenu(),
-  onError: (message) => announce(message, true),
-});
 $('search-toggle').addEventListener('click', () => showSearch());
 $('search-close').addEventListener('click', () => showSearch(false));
 $('navigation-capsule').addEventListener('click', (event) => {

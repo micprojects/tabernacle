@@ -93,22 +93,39 @@ numbers category includes all 36 characters; searching a character or its label
 (such as "A" or "Number 7") finds that glyph directly. Asset provenance is recorded
 in `icons/ui/NOTICE.txt`. Firefox container identities keep their native choices.
 
-## Recent activity page experiment
+## Recent activity
 
-The history button opens `extension/activity.html` as a dedicated page hidden from
-Tabernacle's tab list, reusing it in the same window without resetting filters or
-scroll position. Its markup, styles, data helpers and rendering
-are independent of the original slide-up menu (`recently-closed.js` and
-`recent-history.js`), which is kept intact. Add `?history=panel` to the sidebar or
-preview URL to compare the original menu. Removing the `installActivityLauncher`
-call in `sidebar.js` restores the original button behaviour.
+The history button opens a compact popup spanning the sidebar's available width.
+It starts on All each time and contains up to 50 recent viewed tabs, closed tabs and
+opened or deliberately expanded folders, with one entry per folder using its latest
+activity time. The filter bar above the list selects the latest 50 matching items
+for Viewed, Closed or Folders. The list shows up to ten rows at once (fewer in short
+windows) and scrolls while the heading, filters and More action stay visible. Opening
+the popup by mouse or keyboard, or changing its filter, resets the list to the top.
+Clicking an item switches to its tab, reopens it or enters its folder.
+
+A subtle backdrop dims the sidebar above the bottom toolbar while the popup is
+open. Only its opacity animates, with no blur or layout changes; reduced motion
+disables the fade, and forced colours use a clear popup outline instead of shading.
+The backdrop does not intercept pointer events, preserving click-away behaviour.
+
+More opens `extension/activity.html` as a dedicated page hidden from Tabernacle's
+tab list, reusing it in the same window without resetting filters or scroll position.
+`recently-closed.js` and `recent-history.js` supply the popup; `activity-launcher.js`
+opens the full page. Both screens use `activityEntries` in `recent-history.js` for
+the same folder events and newest-first order; `activity-data.js` adds page details
+and filters. Sorting uses the full millisecond timestamps before display labels or
+the popup's 50-item limit. Equal timestamps preserve source order, including
+Firefox's closed-session order and saved folder recency, without alphabetical
+tie-breaking. An exact order between different event types with identical recorded
+times is unavailable; their order is stable and consistent across both screens.
 
 The page uses a single timeline, with the same live
 controller messages as the sidebar. It excludes itself from activity and follows
 the window it is in. Viewed tabs are currently open tabs; closed tabs come from
 Firefox's session restore list. Folder activity merges the latest opening and
-deliberate expansion per folder, with separate filters. Expansion timestamps start
-with this experiment, are saved per window, and are bounded to 100 folders.
+deliberate expansion per folder, with separate filters that use each event's own
+time. Expansion timestamps are saved per window and bounded to 100 folders.
 
 Open `http://127.0.0.1:4173/extension/activity.html?demo&mockup` after `npm run preview`
 to preview the timeline with sample activity. Run

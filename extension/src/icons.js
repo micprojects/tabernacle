@@ -9,6 +9,7 @@ const assets = {
   back: 'back-16',
   undo: 'arrow-counterclockwise-16',
   history: 'restore-16',
+  eye: 'show-password-16',
   plus: 'add-16',
   close: 'close-16',
   closeSmall: 'close-12',
