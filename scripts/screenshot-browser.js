@@ -19,9 +19,11 @@ export class ScreenshotBrowser {
     else if (process.platform === 'darwin')
       options.setBinary('/Applications/Firefox.app/Contents/MacOS/firefox');
     options.setPreference('browser.shell.checkDefaultBrowser', false);
+    options.setPreference('browser.nova.enabled', true);
     options.setPreference('browser.startup.page', 0);
     options.setPreference('browser.tabs.warnOnClose', false);
     options.setPreference('ui.prefersReducedMotion', 1);
+    options.setPreference('ui.systemUsesDarkTheme', 0);
     options.setPreference('layout.css.prefers-color-scheme.content-override', 1);
     const binary = process.env.GECKODRIVER_BINARY || (await download('0.37.1'));
     this.log = await open(logPath, 'w');
@@ -95,7 +97,23 @@ export class ScreenshotBrowser {
     await this.evaluate(async () => {
       await document.fonts.ready;
     });
+    this.environment.theme = await this.evaluate(async () => {
+      const active = (await browser.management.getAll()).find(
+        (addon) => addon.type === 'theme' && addon.enabled,
+      );
+      return active ? { id: active.id, name: active.name, version: active.version } : null;
+    });
+    assert.equal(this.environment.theme?.id, 'default-theme@mozilla.org');
     return this.environment;
+  }
+
+  async setColorScheme(scheme) {
+    assert(['light', 'dark'].includes(scheme), 'Unsupported screenshot colour scheme');
+    // The real sidebar follows browser chrome, independently of website colour
+    // preferences. Change only this owned profile's system appearance override.
+    await this.chrome((dark) => {
+      Services.prefs.setIntPref('ui.systemUsesDarkTheme', dark ? 1 : 0);
+    }, scheme === 'dark');
   }
 
   async chrome(fn, ...args) {

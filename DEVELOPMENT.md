@@ -224,7 +224,7 @@ After changing the UI, run:
 npm run screenshots:refresh
 ```
 
-This refreshes all six promotional screenshots and their transparent `-ui` variants in
+This refreshes all seven promotional screenshots and their transparent `-ui` variants in
 `assets/screenshots/`, in PNG and lossless WebP. It preserves the existing copy, rounded
 corners, fine green border and output widths used by the README and website. To inspect
 the result before replacing tracked images:
@@ -248,6 +248,17 @@ using the shared demo setup. Page titles and original website favicons are saved
 page responses at their original URLs, so captures do not depend on live websites,
 cookie prompts or anti-bot pages. This fixtures website metadata, not the extension UI:
 no extension markup, styles or rendering code are replaced.
+
+Captures use **Follow Firefox** with Firefox's **Default** theme, including its pale
+purple sidebar surface. The isolated browser uses light appearance for the light shots
+and switches to the same theme's dark appearance for shot 5. The runner verifies the
+active theme and each scene's resolved appearance, and records them in the report.
+The Recent activity scene runs last, opening folders, viewing tabs and closing demo tabs
+through Firefox and the extension. It captures the real popup and checks that all three
+activity types appear in its first ten entries.
+The fixture gives those records sample ages in minutes at the sidebar's snapshot API
+boundary. The popup itself sorts them and formats the elapsed-time labels. This changes
+only the isolated screenshot session's data, not the extension's UI or saved history.
 
 Each run saves native 5× captures, exported 3× images, a contact sheet, promotional
 previews, the measured crop configuration, a verification report and a GeckoDriver log
