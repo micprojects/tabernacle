@@ -194,7 +194,7 @@ async function loadContainers() {
 function closeEditor() {
   if (savingContainer) return;
   editorGeneration++;
-  $('container-editor').hidden = true;
+  $('container-editor').close();
   $('container-editor').replaceChildren();
   const trigger = [...$('container-list').querySelectorAll('button')].find(
     (button) =>
@@ -206,8 +206,7 @@ function closeEditor() {
 
 function editorForm(title, submitLabel, onSubmit) {
   const editor = $('container-editor');
-  editor.hidden = false;
-  const heading = el('h3', '', title);
+  const heading = el('h2', '', title);
   heading.id = 'container-editor-title';
   const form = el('form');
   form.setAttribute('aria-labelledby', heading.id);
@@ -228,7 +227,7 @@ function editorForm(title, submitLabel, onSubmit) {
   editor.replaceChildren(heading, form);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (savingContainer) return;
+    if (savingContainer || submit.disabled) return;
     savingContainer = true;
     const controls = [...form.querySelectorAll('button, input')];
     for (const control of controls) control.disabled = true;
@@ -247,6 +246,7 @@ function editorForm(title, submitLabel, onSubmit) {
       for (const control of controls) control.disabled = false;
     }
   });
+  editor.showModal();
   return { body, submit, cancel };
 }
 
@@ -331,6 +331,10 @@ $('container-new').addEventListener('click', () => {
 });
 $('container-search').addEventListener('input', renderContainers);
 $('containers-retry').addEventListener('click', loadContainers);
+$('container-editor').addEventListener('cancel', (event) => {
+  event.preventDefault();
+  closeEditor();
+});
 
 async function refreshShortcuts() {
   try {
