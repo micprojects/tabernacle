@@ -397,9 +397,9 @@ try {
   await expect(page.locator('.row-detail')).toHaveCount(0);
   await expect.poll(guides).toBe('none');
 
-  // Revealing the creation actions keeps the plus aligned with the tree guides.
+  // The icon-only creation action keeps the plus aligned with the tree guides.
   const add = page.getByRole('button', { name: 'New tab in Design', exact: true });
-  await expect(add).toHaveText('New tab');
+  await expect(add).toHaveText('');
   await expect(add).toHaveAttribute('title', 'New tab in Design');
   await saveLook(true, false);
   for (const width of [320, 240]) {
@@ -420,7 +420,7 @@ try {
   await child.hover();
   const tabHover = await child.evaluate((node) => getComputedStyle(node).backgroundColor);
   await add.hover();
-  await expect(add.locator('.new-action-label')).toBeVisible();
+  await expect(add).toHaveText('');
   await expect(add).not.toHaveCSS('background-color', tabHover);
   await page.screenshot({ path: 'test-results/look-left-new-tab-hover.png' });
   const beforeAdd = await page.locator('.tab-row').count();
@@ -429,7 +429,7 @@ try {
   await expect(page.locator('.tab-row')).toHaveCount(beforeAdd + 1);
   const created = group.locator('..').locator('.tab-row.active');
   await expect(created.locator('.label')).toHaveText('New tab');
-  await expect(add).toHaveText('New tab');
+  await expect(add).toHaveText('');
   expect(await iconCentre('[data-key="new-tab:work"] svg')).toBe(
     await iconCentre('[data-key="tab:8"] .tab-icon'),
   );
