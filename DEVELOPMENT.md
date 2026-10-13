@@ -31,7 +31,8 @@ Preferences through Firefox also returns to the same view.
 It shares the sidebar’s colour tokens and theme observer, with its layout in `settings.css`
 and behaviour in `src/settings.js`. Appearance saves merge only edited fields in the
 controller so simultaneous settings tabs preserve each other’s changes. Container forms
-use the same choices and controller actions as the contextual sidebar dialogs.
+open in a modal without resizing the list, using the same choices and controller actions
+as the contextual sidebar dialogs. Escape and Cancel return focus to the opening button.
 
 The Firefox add-on ID is `tabernacle@michaelprojects.com`, with saved data under `tabernacle.*`
 keys.

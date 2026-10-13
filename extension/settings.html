@@ -142,10 +142,12 @@
             Try again
           </button>
           <p id="containers-status" role="status" aria-live="polite"></p>
-          <div class="containers-layout">
-            <div id="container-list" class="settings-card" aria-label="Firefox containers"></div>
-            <div id="container-editor" class="settings-card" hidden></div>
-          </div>
+          <div id="container-list" class="settings-card" aria-label="Firefox containers"></div>
+          <dialog
+            id="container-editor"
+            class="settings-card"
+            aria-labelledby="container-editor-title"
+          ></dialog>
           <p class="settings-note">
             To set a folder’s default container, right-click the folder in the sidebar and choose
             “Default container…”.

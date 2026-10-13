@@ -34,6 +34,10 @@ try {
             return { ok: false, error: 'Storage unavailable' };
           if (message.type === 'tabernacle:getContainers' && window.failContainers)
             return { ok: false, error: 'Containers unavailable' };
+          if (message.type === 'tabernacle:createContainer' && window.holdContainerSave)
+            await new Promise((resolve) => (window.releaseContainerSave = resolve));
+          if (message.type === 'tabernacle:createContainer' && window.failContainerSave)
+            return { ok: false, error: 'Could not create container' };
           ready ??= import('/preview/demo.js').then(({ createDemo }) =>
             createDemo((notice) => {
               for (const listener of listeners) listener({ type: 'tabernacle:changed', ...notice });
@@ -72,12 +76,28 @@ try {
   await expect(page.locator('.row-detail')).toHaveCount(0);
   await expect(settings.locator('#appearance-status')).toHaveText('Unsaved changes');
   await settings.getByRole('link', { name: 'Containers', exact: true }).click();
-  await settings.getByRole('button', { name: 'New container', exact: true }).click();
+  const newContainer = settings.getByRole('button', { name: 'New container', exact: true });
+  const containerEditor = settings.getByRole('dialog', { name: 'New container', exact: true });
+  await expect(settings.locator('.settings-container').first()).toBeVisible();
+  const listBounds = await settings.locator('#container-list').boundingBox();
+  await newContainer.click();
+  await expect(containerEditor).toBeVisible();
+  expect(await settings.locator('#container-list').boundingBox()).toEqual(listBounds);
+  await expect(settings.getByLabel('Container name', { exact: true })).toBeFocused();
+  await settings.getByLabel('Find a container').evaluate((node) => node.focus());
+  await expect(settings.getByLabel('Container name', { exact: true })).toBeFocused();
+  await expect(containerEditor.getByRole('button', { name: 'Create container' })).toBeEnabled();
+  await settings.keyboard.press('Tab');
+  await expect(containerEditor.getByRole('radio', { name: 'Blue', exact: true })).toBeFocused();
+  await settings.keyboard.press('Escape');
+  await expect(containerEditor).toBeHidden();
+  await expect(newContainer).toBeFocused();
+  await newContainer.click();
   await settings.getByLabel('Container name', { exact: true }).fill('Draft container');
   const pageCount = page.context().pages().length;
   await page.bringToFront();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(settings.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible();
+  await expect(settings.locator('#containers-title')).toBeVisible();
   await expect(settings.getByLabel('Container name', { exact: true })).toHaveValue(
     'Draft container',
   );
@@ -153,15 +173,33 @@ try {
   await settings.getByRole('radio', { name: 'Purple', exact: true }).check();
   await settings.getByRole('radio', { name: 'Tree', exact: true }).check();
   await settings.screenshot({ path: 'test-results/settings-container-editor.png' });
+  await page.evaluate(() => {
+    window.holdContainerSave = true;
+    window.failContainerSave = true;
+  });
+  await settings.getByRole('button', { name: 'Create container', exact: true }).click();
+  await expect(containerEditor.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+  await settings.keyboard.press('Escape');
+  await expect(containerEditor).toBeVisible();
+  await page.evaluate(() => {
+    window.holdContainerSave = false;
+    window.releaseContainerSave();
+  });
+  await expect(containerEditor.getByRole('alert')).toHaveText('Could not create container');
+  await expect(settings.getByLabel('Container name', { exact: true })).toHaveValue('Reading');
+  await page.evaluate(() => (window.failContainerSave = false));
   await settings.getByRole('button', { name: 'Create container', exact: true }).click();
   await expect(settings.getByRole('button', { name: 'Edit Reading', exact: true })).toBeVisible();
   await expect(settings.locator('#container-editor')).toBeHidden();
+  await expect(newContainer).toBeFocused();
   await settings.getByRole('button', { name: 'Edit Reading', exact: true }).click();
+  await expect(settings.getByRole('dialog', { name: 'Edit container', exact: true })).toBeVisible();
   await expect(settings.getByRole('radio', { name: 'Purple', exact: true })).toBeChecked();
   await expect(settings.getByRole('radio', { name: 'Tree', exact: true })).toBeChecked();
   await settings.getByLabel('Container name', { exact: true }).fill('Reference');
   await settings.getByRole('button', { name: 'Save container', exact: true }).click();
   await expect(settings.getByRole('button', { name: 'Edit Reference', exact: true })).toBeVisible();
+  await expect(settings.getByRole('button', { name: 'Edit Reference', exact: true })).toBeFocused();
   await settings.getByLabel('Find a container').fill('no match');
   await expect(settings.locator('#container-list')).toHaveText('No containers match your search.');
   await settings.getByLabel('Find a container').fill('reference');
@@ -196,8 +234,44 @@ try {
   await settings.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(settings.getByRole('alert')).toHaveCount(0);
   console.log(
-    '✓ Container creation, editing, search, cancellation, protected removal and load retry work inline',
+    '✓ Container dialogs preserve list layout, contain focus, handle Escape, save failures and protected removal',
   );
+
+  for (const width of [360, 220]) {
+    await settings.setViewportSize({ width, height: 480 });
+    await newContainer.click();
+    await expect(containerEditor.getByRole('button', { name: 'Create container' })).toBeEnabled();
+    expect(
+      await containerEditor.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        return (
+          bounds.left >= 0 &&
+          bounds.right <= innerWidth &&
+          bounds.top >= 0 &&
+          bounds.bottom <= innerHeight &&
+          node.scrollWidth === node.clientWidth
+        );
+      }),
+    ).toBe(true);
+    await containerEditor
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .scrollIntoViewIfNeeded();
+    await settings.screenshot({ path: `test-results/settings-container-${width}.png` });
+    await settings.keyboard.press('Escape');
+    await expect(newContainer).toBeFocused();
+  }
+  await settings.setViewportSize({ width: 1180, height: 900 });
+  await send('setLook', { partial: true, value: { colorScheme: 'dark' } });
+  await newContainer.click();
+  await expect(containerEditor.getByRole('button', { name: 'Create container' })).toBeEnabled();
+  await settings.screenshot({ path: 'test-results/settings-container-dark.png' });
+  await settings.emulateMedia({ forcedColors: 'active' });
+  await expect(containerEditor).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(containerEditor).toHaveCSS('color', 'rgb(0, 0, 0)');
+  await settings.screenshot({ path: 'test-results/settings-container-forced-colours.png' });
+  await settings.keyboard.press('Escape');
+  await settings.emulateMedia({ forcedColors: 'none' });
+  await send('setLook', { partial: true, value: { colorScheme: 'light' } });
 
   await settings.getByRole('link', { name: 'Shortcuts', exact: true }).click();
   await expect(settings.locator('#sidebar-shortcut')).toHaveText('Alt+Shift+E');
