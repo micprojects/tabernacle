@@ -18,16 +18,23 @@ export async function openInternalPage(api, page, windowId, { claimingTabId } = 
   );
   // The oldest live page owns Settings, including when Firefox opens another
   // options tab for a URL whose fragment differs from the existing section.
-  const existing = candidates.sort((a, b) => a.id - b.id)[0];
-  if (existing && existing.id === claimingTabId) return { tabId: existing.id };
   let tab;
-  if (existing) {
+  for (const existing of candidates.sort((a, b) => a.id - b.id)) {
+    if (existing.id === claimingTabId) return { tabId: existing.id };
     try {
       // Do not set the URL: that would reset navigation, drafts and scroll position.
       tab = await api.tabs.update(existing.id, { active: true });
+      break;
     } catch (error) {
-      // The user may have closed the page between the query and activation.
-      if ((await api.tabs.query(query)).some((tab) => tab.id === existing.id)) throw error;
+      // A close animation can keep an invalid ID in query(). Confirm that it
+      // has closed, then try the next candidate before creating a replacement.
+      if ((await api.tabs.query(query)).some((tab) => tab.id === existing.id)) {
+        const closed = await api.tabs.get(existing.id).then(
+          () => false,
+          (lookupError) => lookupError.message === `Invalid tab ID: ${existing.id}`,
+        );
+        if (!closed) throw error;
+      }
     }
   }
   tab ??= await api.tabs.create({ windowId, url: api.runtime.getURL(paths[page]), active: true });

@@ -194,10 +194,13 @@ real pointer sequences through the shared drag controller, including on macOS.
 Set `FIREFOX_BINARY` or `GECKODRIVER_BINARY` to use a specific local executable.
 
 `node scripts/test-tab-close-firefox.js` checks the native Command+W/Ctrl+W close
-path with animations enabled, alongside the sidebar close button and undo. Firefox
+path with animations enabled, alongside the sidebar close button, undo and immediate
+Settings reopening. Firefox
 can return an already invalidated tab ID from `tabs.query()` during its close
 animation; failed session reads/writes therefore check that individual ID before
 reporting an error and discard the stale native cache after confirming closure.
+Internal-page opening also confirms failed IDs and skips closed candidates before
+reusing a live page or creating a replacement, avoiding errors and duplicate pages.
 Set `FIREFOX_CLOSE_HEADED=1` for a visible run. Evidence is saved in
 `test-results/firefox-tab-close.json`.
 

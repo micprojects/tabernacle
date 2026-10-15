@@ -134,17 +134,54 @@ try {
   assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, restored.id);
   assert(state.groups.some((group) => group.id === fixture.groupId));
 
+  const settingsRect = await browser.evaluate(() => {
+    const rect = document.getElementById('settings').getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  const reopenings = [];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { tabId: closingId } = await browser.evaluate(() =>
+      window.closeCheckSend('openPage', { page: 'settings' }),
+    );
+    await browser.driver.sleep(350);
+    // Position the pointer before closing: moving it afterwards can outlast
+    // the close animation and miss the stale ID returned by tabs.query().
+    await browser.driver
+      .actions()
+      .move({ x: Math.round(offset.x + settingsRect.x), y: Math.round(offset.y + settingsRect.y) })
+      .perform();
+    await browser.chrome(() => gBrowser.selectedBrowser.focus());
+    await browser.driver.actions().keyDown(modifier).sendKeys('w').keyUp(modifier).perform();
+    await browser.driver.actions().press(Button.LEFT).release(Button.LEFT).perform();
+    await browser.driver.sleep(400);
+    const tabs = await browser.evaluate(async () =>
+      (await browser.tabs.query({}))
+        .filter((tab) => tab.url === browser.runtime.getURL('settings.html'))
+        .map((tab) => ({ id: tab.id, active: tab.active })),
+    );
+    reopenings.push({ closingId, tabs });
+  }
+
   const evidence = {
     environment: browser.environment,
+    reopenings,
     ...(await browser.evaluate(() => window.closeEvidence)),
   };
   await writeFile('test-results/firefox-tab-close.json', JSON.stringify(evidence, null, 2));
-  assert.deepEqual(evidence.errors, [], 'Closing a tab must not display a session error');
+  assert.deepEqual(evidence.errors, [], 'Closing and reopening tabs must not display errors');
   assert(
     evidence.events.some(({ id, listed, lookup }) => listed && lookup === `Invalid tab ID: ${id}`),
     'The test must exercise a close animation with an invalid ID still present in query()',
   );
+  for (const { closingId, tabs } of reopenings) {
+    assert.equal(tabs.length, 1, 'Immediately reopening Settings must create exactly one page');
+    assert.notEqual(tabs[0].id, closingId);
+    assert.equal(tabs[0].active, true);
+  }
   console.log('✓ Native close shortcut, sidebar x and undo preserve organisation without errors');
+  console.log(
+    '✓ Settings reopens immediately during close animations without errors or duplicates',
+  );
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));
