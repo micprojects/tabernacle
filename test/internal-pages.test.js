@@ -148,3 +148,63 @@ test('a close during activation recovers; other failures and invalid pages are r
   assert.deepEqual(await send('openPage', { page: 'settings' }), second);
   controller.dispose();
 });
+
+for (const page of ['settings', 'activity']) {
+  test(`${page} reopens once while a closed tab remains in query results`, async () => {
+    const { api, controller, send } = setup();
+    try {
+      const first = await send('openPage', { page });
+      const closing = await api.tabs.get(first.tabId);
+      await api.tabs.remove(closing.id);
+      // Firefox keeps the closing tab in query() during its animation, although
+      // get() and update() already reject its ID. Keep it listed across retries.
+      const query = api.tabs.query;
+      api.tabs.query = async (options) => [...(await query(options)), closing];
+      for (const method of ['get', 'update']) {
+        const original = api.tabs[method];
+        api.tabs[method] = async (id, ...args) => {
+          if (id === closing.id) throw new Error(`Invalid tab ID: ${id}`);
+          return original(id, ...args);
+        };
+      }
+      const opened = await Promise.all(Array.from({ length: 8 }, () => send('openPage', { page })));
+      assert.notEqual(opened[0].tabId, closing.id);
+      assert.equal(new Set(opened.map(({ tabId }) => tabId)).size, 1);
+      assert.equal(
+        (await query({})).filter((tab) => internalPage(api, tab.url) === page).length,
+        1,
+      );
+      if (page === 'settings')
+        assert.deepEqual(await send('claimSettingsPage', { id: opened[0].tabId }), opened[0]);
+    } finally {
+      controller.dispose();
+    }
+  });
+}
+
+test('failed activation creates no duplicate when the tab is live or its lookup is inconclusive', async () => {
+  const { api, controller, send } = setup();
+  try {
+    const { tabId } = await send('openPage', { page: 'settings' });
+    const activationError = new Error('Activation failed');
+    api.tabs.update = async () => {
+      throw activationError;
+    };
+    await assert.rejects(
+      send('openPage', { page: 'settings' }),
+      (error) => error === activationError,
+    );
+    for (const message of ['Lookup failed', `Invalid tab ID: ${tabId + 1}`]) {
+      api.tabs.get = async () => {
+        throw new Error(message);
+      };
+      await assert.rejects(
+        send('openPage', { page: 'settings' }),
+        (error) => error === activationError,
+      );
+    }
+    assert.equal((await api.tabs.query({})).length, 3);
+  } finally {
+    controller.dispose();
+  }
+});
