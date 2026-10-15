@@ -56,6 +56,64 @@ const organisation = (state) => ({
 });
 
 for (const operation of ['read', 'repair']) {
+  test(`a ${operation} failure skips a closing tab still returned by Firefox queries`, async () => {
+    const f = fixture();
+    const before = await f.send('snapshot');
+    if (operation === 'repair') delete f.api.testing.tabValues.get(2).order;
+    f.restart();
+    const query = f.api.tabs.query;
+    const get = f.api.tabs.get;
+    const closingTab = await get(2);
+    let closed = false;
+    let animating = true;
+    let queries = 0;
+    f.api.tabs.query = async (args) => {
+      queries++;
+      const tabs = await query(args);
+      // Firefox removes the ID before its close animation removes the tab
+      // from queries. No further tab event marks the end of that animation.
+      return closed && animating ? [...tabs, closingTab] : tabs;
+    };
+    f.api.tabs.get = async (id) => {
+      if (id === 2 && closed) throw new Error('Invalid tab ID: 2');
+      return get(id);
+    };
+    const method = operation === 'read' ? 'getTabValue' : 'setTabValue';
+    const original = f.api.sessions[method];
+    f.api.sessions[method] = async (id, ...args) => {
+      if (id === 2) {
+        if (!closed) {
+          await f.api.tabs.remove(2);
+          closed = true;
+        }
+        throw new Error('Invalid tab ID: 2');
+      }
+      return original(id, ...args);
+    };
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const state = await f.send('snapshot');
+        assert.deepEqual(
+          state.tabs.map((tab) => tab.id),
+          [1, 3, 4],
+        );
+        assert.deepEqual(state.groups, before.groups);
+        assert.equal(state.tabs.find((tab) => tab.id === 3).parentTabId, 1);
+      }
+      animating = false;
+      const priorQueries = queries;
+      await f.send('snapshot');
+      assert(queries > priorQueries, 'The stale native tab list must not remain cached');
+      f.api.sessions[method] = original;
+      const restored = await f.api.testing.restore();
+      const state = await f.send('snapshot');
+      assert.equal(state.tabs.find((tab) => tab.id === restored.id).treeId, 'c');
+      assert.equal(state.tabs.find((tab) => tab.id === 3).parentTabId, restored.id);
+    } finally {
+      f.dispose();
+    }
+  });
+
   test(`a ${operation} failure for a live tab blocks deletion; confirmed closes are skipped`, async () => {
     for (const closed of [false, true]) {
       const f = fixture();
@@ -88,6 +146,33 @@ for (const operation of ['read', 'repair']) {
     }
   });
 }
+
+test('only a lookup confirming the same missing ID can suppress a session failure', async () => {
+  for (const message of [null, 'Lookup unavailable', 'Invalid tab ID: 999']) {
+    const f = fixture();
+    const confirmed = await f.send('getGroupContents', { id: 'work' });
+    f.restart();
+    const getValue = f.api.sessions.getTabValue;
+    f.api.sessions.getTabValue = async (id, ...args) => {
+      if (id === 2) throw new Error('Invalid tab ID: 2');
+      return getValue(id, ...args);
+    };
+    if (message)
+      f.api.tabs.get = async () => {
+        throw new Error(message);
+      };
+    try {
+      await assert.rejects(
+        f.send('removeGroup', { id: 'work', ...confirmed }),
+        /organisation.*Invalid tab ID: 2/,
+      );
+      assert.equal((await f.api.tabs.query({})).length, 4);
+      assert.equal(f.api.testing.saved[MODEL_KEY].groups.length, 3);
+    } finally {
+      f.dispose();
+    }
+  }
+});
 
 test('a failed native confirmation query never treats a live tab as closed', async () => {
   const f = fixture();

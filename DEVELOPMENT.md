@@ -193,6 +193,14 @@ GeckoDriver when needed. Both the Firefox integration and Chromium UI suites use
 real pointer sequences through the shared drag controller, including on macOS.
 Set `FIREFOX_BINARY` or `GECKODRIVER_BINARY` to use a specific local executable.
 
+`node scripts/test-tab-close-firefox.js` checks the native Command+W/Ctrl+W close
+path with animations enabled, alongside the sidebar close button and undo. Firefox
+can return an already invalidated tab ID from `tabs.query()` during its close
+animation; failed session reads/writes therefore check that individual ID before
+reporting an error and discard the stale native cache after confirming closure.
+Set `FIREFOX_CLOSE_HEADED=1` for a visible run. Evidence is saved in
+`test-results/firefox-tab-close.json`.
+
 ## Release build
 
 Keep the versions in `package.json`, `package-lock.json` and `extension/manifest.json`

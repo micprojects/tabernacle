@@ -266,11 +266,29 @@ export function createController(api, notify = () => {}) {
   async function confirmedClosed(failures) {
     if (!failures.length) return new Set();
     const live = new Set((await api.tabs.query({})).map((tab) => tab.id));
-    const failed = failures.find(({ id }) => live.has(id));
+    // Native close animations can leave a tab in query() after Firefox has
+    // invalidated its ID. Confirm that specific ID before reporting a session
+    // failure; unrelated lookup errors are not evidence that a tab has closed.
+    const stillLive = await Promise.all(
+      failures.map(async ({ id }) =>
+        live.has(id)
+          ? api.tabs.get(id).then(
+              () => true,
+              (error) => error.message !== `Invalid tab ID: ${id}`,
+            )
+          : false,
+      ),
+    );
+    const failed = failures.find((_, index) => stillLive[index]);
     if (failed)
       throw new Error(
         `Could not read or save tab organisation. Try again. ${failed.error.message}`,
       );
+    // Animation completion sends no further removal event. Do not keep a
+    // native list containing the closing tab cached for subsequent snapshots.
+    cache.invalidateTabs();
+    requestTabs.clear();
+    for (const { id } of failures) cache.forgetMembership(id);
     return new Set(failures.map(({ id }) => id));
   }
 
