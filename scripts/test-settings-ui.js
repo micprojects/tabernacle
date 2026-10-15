@@ -1,7 +1,9 @@
 import { expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { startUiTest } from './ui-test.js';
 import { prepareSettings } from './settings-test.js';
 
+const manifest = JSON.parse(await readFile('extension/manifest.json', 'utf8'));
 const { page, base, close } = await startUiTest({
   viewport: { width: 340, height: 820 },
   colorScheme: 'light',
@@ -144,7 +146,7 @@ try {
   await expect(settings.locator('#look-color-scheme')).toHaveValue('dark');
   await expect(lines).not.toBeChecked();
   await settings.getByRole('link', { name: 'About', exact: true }).click();
-  await expect(settings.locator('#extension-version')).toContainText('Version 0.1.7');
+  await expect(settings.locator('#extension-version')).toContainText(`Version ${manifest.version}`);
   await settings.goBack();
   await expect(lines).not.toBeChecked();
   await settings.locator('#appearance-save').click();
