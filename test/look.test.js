@@ -249,7 +249,7 @@ test('retired theme sources are ignored and removed on save without losing colou
 test('settings updates merge only edited fields across windows and reject invalid partial changes', async () => {
   const { send, controller, changes } = await fixture();
   const before = (await send('getSettings')).look;
-  assert.deepEqual(Object.keys(await send('getSettings')), ['look']);
+  assert.deepEqual(Object.keys(await send('getSettings')), ['look', 'generation', 'revision']);
   await send('setLook', { partial: true, value: { domains: true } }, 2);
   await send('setLook', { partial: true, value: { colorScheme: 'dark' } });
   const saved = { ...before, domains: true, colorScheme: 'dark' };

@@ -1,3 +1,4 @@
+import { createRefreshScheduler } from './refresh-scheduler.js';
 import { icon } from './icons.js';
 import { groupById } from './model.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
@@ -19,10 +20,7 @@ const search = $('activity-search');
 const period = $('activity-period');
 const folderEvent = $('folder-event');
 let state, request, windowId, busyKey, readFailed;
-let refreshing = false,
-  refreshAgain = false,
-  refreshTimer,
-  disposed = false;
+let disposed = false;
 let kind = 'all';
 
 function el(tag, className = '', text) {
@@ -227,36 +225,32 @@ function render() {
   }
 }
 
-async function refresh() {
-  if (disposed || !request) return;
-  if (refreshing) {
-    refreshAgain = true;
-    return;
-  }
-  refreshing = true;
-  try {
-    do {
-      refreshAgain = false;
-      state = await request('snapshot');
-    } while (refreshAgain && !disposed);
-    if (readFailed) showError('');
-    readFailed = false;
-    render();
-  } catch (error) {
-    readFailed = true;
-    if (!state)
-      results.replaceChildren(el('p', 'empty-message', 'Recent activity is unavailable.'));
-    showError(error.message || 'Could not load recent activity.', true);
-  } finally {
-    refreshing = false;
-    results.setAttribute('aria-busy', 'false');
-  }
-}
+const refreshScheduler = createRefreshScheduler({
+  delay: 50,
+  getState: () => state,
+  getWindowId: () => windowId,
+  canRefresh: () => Boolean(request) && !document.hidden,
 
-function scheduleRefresh() {
-  clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(refresh, 50);
-}
+  async refresh() {
+    try {
+      state = await request('snapshot');
+      if (disposed) return;
+      if (readFailed) showError('');
+      readFailed = false;
+      render();
+    } catch (error) {
+      if (disposed) return;
+      readFailed = true;
+      if (!state)
+        results.replaceChildren(el('p', 'empty-message', 'Recent activity is unavailable.'));
+      showError(error.message || 'Could not load recent activity.', true);
+    } finally {
+      if (!disposed) results.setAttribute('aria-busy', 'false');
+    }
+  },
+});
+const scheduleRefresh = refreshScheduler.schedule;
+const refresh = refreshScheduler.now;
 
 function navigate() {
   const value = location.hash.slice(1);
@@ -316,6 +310,7 @@ async function start() {
   } else {
     if (!globalThis.browser?.runtime?.id)
       throw new Error('Open this page from Tabernacle in Firefox.');
+    windowId = (await browser.windows.getCurrent()).id;
     request = async (type, args = {}) => {
       windowId = (await browser.windows.getCurrent()).id;
       const result = await browser.runtime.sendMessage({
@@ -329,7 +324,7 @@ async function start() {
     };
 
     const changed = (message) => {
-      if (message.type === 'tabernacle:changed') scheduleRefresh();
+      if (message.type === 'tabernacle:changed') scheduleRefresh(message);
     };
 
     browser.runtime.onMessage.addListener(changed);
@@ -347,12 +342,12 @@ const timer = setInterval(() => {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) refresh();
 });
-window.addEventListener('focus', scheduleRefresh);
+window.addEventListener('focus', () => scheduleRefresh());
 window.addEventListener(
   'pagehide',
   () => {
     disposed = true;
-    clearTimeout(refreshTimer);
+    refreshScheduler.dispose();
     clearInterval(timer);
   },
   { once: true },
