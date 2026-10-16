@@ -1,43 +1,23 @@
 import assert from 'node:assert/strict';
-import { Builder, Button, By, until } from 'selenium-webdriver';
+import { Button, By, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { download } from 'geckodriver';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { startFirefox } from './firefox-session.js';
+import { resolve } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { previewServer } from './preview.js';
 import { MODEL_KEY, TAB_KEY } from '../extension/src/model.js';
 import { PENDING_MOVE_KEY } from '../extension/src/move-recovery.js';
 
 const server = await previewServer(0);
 const url = `http://127.0.0.1:${server.address().port}/preview/index.html`;
-const options = new firefox.Options().addArguments('-headless');
-if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
-if (process.platform === 'darwin' && !process.env.FIREFOX_BINARY)
-  options.setBinary('/Applications/Firefox.app/Contents/MacOS/firefox');
-options.setPreference('browser.shell.checkDefaultBrowser', false);
-options.setPreference('browser.startup.page', 0);
-options.setPreference('browser.tabs.warnOnClose', false);
-options.setPreference('general.autoScroll', true);
-let driver, profileRoot;
+let driver, session;
 try {
-  const binary = process.env.GECKODRIVER_BINARY || (await download('0.37.1'));
   await mkdir('test-results', { recursive: true });
-  profileRoot = await mkdtemp(join(tmpdir(), 'tabernacle-firefox-'));
-  const appData = join(profileRoot, 'app-data');
-  await mkdir(appData);
-  driver = await new Builder()
-    .forBrowser('firefox')
-    .setFirefoxOptions(options)
-    .setFirefoxService(
-      new firefox.ServiceBuilder(binary)
-        .addArguments('--allow-system-access', '--profile-root', profileRoot)
-        // Firefox also reads app data outside its profile. Isolate that state
-        // to avoid accessing the user's protected Firefox directory on macOS.
-        .setEnvironment({ ...process.env, MOZ_APP_DATA: appData })
-        .setStdio('inherit'),
-    )
-    .build();
+  session = await startFirefox({
+    stdio: 'inherit',
+    configure: (options) => options.setPreference('general.autoScroll', true),
+  });
+  driver = session.driver;
   await driver.manage().setTimeouts({ script: 20000, implicit: 0, pageLoad: 30000 });
   await driver.manage().window().setRect({ width: 1040, height: 850 });
   const addonId = await driver.installAddon(resolve('extension'), true);
@@ -697,9 +677,8 @@ try {
   throw error;
 } finally {
   try {
-    if (driver) await driver.quit();
+    await session?.close();
   } finally {
     await new Promise((resolve) => server.close(resolve));
-    if (profileRoot) await rm(profileRoot, { recursive: true, force: true });
   }
 }

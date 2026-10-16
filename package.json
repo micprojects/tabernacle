@@ -11,7 +11,7 @@
     "test:containers": "node scripts/test-containers-ui.js",
     "test:color-mode": "node scripts/test-color-mode-ui.js",
     "test:performance": "node scripts/test-performance-ui.js",
-    "test:firefox": "node scripts/test-firefox.js && node scripts/test-move-dialog-firefox.js && node scripts/test-container-picker-firefox.js && node scripts/test-drag-firefox.js && node scripts/test-tab-close-firefox.js",
+    "test:firefox": "node scripts/run-firefox-tests.js",
     "test:stress": "node scripts/stress-firefox.js",
     "lint": "npm run lint:js && npm run lint:extension",
     "lint:js": "eslint . --max-warnings 0",
@@ -31,7 +31,8 @@
     "test:backup": "node scripts/test-backup-ui.js",
     "test:backup:firefox": "node scripts/test-backup-firefox.js",
     "test:neutral": "node scripts/test-neutral-ui.js",
-    "test:toolbar:firefox": "node scripts/test-toolbar-icon-firefox.js"
+    "test:toolbar:firefox": "node scripts/test-toolbar-icon-firefox.js",
+    "qa:release": "node scripts/release-qa.js"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

@@ -317,17 +317,45 @@ It records diagnostic timings in `test-results/firefox-stress.json`; timings are
 machine-dependent pass thresholds. Most tabs stay unloaded, with up to 20 local pages
 generating title updates.
 
-Use a dedicated test profile. Close Firefox, then launch that profile with `--marionette`
-and `--remote-allow-system-access`. On macOS, for example:
+The command launches and cleans up its own headless Firefox process, temporary profile
+and app-data directory. Your normal Firefox can stay open. `FIREFOX_BINARY` and
+`GECKODRIVER_BINARY` override the installed binaries; GeckoDriver downloads on the first
+run when needed. Set `FIREFOX_STRESS_SIZES=100,500,2000` to change the workload.
+
+## Release QA
+
+Run the complete gate before preparing a release:
 
 ```sh
-open -a Firefox --args -profile '/absolute/path/to/test-profile' --marionette --remote-allow-system-access
-FIREFOX_STRESS_PROFILE='/absolute/path/to/test-profile' npm run test:stress
+npm run qa:release
+npm run qa:release -- --stress
 ```
 
-Find the actual profile directory in `about:support`; names in Firefox's newer profile
-picker may differ from the legacy command-line names. The script verifies the directory
-before installing the extension temporarily. It uses a separate test window and removes
-its own folders, tabs and container afterward. Existing profile data is kept.
-Set `FIREFOX_STRESS_SIZES=100,500,2000` to change the workload. Quit Firefox afterward to
-end the automation session; the temporary extension installation ends at browser restart.
+Both commands run formatting, lint, unit tests, all UI and native Firefox suites, and
+an unsigned build. The second also runs the larger tab stress workload. They do not
+change versions, commit, sign or publish anything. Each run writes a separate log for
+each check and a machine-readable `results.json` under `test-results/release-qa/`.
+The exit status is nonzero if any check fails; later suites still run to expose other
+failures. Individual browser screenshots remain in `test-results/`.
+
+The catalog in `scripts/qa-suites.js` also drives `test:ui` and `test:firefox`. A unit test
+checks that every maintained browser suite is registered, so adding a test cannot
+silently leave it outside release QA. Native integration suites and stress share
+`scripts/firefox-session.js`; actual sidebar suites use `ScreenshotBrowser` for native
+sidebar access. Both fixtures create and verify their own temporary Firefox profiles.
+Playwright Chromium and Firefox must be installed before running browser checks.
+
+## Refresh and folder indexing
+
+`src/refresh-scheduler.js` coalesces notifications, filters window IDs and skips revisions
+already included in a response. A new background generation resets revision comparison.
+Only one refresh runs at a time. Settings and activity defer notification reads while
+hidden; sidebar refreshes pause during pointer gestures and queued actions. Settings
+merge incoming preferences around dirty fields, preserving unsaved edits.
+
+`src/folder-index.js` builds folder lookup, child order, ancestor ranges and inherited
+container/colour information once per render. The sidebar tree index and both folder
+pickers share it. Indices are rebuilt from the current snapshot to avoid stale defaults
+after in-place edits or moves. Traversal and picker construction are iterative. Folder
+indexing supports deep inputs, but deeply nested sidebar DOM can still incur browser
+layout costs; the index does not virtualise the sidebar.
