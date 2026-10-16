@@ -87,10 +87,14 @@ try {
     await folder.click();
     await expect(folder).toHaveAttribute('aria-expanded', 'false');
     await expect(folder.locator('.group-count')).toHaveText(total);
+    await expect(folder).toHaveClass(/selected/);
+    await page.mouse.move(0, 0);
     await expect(folder).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await folder.click();
     await expect(folder).toHaveAttribute('aria-expanded', 'true');
     await folder.locator('.label').hover();
+    const folderHover = await folder.evaluate((node) => getComputedStyle(node).backgroundColor);
+    expect(folderHover).not.toBe('rgba(0, 0, 0, 0)');
     await expect(folder).toHaveCSS('box-shadow', 'none');
     await page.keyboard.press('Tab');
     await folder.focus();
@@ -100,7 +104,7 @@ try {
     for (const target of [row, page.locator('[data-key="tab:8"]')]) {
       const before = await target.locator('.tab-icon').boundingBox();
       await target.hover();
-      await expect(target).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(target).toHaveCSS('background-color', folderHover);
       await expect(target).toHaveCSS('box-shadow', 'none');
       expect(await target.locator('.tab-icon').boundingBox()).toEqual(before);
       await expect(active).toHaveCSS('background-color', activeBackground);

@@ -115,7 +115,8 @@
   cursor: default;
   outline-offset: -2px;
 }
-.tab-row:hover {
+.tab-row:hover,
+.group-row:hover {
   background: var(--hover);
 }
 .tab-row.selected:not(.active) {
@@ -312,7 +313,8 @@ svg.folder-icon,
   .tab-row.discarded:not(.active) .label {
     color: var(--label-muted, currentColor);
   }
-  .tab-row:is(:hover, .selected):not(.active) .label {
+  .tab-row:is(:hover, .selected):not(.active) .label,
+  .group-row:hover .label {
     color: var(--label-hover, currentColor);
   }
   .tab-row.discarded:is(:hover, .selected):not(.active) .label {
