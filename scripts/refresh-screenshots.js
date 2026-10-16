@@ -118,16 +118,6 @@ try {
     console.log(`Capturing ${shot.file}…`);
     await browser.setColorScheme(shot.colorScheme);
     report.captures.push(await browser.evaluate(showScreenshotScene, fixture, session, index));
-    for (const related of resolvedFixture.shots.filter(
-      (item) => sourceFile(item) === sourceFile(shot),
-    )) {
-      const measured = await browser.evaluate(measureScreenshotRegion, related.framing);
-      related.composition.crop = resolveScreenshotCrop(
-        related.framing,
-        measured,
-        fixture.capture.sourceOrigin,
-      );
-    }
     // Reject moving/loading UI instead of quietly exporting a partial frame.
     let png = await browser.screenshot(fixture.capture),
       stable = false;
@@ -144,6 +134,18 @@ try {
       png = next;
     }
     assert(stable, `${shot.file}: sidebar did not settle`);
+    // Async dialog content can resize the frame after the scene first opens.
+    // Measure only once the captured UI has settled so its heading and actions fit.
+    for (const related of resolvedFixture.shots.filter(
+      (item) => sourceFile(item) === sourceFile(shot),
+    )) {
+      const measured = await browser.evaluate(measureScreenshotRegion, related.framing);
+      related.composition.crop = resolveScreenshotCrop(
+        related.framing,
+        measured,
+        fixture.capture.sourceOrigin,
+      );
+    }
     await writeFile(join(sources, sourceFile(shot)), png);
     captured.add(sourceFile(shot));
   }
