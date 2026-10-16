@@ -92,7 +92,7 @@ test('native changes invalidate only their window; irrelevant updates do not not
   assert(f.notices.every((notice) => notice.windowId === 2));
   const state = await f.send('snapshot', {}, 2);
   assert.equal(state.tabs.find((tab) => tab.id === 900).title, 'Other window changed');
-  assert.deepEqual(f.queries, [{ windowId: 2 }]);
+  assert.deepEqual(f.queries, []);
   f.reset();
   await f.api.tabs.update(1, { status: 'loading' });
   assert.deepEqual(f.notices, []);
@@ -437,4 +437,91 @@ test('tree summaries handle deep trees, search, pinned descendants and group aud
   assert.equal(index.tabStats.get(0).descendants, 0);
   assert.equal(index.audio.get(0), 1);
   assert.equal(index.roots.get('child').length, 2);
+});
+
+test('metadata bursts reuse settled native lists without changing older snapshots or saved memberships', async () => {
+  const f = fixture(1000);
+  const before = await f.send('snapshot');
+  const stored = structuredClone(f.api.testing.tabValues);
+  f.reset();
+  for (let i = 0; i < 100; i++)
+    await f.api.tabs.update(i + 1, {
+      title: `Live ${i}`,
+      favIconUrl: `https://example.com/${i}.ico`,
+      status: 'complete',
+      audible: true,
+      mutedInfo: { muted: i % 2 === 0, reason: 'user' },
+      discarded: false,
+    });
+  const after = await f.send('snapshot');
+  assert.equal(f.calls()['tabs.query'] || 0, 0);
+  assert.equal(f.calls()['sessions.getTabValue'] || 0, 0);
+  assert.equal(f.calls()['sessions.setTabValue'] || 0, 0);
+  assert.deepEqual(f.api.testing.tabValues, stored);
+  assert.equal(before.tabs[0].title, 'Tab 0');
+  assert.equal(before.tabs[0].mutedInfo, undefined);
+  for (let i = 0; i < 100; i++) {
+    assert.equal(after.tabs[i].title, `Live ${i}`);
+    assert.deepEqual(after.tabs[i].mutedInfo, { muted: i % 2 === 0, reason: 'user' });
+    assert.equal(after.tabs[i].treeId, before.tabs[i].treeId);
+    assert.deepEqual(after.tabs[i].ancestors, before.tabs[i].ancestors);
+  }
+  f.controller.dispose();
+});
+
+for (const properties of [
+  { url: 'https://example.com/navigation' },
+  { pinned: true },
+  { hidden: true },
+  { groupId: 42 },
+  { cookieStoreId: 'firefox-container-2' },
+  { title: 'Changed', futureProperty: true },
+]) {
+  test(`native ${Object.keys(properties).join('/')} changes keep the full query path`, async () => {
+    const f = fixture(10);
+    await f.send('snapshot');
+    f.reset();
+    await f.api.tabs.update(1, properties);
+    await f.send('snapshot');
+    assert.deepEqual(f.queries, [{ windowId: 1 }]);
+    f.controller.dispose();
+  });
+}
+
+test('metadata cache updates cannot resurrect removed or detached tabs', async () => {
+  const api = memoryBrowser({ events: true, tabs: [{ id: 1, windowId: 1, title: 'Before' }] });
+  const cache = createBrowserCache(api);
+  try {
+    await cache.tabs();
+    await api.tabs.update(1, { title: 'Changed' });
+    assert.equal((await cache.tabs(1))[0].title, 'Changed');
+    assert.equal((await cache.tabs())[0].title, 'Changed');
+    await api.testing.attach(1, 2);
+    api.tabs.onUpdated.emit(1, { title: 'Late old window event' }, { windowId: 1 });
+    assert.deepEqual(await cache.tabs(1), []);
+    assert.equal((await cache.tabs(2))[0].title, 'Changed');
+    await api.tabs.remove(1);
+    api.tabs.onUpdated.emit(1, { title: 'Late closed tab event' }, { windowId: 2 });
+    assert.deepEqual(await cache.tabs(2), []);
+  } finally {
+    cache.dispose();
+  }
+});
+
+test('metadata events own their nested values and replace a cache entry during a warm read', async () => {
+  const api = memoryBrowser({ events: true, tabs: [{ id: 1, windowId: 1, title: 'Before' }] });
+  const cache = createBrowserCache(api);
+  try {
+    const before = await cache.tabs(1);
+    const reading = cache.tabs(1);
+    const properties = { mutedInfo: { muted: true }, title: 'After' };
+    api.tabs.onUpdated.emit(1, properties, { windowId: 1 });
+    properties.mutedInfo.muted = false;
+    assert.equal((await reading)[0].title, 'After');
+    assert.equal((await cache.tabs(1))[0].mutedInfo.muted, true);
+    assert.equal(before[0].title, 'Before');
+    assert.equal(before[0].mutedInfo, undefined);
+  } finally {
+    cache.dispose();
+  }
 });

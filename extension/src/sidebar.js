@@ -1,4 +1,5 @@
 import { createRefreshScheduler } from './refresh-scheduler.js';
+import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
@@ -1958,7 +1959,8 @@ async function start() {
       if (focused && !windowFocused) windowFocusedAt = performance.now();
       windowFocused = focused;
     });
-    request = async (type, args = {}) => {
+
+    const send = async (type, args = {}) => {
       const result = await browser.runtime.sendMessage({
         type: `tabernacle:${type}`,
         windowId,
@@ -1970,6 +1972,11 @@ async function start() {
         );
       return result.data;
     };
+
+    const readSnapshot = createSnapshotReader((snapshotToken) =>
+      send('snapshot', { incremental: true, snapshotToken }),
+    );
+    request = (type, args) => (type === 'snapshot' ? readSnapshot() : send(type, args));
     browser.runtime.onMessage.addListener((message) => {
       if (message.type === 'tabernacle:changed') scheduleRefresh(message);
     });

@@ -1,4 +1,5 @@
 import { createController } from './controller.js';
+import { createSnapshotEncoder } from './snapshot-transfer.js';
 
 let notificationTimer;
 let pendingWindows = new Set();
@@ -28,6 +29,8 @@ const notify = ({ windowId, revision, generation: nextGeneration } = {}) => {
 };
 
 const controller = createController(browser, notify);
+const snapshots = createSnapshotEncoder();
+browser.windows.onRemoved.addListener(snapshots.forget);
 
 // Register listeners synchronously so Manifest V3 can wake this event page.
 browser.runtime.onMessage.addListener((message, sender) => {
@@ -39,7 +42,13 @@ browser.runtime.onMessage.addListener((message, sender) => {
     return undefined;
   if (message.type === 'tabernacle:changed') return undefined;
   return controller.request({ ...message, type: message.type.slice('tabernacle:'.length) }).then(
-    (data) => ({ ok: true, data }),
+    (data) => ({
+      ok: true,
+      data:
+        message.type === 'tabernacle:snapshot' && message.incremental
+          ? snapshots.encode(message.windowId, data, message.snapshotToken)
+          : data,
+    }),
     (error) => ({ ok: false, error: error.message }),
   );
 });
