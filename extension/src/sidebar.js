@@ -1011,6 +1011,7 @@ function render(motionKey = null) {
   const scroll = tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
   const query = $('search').value.trim().toLowerCase();
+  tree.classList.toggle('searching', Boolean(query));
   const nextMotionContext = JSON.stringify([state.generation, state.view.scopeId, query]);
   if (nextMotionContext !== motionContext) treeMotion.finishAll();
   motionContext = nextMotionContext;

@@ -617,6 +617,45 @@ svg.folder-icon,
   background: transparent;
   z-index: 1;
 }
+/* Search omits the add rows. Connect each result to its parent, and stop the
+   final sibling's rail where its rounded elbow begins. */
+.searching.show-connecting-lines :is(.branch, .tab-branch)::before,
+.searching.show-connecting-lines :is(.branch, .tab-branch) > :is(.group-node, .tab-node)::before {
+  mask-image: linear-gradient(#000, #000);
+  mask-size: 1.5px 100%;
+  mask-position: left top;
+  mask-repeat: no-repeat;
+}
+.searching.show-connecting-lines:dir(rtl) :is(.branch, .tab-branch)::before,
+.searching.show-connecting-lines:dir(rtl)
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node)::before {
+  mask-position: right top;
+}
+.searching.show-connecting-lines
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node):last-child::before {
+  height: calc(var(--node-icon-centre) + var(--branch-gap) - 5.25px);
+  border-radius: 0;
+}
+.searching.show-connecting-lines :is(.branch, .tab-branch) > :is(.group-node, .tab-node)::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset-inline-start: calc(var(--guide-x) - var(--tree-indent) - 1px);
+  top: calc(var(--node-icon-centre) - 15.25px);
+  width: calc(var(--tree-indent) - var(--node-icon-size) / 2 - var(--guide-gap) + 1px);
+  height: 16px;
+  background: var(--parent-guide);
+  mask: url('icons/ui/tree-guide-end.svg') left top / 100% 100% no-repeat;
+  z-index: 1;
+  forced-color-adjust: none;
+}
+.searching.show-connecting-lines:dir(rtl)
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node)::after {
+  transform: scaleX(-1);
+}
 @media (forced-colors: active) {
   .tree :is(.group-node, .tab-node, .new-tab-item),
   .pinned-tab {
