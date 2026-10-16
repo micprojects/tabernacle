@@ -5,6 +5,7 @@ import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
 import { createFaviconTints } from './favicon-tint.js';
 import { createLabelColors } from './label-colors.js';
+import { guideColors } from './appearance-colors.js';
 import { createDialogs } from './dialogs.js';
 import { folderIcon, folderIconColor } from './folder-icons.js';
 import { pinActionLabels } from './pinned-items.js';
@@ -497,6 +498,14 @@ function createGroupRow(group, container) {
   return row;
 }
 
+function paintGuide(branch, color) {
+  for (const [i, shade] of guideColors(color).entries()) {
+    const property = `--guide-${i + 1}`;
+    if (branch.style.getPropertyValue(property) !== shade)
+      branch.style.setProperty(property, shade);
+  }
+}
+
 function groupNode(group, query, ancestorMatch = false) {
   if (query && !ancestorMatch && !searchVisible(group.id)) return null;
   const { node, branch } = wrapperFor('group', group.id);
@@ -504,7 +513,7 @@ function groupNode(group, query, ancestorMatch = false) {
   const { appearance } = index.folders.details.get(group.id);
   const color = folderIconColor(appearance.color) || 'var(--folder-icon)';
   node.style.setProperty('--item-colour', color);
-  branch.style.setProperty('--parent-guide', color);
+  paintGuide(branch, appearance.color);
   const row = markSelected(
     rowCache.get(
       `group:${group.id}`,
@@ -799,8 +808,8 @@ function tabNode(tab, query, ancestorMatch = false) {
   if (query && !matchAll && !stats.descendantMatch) return null;
   const expanded = Boolean(query) || !tab.collapsed;
   const { node, branch } = wrapperFor('tab', tab.id);
-  // Nested tab guides show structure without repeating container identity.
-  branch.style.setProperty('--parent-guide', 'var(--neutral-marker)');
+  // A tab owns its child rail, even when a child uses a different container.
+  paintGuide(branch, tab.container?.colorCode);
   node.classList.toggle('tab-parent', stats.descendants > 0);
   const row = markSelected(
     rowCache.get(

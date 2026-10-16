@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appearanceColor, labelColor } from '../extension/src/appearance-colors.js';
+import { appearanceColor, guideColors, labelColor } from '../extension/src/appearance-colors.js';
 import { folderColors } from '../extension/src/folder-appearance.js';
 
 function luminance(hex) {
@@ -40,6 +40,41 @@ test('invalid colours fall back without accepting CSS expressions', () => {
   for (const color of [null, undefined, '', 'red', 'var(--text)', '#12', '#abcdef; color:red'])
     assert.equal(appearanceColor(color), null);
   assert.equal(appearanceColor('#37ADFF'), appearanceColor('#37adff'));
+});
+
+test('guide shades preserve colour and contrast as depth becomes less prominent', () => {
+  for (const color of [
+    ...folderColors.map(({ color }) => color),
+    '#00a7e0',
+    '#51cd00',
+    '#ffcb00',
+    '#ffffff',
+    '#000000',
+  ]) {
+    const shades = guideColors(color).map((pair) => pair.match(/#[\da-f]{6}/g));
+    assert.equal(shades.length, 3);
+    for (const theme of [0, 1]) {
+      let previous = Infinity;
+      for (const pair of shades) {
+        const values = [luminance(pair[theme]), luminance(theme ? '#202020' : '#ffffff')].sort(
+          (a, b) => a - b,
+        );
+        const contrast = (values[1] + 0.05) / (values[0] + 0.05);
+        assert.ok(contrast >= (theme ? 4.6 : 3.1), `${color}/${theme}: ${contrast}`);
+        assert.ok(contrast < previous, `${color}/${theme}: depth must become quieter`);
+        previous = contrast;
+      }
+    }
+  }
+  // Approved B mockup: a green stays green rather than fading towards grey.
+  assert.deepEqual(
+    guideColors('#45994d').map((pair) => pair.match(/#[\da-f]{6}/g)[0]),
+    ['#398e42', '#44994d', '#50a357'],
+  );
+  assert.equal(guideColors('#00A7E0'), guideColors('#00a7e0'));
+  for (const invalid of [null, undefined, 'red', 'var(--text)', '#123']) {
+    assert.equal(guideColors(invalid), guideColors('#858585'));
+  }
 });
 
 test('identity captions keep readable contrast across neutral, hover and selected surfaces', () => {

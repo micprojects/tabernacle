@@ -11,6 +11,7 @@ export const uiSuites = [
   'test-group-actions-ui',
   'test-tree-expansion-ui',
   'test-tree-motion-ui',
+  'test-tree-guides-ui',
   'test-tab-clicks-ui',
   'test-pinned-tabs-ui',
   'test-pinned-folders-ui',
