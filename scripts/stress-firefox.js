@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict';
-import { Builder, By, until } from 'selenium-webdriver';
+import { By, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { download } from 'geckodriver';
+import { startFirefox } from './firefox-session.js';
 import { resolve } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 
-// Attach only to a browser explicitly launched for testing. Require its exact
-// profile path so a forgotten switch cannot populate a personal profile.
-const profile = process.env.FIREFOX_STRESS_PROFILE;
-if (!profile) throw new Error('Set FIREFOX_STRESS_PROFILE to the test profile’s absolute path.');
 const sizes = (process.env.FIREFOX_STRESS_SIZES || '100,500,1000').split(',').map(Number);
 assert(
   sizes.every((size, i) => Number.isInteger(size) && size >= 3 && (!i || size > sizes[i - 1])),
@@ -29,7 +25,7 @@ await new Promise((resolve, reject) => {
 });
 const url = `http://127.0.0.1:${server.address().port}/`;
 const results = [];
-let driver, windowId, handle, originalHandle, groupId, identity;
+let driver, session, windowId, handle, groupId, identity;
 
 function report(test, value) {
   const result = { test, ...value };
@@ -76,24 +72,20 @@ async function rowCount(count) {
 
 try {
   await mkdir('test-results', { recursive: true });
-  driver = await new Builder()
-    .forBrowser('firefox')
-    .setFirefoxOptions(new firefox.Options())
-    .setFirefoxService(
-      new firefox.ServiceBuilder(
-        process.env.GECKODRIVER_BINARY || (await download('0.37.1')),
-      ).addArguments('--connect-existing', '--marionette-port', '2828', '--allow-system-access'),
-    )
-    .build();
+  session = await startFirefox();
+  driver = session.driver;
   await driver.manage().setTimeouts({ script: 120000, pageLoad: 30000 });
   await driver.setContext(firefox.Context.CHROME);
   const info = await driver.executeScript(
     'return {profile:Services.dirsvc.get("ProfD",Ci.nsIFile).path,version:Services.appinfo.version};',
   );
-  assert.equal(info.profile, profile, 'Refusing to modify an unexpected Firefox profile');
+  assert.equal(
+    await realpath(info.profile),
+    session.profile,
+    'Refusing to modify an unexpected Firefox profile',
+  );
   report('environment', info);
   await driver.setContext(firefox.Context.CONTENT);
-  originalHandle = await driver.getWindowHandle();
   const addon = await driver.installAddon(resolve('extension'), true);
   await driver.setContext(firefox.Context.CHROME);
   const uuid = await driver.executeScript(
@@ -275,9 +267,8 @@ try {
         }
         if (identity) await send('removeContainer', { cookieStoreId: identity });
         if (handle) await driver.close();
-        if (originalHandle) await driver.switchTo().window(originalHandle);
       } finally {
-        await driver.quit();
+        await session.close();
       }
     }
   } finally {

@@ -1,33 +1,22 @@
 import assert from 'node:assert/strict';
-import { Builder, By } from 'selenium-webdriver';
+import { By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { download } from 'geckodriver';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { startFirefox } from './firefox-session.js';
+import { resolve } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
-const root = await mkdtemp(join(tmpdir(), 'tabernacle-toolbar-firefox-'));
-const appData = join(root, 'app-data');
-await mkdir(appData);
-await mkdir('test-results', { recursive: true });
-const options = new firefox.Options().addArguments('-headless', '-no-remote');
-options.setBinary(process.env.FIREFOX_BINARY || '/Applications/Firefox.app/Contents/MacOS/firefox');
-options.setPreference('browser.shell.checkDefaultBrowser', false);
-options.setPreference('browser.nova.enabled', true);
-// Browser icons must ignore a conflicting website appearance preference.
-options.setPreference('layout.css.prefers-color-scheme.content-override', 1);
-let driver;
+let driver, session;
 try {
-  driver = await new Builder()
-    .forBrowser('firefox')
-    .setFirefoxOptions(options)
-    .setFirefoxService(
-      new firefox.ServiceBuilder(process.env.GECKODRIVER_BINARY || (await download('0.37.1')))
-        .addArguments('--allow-system-access', '--profile-root', root)
-        .setEnvironment({ ...process.env, MOZ_APP_DATA: appData }),
-    )
-    .build();
+  await mkdir('test-results', { recursive: true });
+  session = await startFirefox({
+    configure(options) {
+      options.setPreference('browser.nova.enabled', true);
+      // Browser icons must ignore a conflicting website appearance preference.
+      options.setPreference('layout.css.prefers-color-scheme.content-override', 1);
+    },
+  });
+  driver = session.driver;
   await driver.manage().setTimeouts({ script: 20000, implicit: 0, pageLoad: 30000 });
   await driver.manage().window().setRect({ width: 1000, height: 850 });
   const addonId = await driver.installAddon(resolve('extension'), true);
@@ -136,6 +125,5 @@ try {
   `);
   await checkIcon('neutral-sidebar-light', '#fbfbfb');
 } finally {
-  await driver?.quit();
-  await rm(root, { recursive: true, force: true });
+  await session?.close();
 }

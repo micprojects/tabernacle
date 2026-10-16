@@ -1,36 +1,16 @@
 import assert from 'node:assert/strict';
-import { Builder, By, until } from 'selenium-webdriver';
+import { By, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { download } from 'geckodriver';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { startFirefox } from './firefox-session.js';
+import { resolve } from 'node:path';
 import { previewServer } from './preview.js';
 
-let driver, profileRoot;
+let driver, session;
 const server = await previewServer(0);
 const fixtureUrl = `http://127.0.0.1:${server.address().port}/preview/index.html`;
 try {
-  const binary = process.env.GECKODRIVER_BINARY || (await download('0.37.1'));
-  profileRoot = await mkdtemp(join(tmpdir(), 'tabernacle-activity-firefox-'));
-  const appData = join(profileRoot, 'app-data');
-  await mkdir(appData);
-  const options = new firefox.Options().addArguments('-headless');
-  if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
-  else if (process.platform === 'darwin')
-    options.setBinary('/Applications/Firefox.app/Contents/MacOS/firefox');
-  options.setPreference('browser.shell.checkDefaultBrowser', false);
-  options.setPreference('browser.startup.page', 0);
-  options.setPreference('browser.tabs.warnOnClose', false);
-  driver = await new Builder()
-    .forBrowser('firefox')
-    .setFirefoxOptions(options)
-    .setFirefoxService(
-      new firefox.ServiceBuilder(binary)
-        .addArguments('--allow-system-access', '--profile-root', profileRoot)
-        .setEnvironment({ ...process.env, MOZ_APP_DATA: appData }),
-    )
-    .build();
+  session = await startFirefox();
+  driver = session.driver;
   await driver.manage().setTimeouts({ script: 20000, implicit: 0, pageLoad: 30000 });
   await driver.manage().window().setRect({ width: 1440, height: 1000 });
   const addonId = await driver.installAddon(resolve('extension'), true);
@@ -179,9 +159,8 @@ try {
   );
 } finally {
   try {
-    await driver?.quit();
+    await session?.close();
   } finally {
-    if (profileRoot) await rm(profileRoot, { recursive: true, force: true });
     await new Promise((resolve) => server.close(resolve));
   }
 }

@@ -1,39 +1,25 @@
 import assert from 'node:assert/strict';
-import { Builder, By, until } from 'selenium-webdriver';
+import { By, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { download } from 'geckodriver';
+import { startFirefox } from './firefox-session.js';
 import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { MODEL_KEY, TAB_KEY } from '../extension/src/model.js';
 
-const root = await mkdtemp(join(tmpdir(), 'tabernacle-backup-firefox-'));
-let driver;
+let driver, session, downloads;
 try {
-  const appData = join(root, 'app-data');
-  const downloads = join(root, 'downloads');
-  await mkdir(appData);
-  await mkdir(downloads);
-  const options = new firefox.Options().addArguments('-headless');
-  if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
-  else if (process.platform === 'darwin')
-    options.setBinary('/Applications/Firefox.app/Contents/MacOS/firefox');
-  options.setPreference('browser.shell.checkDefaultBrowser', false);
-  options.setPreference('browser.startup.page', 0);
-  options.setPreference('privacy.userContext.enabled', true);
-  options.setPreference('browser.download.folderList', 2);
-  options.setPreference('browser.download.dir', downloads);
-  options.setPreference('browser.download.useDownloadDir', true);
-  options.setPreference('browser.helperApps.neverAsk.saveToDisk', 'application/json');
-  driver = await new Builder()
-    .forBrowser('firefox')
-    .setFirefoxOptions(options)
-    .setFirefoxService(
-      new firefox.ServiceBuilder(process.env.GECKODRIVER_BINARY || (await download('0.37.1')))
-        .addArguments('--allow-system-access', '--profile-root', root)
-        .setEnvironment({ ...process.env, MOZ_APP_DATA: appData }),
-    )
-    .build();
+  session = await startFirefox({
+    async configure(options, root) {
+      downloads = join(root, 'downloads');
+      await mkdir(downloads);
+      options.setPreference('privacy.userContext.enabled', true);
+      options.setPreference('browser.download.folderList', 2);
+      options.setPreference('browser.download.dir', downloads);
+      options.setPreference('browser.download.useDownloadDir', true);
+      options.setPreference('browser.helperApps.neverAsk.saveToDisk', 'application/json');
+    },
+  });
+  driver = session.driver;
   await driver.manage().setTimeouts({ script: 20000, implicit: 0, pageLoad: 30000 });
   await driver.manage().window().setRect({ width: 1100, height: 950 });
   const addonId = await driver.installAddon(resolve('extension'), true);
@@ -138,9 +124,5 @@ try {
     '✓ Native Firefox: JSON download/upload, preview, merge, container reuse, new destination, persistence and unchanged tab memberships',
   );
 } finally {
-  try {
-    await driver?.quit();
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+  await session?.close();
 }

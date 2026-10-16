@@ -1,35 +1,16 @@
 import assert from 'node:assert/strict';
-import { Builder, By, until } from 'selenium-webdriver';
+import { By, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { download } from 'geckodriver';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { startFirefox } from './firefox-session.js';
+import { resolve } from 'node:path';
 import { previewServer } from './preview.js';
 
 const server = await previewServer(0);
 const fixtureUrl = `http://127.0.0.1:${server.address().port}/preview/index.html`;
-let driver, root;
+let driver, firefoxSession;
 try {
-  root = await mkdtemp(join(tmpdir(), 'tabernacle-folder-pins-'));
-  const appData = join(root, 'app-data');
-  await mkdir(appData);
-  const options = new firefox.Options().addArguments('-headless');
-  if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
-  else if (process.platform === 'darwin')
-    options.setBinary('/Applications/Firefox.app/Contents/MacOS/firefox');
-  options.setPreference('browser.shell.checkDefaultBrowser', false);
-  options.setPreference('browser.startup.page', 0);
-  options.setPreference('browser.tabs.warnOnClose', false);
-  driver = await new Builder()
-    .forBrowser('firefox')
-    .setFirefoxOptions(options)
-    .setFirefoxService(
-      new firefox.ServiceBuilder(process.env.GECKODRIVER_BINARY || (await download('0.37.1')))
-        .addArguments('--allow-system-access', '--profile-root', root)
-        .setEnvironment({ ...process.env, MOZ_APP_DATA: appData }),
-    )
-    .build();
+  firefoxSession = await startFirefox();
+  driver = firefoxSession.driver;
   await driver.manage().setTimeouts({ script: 20000, implicit: 0, pageLoad: 30000 });
   const addonId = await driver.installAddon(resolve('extension'), true);
   await driver.setContext(firefox.Context.CHROME);
@@ -230,9 +211,8 @@ try {
   console.log('✓ Global unpin, repin and deletion update restored windows');
 } finally {
   try {
-    await driver?.quit();
+    await firefoxSession?.close();
   } finally {
-    if (root) await rm(root, { recursive: true, force: true });
     await new Promise((resolve) => server.close(resolve));
   }
 }
