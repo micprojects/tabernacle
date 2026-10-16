@@ -134,6 +134,81 @@ try {
   assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, restored.id);
   assert(state.groups.some((group) => group.id === fixture.groupId));
 
+  const selection = await browser.evaluate(async (outsideId) => {
+    const groupId = (await window.closeCheckSend('createGroup', { name: 'Folder-aware close' }))
+      .createdGroupId;
+    await window.closeCheckSend('enterGroup', { id: groupId });
+    const ids = [];
+    for (let i = 0; i < 3; i++)
+      ids.push((await window.closeCheckSend('newTab', { groupId })).createdTabId);
+    const [above, closing, below] = ids;
+    await window.closeCheckSend('activateTab', { id: closing });
+    // Make Firefox's own choice deterministic and outside the current folder.
+    await browser.tabs.update(closing, { successorTabId: outsideId });
+    return { groupId, above, closing, below, outsideId };
+  }, fixture.child);
+
+  async function selected(id, hidden = false) {
+    await browser.driver.wait(async () => {
+      const state = await read();
+      return state.tabs.find((tab) => tab.active)?.id === id;
+    }, 7000);
+    await browser.driver.wait(
+      () =>
+        browser.evaluate((hidden) => document.getElementById('reveal').hidden !== hidden, hidden),
+      7000,
+    );
+    assert.equal((await read()).view.scopeId, selection.groupId);
+  }
+
+  async function closeFromSidebar(id) {
+    await visible(id, true);
+    const rect = await browser.evaluate((id) => {
+      const rect = document
+        .querySelector(`[data-key="tab:${id}"] .close-tab`)
+        .getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }, id);
+    await browser.driver
+      .actions()
+      .move({ x: Math.round(offset.x + rect.x), y: Math.round(offset.y + rect.y) })
+      .press(Button.LEFT)
+      .release(Button.LEFT)
+      .perform();
+    await visible(id, false);
+  }
+
+  await closeWithShortcut(selection.closing);
+  await selected(selection.below);
+  await browser.evaluate(
+    async ({ below, outsideId }) => browser.tabs.update(below, { successorTabId: outsideId }),
+    selection,
+  );
+  await closeFromSidebar(selection.below);
+  await selected(selection.above);
+
+  const returning = await browser.evaluate(async ({ groupId, above }) => {
+    const id = (await window.closeCheckSend('newTab', { groupId })).createdTabId;
+    await browser.tabs.update(id, { successorTabId: above });
+    return id;
+  }, selection);
+  await closeWithShortcut(returning);
+  await selected(selection.above);
+
+  const background = await browser.evaluate(async ({ groupId, above }) => {
+    const id = (await window.closeCheckSend('newTab', { groupId })).createdTabId;
+    await window.closeCheckSend('activateTab', { id: above });
+    return id;
+  }, selection);
+  await closeFromSidebar(background);
+  await selected(selection.above);
+  await browser.evaluate(
+    async ({ above, outsideId }) => browser.tabs.update(above, { successorTabId: outsideId }),
+    selection,
+  );
+  await closeWithShortcut(selection.above);
+  await selected(selection.outsideId, true);
+
   const settingsRect = await browser.evaluate(() => {
     const rect = document.getElementById('settings').getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
@@ -164,6 +239,7 @@ try {
 
   const evidence = {
     environment: browser.environment,
+    folderAwareSelection: selection,
     reopenings,
     ...(await browser.evaluate(() => window.closeEvidence)),
   };
@@ -181,6 +257,9 @@ try {
   console.log('✓ Native close shortcut, sidebar x and undo preserve organisation without errors');
   console.log(
     '✓ Settings reopens immediately during close animations without errors or duplicates',
+  );
+  console.log(
+    '✓ Folder-aware native and sidebar closes preserve visible choices and empty folders',
   );
 } finally {
   await browser.close();
