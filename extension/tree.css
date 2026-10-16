@@ -240,6 +240,14 @@ svg.folder-icon,
   background: var(--subtle);
   color: currentColor;
 }
+@media not (forced-colors: active) {
+  .tint-favicons .tab-icon img {
+    filter: var(--favicon-filter, none);
+  }
+  .tint-favicons .tab-icon {
+    color: var(--favicon-colour, inherit);
+  }
+}
 .row .close-tab {
   width: 23px;
   height: 24px;
@@ -296,6 +304,27 @@ svg.folder-icon,
 }
 .discarded:not(.active) {
   color: var(--muted);
+}
+@media not (forced-colors: active) {
+  .row .label {
+    color: var(--label-color, currentColor);
+  }
+  .tab-row.discarded:not(.active) .label {
+    color: var(--label-muted, currentColor);
+  }
+  .tab-row:is(:hover, .selected):not(.active) .label {
+    color: var(--label-hover, currentColor);
+  }
+  .tab-row.discarded:is(:hover, .selected):not(.active) .label {
+    color: var(--label-muted-hover, currentColor);
+  }
+  .row.active .label,
+  :root[data-firefox-theme='default'] .tab-row.selected:not(.active) .label {
+    color: var(--label-selected, currentColor);
+  }
+  .row.drop-inside .label {
+    color: inherit;
+  }
 }
 .empty-child {
   font-size: 11px;

@@ -62,3 +62,31 @@ export function appearanceColor(color, text = false) {
 export function setItemColor(node, color) {
   node.style.setProperty('--item-colour', appearanceColor(color) || 'var(--neutral-marker)');
 }
+
+// Keep the identity hue as strong as possible while meeting text contrast on
+// every supplied surface. Some themes cannot share a readable identity shade;
+// those use their native text colour instead.
+export function labelColor(color, backgrounds, target = 7) {
+  if (!/^#[\da-f]{6}$/i.test(color || '') || !backgrounds.length) return null;
+  const rgb = [1, 3, 5].map((index) => parseInt(color.slice(index, index + 2), 16));
+  const surfaces = backgrounds.map(luminance);
+
+  const contrast = (rgb) => {
+    const value = luminance(rgb);
+    return Math.min(
+      ...surfaces.map(
+        (surface) => (Math.max(value, surface) + 0.05) / (Math.min(value, surface) + 0.05),
+      ),
+    );
+  };
+
+  const endpoint = contrast([0, 0, 0]) >= contrast([255, 255, 255]) ? 0 : 255;
+  const threshold = Math.min(target, contrast([endpoint, endpoint, endpoint]));
+  if (threshold < 4.5) return null;
+  for (let step = 0; step <= 255; step++) {
+    const shade = rgb.map((value) => Math.round(value + ((endpoint - value) * step) / 255));
+    if (contrast(shade) >= threshold)
+      return `#${shade.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+  }
+  return null;
+}

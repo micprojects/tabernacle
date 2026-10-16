@@ -28,7 +28,13 @@ async function fixture(settings = {}) {
 }
 
 test('retired appearance and density selections preserve Look preferences and are removed on the next save', async () => {
-  const look = { connectingLines: true, domains: false, folderCounts: false, animations: true };
+  const look = {
+    connectingLines: true,
+    domains: false,
+    folderCounts: false,
+    tintFavicons: false,
+    animations: true,
+  };
   for (const appearance of ['whitespace', 'colourful', 'outline', 'combined', 'unknown']) {
     const { api, send, controller } = await fixture({
       appearance,
@@ -64,6 +70,14 @@ test('Look defaults missing or malformed preferences independently, with current
   for (const [settings, expected] of [
     [{}, { connectingLines: true, domains: false }],
     [{ look: null }, { connectingLines: true, domains: false }],
+    [{ look: { colorLabels: 'true' } }, { connectingLines: true, domains: false }],
+    [{ look: { colorLabels: true } }, { connectingLines: true, domains: false }],
+    [{ look: { colorLabels: false } }, { connectingLines: true, domains: false }],
+    [{ look: { tintFavicons: 'true' } }, { connectingLines: true, domains: false }],
+    [
+      { look: { tintFavicons: true } },
+      { connectingLines: true, domains: false, tintFavicons: true },
+    ],
     [{ look: { animations: false } }, { connectingLines: true, domains: false, animations: false }],
     [{ look: { animations: 'false' } }, { connectingLines: true, domains: false }],
     [{ look: { folderCounts: 'true' } }, { connectingLines: true, domains: false }],
@@ -104,6 +118,7 @@ test('Look defaults missing or malformed preferences independently, with current
     assert.deepEqual(look, {
       animations: true,
       folderCounts: false,
+      tintFavicons: false,
       themeSource: 'tabernacle',
       colorScheme: 'default',
       ...expected,
@@ -127,7 +142,12 @@ test('Look preferences persist across windows and restarts without changing grou
     { connectingLines: false, domains: true, themeSource: 'firefox', colorScheme: 'dark' },
     { connectingLines: true, domains: true, themeSource: 'firefox', colorScheme: 'default' },
     { connectingLines: false, domains: false, themeSource: 'firefox', colorScheme: 'dark' },
-  ].map((value) => ({ animations: true, folderCounts: false, ...value }))) {
+  ].map((value) => ({
+    animations: true,
+    folderCounts: false,
+    tintFavicons: false,
+    ...value,
+  }))) {
     const saved = await send('setLook', { value });
     assert.deepEqual(saved.look, value);
     assert.deepEqual(api.testing.saved[MODEL_KEY].look, value);
@@ -140,6 +160,7 @@ test('Look preferences persist across windows and restarts without changing grou
   const value = {
     animations: true,
     folderCounts: false,
+    tintFavicons: false,
     connectingLines: true,
     domains: false,
     themeSource: 'firefox',
@@ -175,6 +196,7 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
   assert.deepEqual((await send('snapshot')).look, {
     animations: true,
     folderCounts: false,
+    tintFavicons: false,
     connectingLines: true,
     domains: false,
     themeSource: 'tabernacle',
@@ -268,5 +290,31 @@ test('animation preference persists across windows and restarts and rejects inva
   controller.dispose();
   const restarted = createController(api);
   assert.deepEqual((await restarted.request({ type: 'getSettings', windowId: 1 })).look, expected);
+  restarted.dispose();
+});
+
+test('favicon tint defaults off and persists across windows and restarts', async () => {
+  const { api, send, controller } = await fixture();
+  const before = (await send('getSettings')).look;
+  assert.equal(before.tintFavicons, false);
+  await send('setLook', { partial: true, value: { tintFavicons: true } });
+  const expected = { ...before, tintFavicons: true };
+  assert.deepEqual((await send('getSettings', {}, 2)).look, expected);
+  assert.deepEqual(api.testing.saved[MODEL_KEY].look, expected);
+  for (const tintFavicons of [null, 'true', 1])
+    await assert.rejects(
+      send('setLook', { partial: true, value: { tintFavicons } }),
+      /Choose whether to tint website icons/,
+    );
+  controller.dispose();
+  const restarted = createController(api);
+  assert.deepEqual((await restarted.request({ type: 'getSettings', windowId: 1 })).look, expected);
+  await restarted.request({
+    type: 'setLook',
+    windowId: 1,
+    partial: true,
+    value: { tintFavicons: false },
+  });
+  assert.deepEqual((await restarted.request({ type: 'getSettings', windowId: 2 })).look, before);
   restarted.dispose();
 });

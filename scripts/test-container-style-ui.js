@@ -35,7 +35,8 @@ const expectFolderColours = async (id, rawColor) => {
       plus: getComputedStyle(branch.querySelector(':scope > .new-tab-item > button')).color,
     };
   });
-  expect(colours.label).toBe(colours.text);
+  if (rawColor) expect(colours.label).not.toBe(colours.text);
+  else expect(colours.label).toBe(colours.text);
   expect(colours.plus).toBe(expected);
   expect(new Set(colours.rails)).toEqual(new Set([expected]));
   return expected;
@@ -171,7 +172,7 @@ try {
   await expect(folder.locator('.label')).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(pin).toHaveCSS('outline-width', '2px');
   console.log(
-    '✓ Neutral labels and tabs, matching folder icons and continuous rails, inherited/custom colours, totals, RTL, narrow and high-contrast views',
+    '✓ Coloured folder labels, matching icons and continuous rails, inherited/custom colours, totals, RTL, narrow and high-contrast views',
   );
 } finally {
   await close();

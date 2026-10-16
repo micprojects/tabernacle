@@ -7,6 +7,7 @@ export function normalizeLook(value) {
     connectingLines: value?.connectingLines !== false,
     domains: value?.domains === true,
     folderCounts: value?.folderCounts === true,
+    tintFavicons: value?.tintFavicons === true,
     animations: value?.animations !== false,
     themeSource: themeSources.includes(value?.themeSource) ? value.themeSource : 'tabernacle',
     colorScheme: colorSchemes.includes(value?.colorScheme) ? value.colorScheme : 'default',
@@ -20,6 +21,8 @@ export function requireLook(value) {
     throw new Error('Choose whether to show folder tab counts.');
   if (value.animations !== undefined && typeof value.animations !== 'boolean')
     throw new Error('Choose whether to show animations.');
+  if (value.tintFavicons !== undefined && typeof value.tintFavicons !== 'boolean')
+    throw new Error('Choose whether to tint website icons.');
   if (value.colorScheme !== undefined && !colorSchemes.includes(value.colorScheme))
     throw new Error('Choose Automatic, Light or Dark for the colour mode.');
   if (value.themeSource !== undefined && !themeSources.includes(value.themeSource))

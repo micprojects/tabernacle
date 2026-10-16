@@ -36,6 +36,7 @@ test('theme settings default, validate, and keep fallback colour preferences', (
     domains: false,
     animations: true,
     folderCounts: false,
+    tintFavicons: false,
     themeSource: 'tabernacle',
     colorScheme: 'dark',
   });

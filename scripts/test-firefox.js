@@ -509,6 +509,7 @@ try {
   assert.deepEqual(state.look, {
     animations: true,
     folderCounts: false,
+    tintFavicons: false,
     connectingLines: true,
     domains: true,
     colorScheme: 'dark',
