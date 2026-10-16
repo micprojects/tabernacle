@@ -96,6 +96,10 @@ test('native changes invalidate only their window; irrelevant updates do not not
   f.reset();
   await f.api.tabs.update(1, { status: 'loading' });
   assert.deepEqual(f.notices, []);
+  await f.api.tabs.update(1, { status: 'complete' });
+  assert.equal(f.notices.length, 1);
+  assert.equal(f.notices[0].windowId, 1);
+  assert.deepEqual(f.queries, []);
 });
 
 test('adding a tab to a large group uses a bounded number of membership writes', async () => {

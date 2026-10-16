@@ -565,6 +565,35 @@ svg.folder-icon,
   font-weight: 550;
 }
 
+/* Flat domain results reveal longer titles without changing the tree's density. */
+.domain-results .tab-row {
+  /* Wrapped rows need their real heights even before they scroll into view. */
+  content-visibility: visible;
+  align-items: flex-start;
+  padding-block: 6px;
+}
+.domain-results .tab-row .label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.domain-results .tab-row > :is(.icon-slot, .disclosure) {
+  height: 18px;
+  margin-block-start: 0;
+}
+.domain-results .tab-row > .close-tab {
+  margin-block: -3px;
+}
+.domain-results .tab-row > .audio-indicator {
+  margin-block-start: 0;
+}
+.domain-results .tab-row > .audio-button {
+  margin-block: -0.5px;
+}
+
 /* A rail belongs to its parent branch. Every child contributes a continuous
    segment, so nested custom colours cannot repaint an ancestor's rail. */
 .tree {

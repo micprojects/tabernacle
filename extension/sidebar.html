@@ -14,7 +14,7 @@
   </head>
   <body>
     <div class="sidebar">
-      <header>
+      <header id="sidebar-header">
         <div class="navigation-capsule" id="navigation-capsule">
           <nav class="navigation" id="breadcrumbs" aria-label="Folder path">
             <button
@@ -53,6 +53,21 @@
             ></button>
           </div>
         </div>
+        <div id="domain-header" class="domain-header" hidden>
+          <canvas class="domain-wash" width="1" height="1" aria-hidden="true"></canvas>
+          <span id="domain-icon" class="domain-icon" aria-hidden="true"></span>
+          <div class="domain-heading">
+            <h1 id="domain-name"></h1>
+            <p id="domain-address" hidden></p>
+          </div>
+          <button
+            type="button"
+            id="domain-close"
+            aria-label="Close domain view"
+            title="Return to folders (Esc)"
+          ></button>
+        </div>
+        <p id="domain-status" class="sr-only" role="status"></p>
         <div
           id="pinned-tabs"
           class="pinned-tabs"
@@ -61,6 +76,17 @@
           hidden
         ></div>
       </header>
+      <div id="domain-tools" class="domain-tools" hidden>
+        <span id="domain-count"></span>
+        <label class="sr-only" for="domain-sort">Sort filtered tabs</label>
+        <select id="domain-sort" aria-controls="tree">
+          <option value="newest">Newest opened</option>
+          <option value="viewed">Recently viewed</option>
+          <option value="oldest">Oldest opened</option>
+          <option value="title">Title A–Z</option>
+          <option value="tree">Tree order</option>
+        </select>
+      </div>
       <main id="tree" class="tree" role="tree" aria-label="Tabs and folders" tabindex="0">
         <p class="loading">Opening your tabs…</p>
       </main>
