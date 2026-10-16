@@ -22,6 +22,18 @@ const expectFolderColours = async (id, rawColor) => {
     return shade;
   }, rawColor);
   const folder = page.locator(`[data-key="group:${id}"]`);
+  const guide = await folder.evaluate(async (row, color) => {
+    const { guideColors } = await import('/extension/src/appearance-colors.js');
+    let depth = 0;
+    for (let node = row.parentElement; node; node = node.parentElement)
+      if (node.matches('.branch, .tab-branch')) depth++;
+    const probe = document.createElement('span');
+    probe.style.color = guideColors(color)[Math.min(depth, 2)];
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  }, rawColor);
   await expect(folder.locator('.folder-glyph')).toHaveCSS('color', expected);
   const colours = await folder.evaluate((row) => {
     const branch = row.parentElement.querySelector(':scope > .branch');
@@ -30,7 +42,7 @@ const expectFolderColours = async (id, rawColor) => {
       text: getComputedStyle(row).color,
       rails: [...branch.children].map((child) => {
         const rail = getComputedStyle(child, '::before');
-        return child.matches('.new-tab-item') ? rail.borderInlineStartColor : rail.backgroundColor;
+        return rail.backgroundColor;
       }),
       plus: getComputedStyle(branch.querySelector(':scope > .new-tab-item > button')).color,
     };
@@ -38,7 +50,7 @@ const expectFolderColours = async (id, rawColor) => {
   if (rawColor) expect(colours.label).not.toBe(colours.text);
   else expect(colours.label).toBe(colours.text);
   expect(colours.plus).toBe(expected);
-  expect(new Set(colours.rails)).toEqual(new Set([expected]));
+  expect(new Set(colours.rails)).toEqual(new Set([guide]));
   return expected;
 };
 

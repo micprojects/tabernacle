@@ -24,7 +24,7 @@ export function folderContainerIconUrl(group, container) {
     : undefined;
 }
 
-// Share the rendered shade with folder guides and new-tab controls.
+// Folder icons and new-tab controls share this shade; guides have lighter tones.
 export function folderIconColor(color) {
   return color && CSS.supports('color', color) ? appearanceColor(color, true) || color : null;
 }

@@ -328,7 +328,7 @@ try {
   expect(await footer()).toEqual(baselineFooter);
   await page.screenshot({ path: 'test-results/look-light.png' });
 
-  const checkConnection = async (parentKey, childKey) => {
+  const checkConnection = async (parentKey, childKey, curvedSearchEnd = false) => {
     const offsets = await page.locator(`[data-key="${childKey}"]`).evaluate((node, parentKey) => {
       const wrapper = node.parentElement;
       const mark = getComputedStyle(wrapper, '::before');
@@ -342,9 +342,9 @@ try {
       const branch = wrapper.parentElement;
       const stem = getComputedStyle(branch, '::before');
       const start = bounds.left + parseFloat(mark.insetInlineStart);
-      const stroke = wrapper.matches('.new-tab-item')
-        ? parseFloat(mark.borderInlineStartWidth)
-        : parseFloat(mark.width);
+      const stroke = parseFloat(mark.maskSize);
+      const elbow = getComputedStyle(wrapper, '::after');
+      const hasElbow = elbow.content === '""';
       return {
         width: stroke,
         height: parseFloat(mark.height),
@@ -360,16 +360,20 @@ try {
           branch.getBoundingClientRect().top + parseFloat(stem.top) - parentIcon.bottom,
         railEnd:
           bounds.top +
-          parseFloat(mark.top) +
-          parseFloat(mark.height) -
-          parseFloat(mark.borderBlockEndWidth) / 2,
+          (hasElbow
+            ? parseFloat(elbow.top) + parseFloat(elbow.height) - stroke / 2
+            : parseFloat(mark.top) +
+              parseFloat(mark.height) -
+              (wrapper.matches('.new-tab-item') ? stroke / 2 : 0)),
         expectedEnd:
           wrapper === branch.lastElementChild ? icon.top + icon.height / 2 : bounds.bottom,
-        elbow: getComputedStyle(wrapper, '::after').content,
+        elbow: elbow.content,
+        elbowMask: elbow.maskImage,
       };
     }, parentKey);
-    expect(offsets.width).toBe(2);
-    expect(offsets.elbow).toBe('none');
+    expect(offsets.width).toBe(1.5);
+    expect(offsets.elbow).toBe(curvedSearchEnd ? '""' : 'none');
+    if (curvedSearchEnd) expect(offsets.elbowMask).toContain('tree-guide-end.svg');
     expect(offsets.parentCentre).toBeLessThanOrEqual(1);
     expect(offsets.parentBottomGap).toBe(4);
     expect(Math.abs(offsets.railEnd - offsets.expectedEnd)).toBeLessThanOrEqual(1);
@@ -396,7 +400,7 @@ try {
   await page.locator('#search').fill('Typography');
   await expect(child).toBeVisible();
   await expect(parent).toBeVisible();
-  await checkConnection('tab:1', 'tab:2');
+  await checkConnection('tab:1', 'tab:2', true);
   await page.keyboard.press('Escape');
   await page.locator('#tree').focus();
   await page.keyboard.press('Shift+F10');

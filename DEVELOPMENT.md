@@ -134,6 +134,13 @@ numbers category includes all 36 characters; searching a character or its label
 (such as "A" or "Number 7") finds that glyph directly. Asset provenance is recorded
 in `icons/ui/NOTICE.txt`. Firefox container identities keep their native choices.
 
+Connecting lines use a 1.5 px stroke and three hue-preserving shades from
+`guideColors` in `src/appearance-colors.js`. The fade stops at the third visible
+branch and resets when entering a folder. Folder lines follow the effective folder
+colour; nested-tab lines follow their parent tab's container colour, with neutral
+as the fallback. Children cannot recolour an ancestor's line. Text and icon shades
+remain independent, and forced-colour mode uses the system's `GrayText` throughout.
+
 ## Recent activity
 
 The history button opens a compact popup spanning the sidebar's available width.
