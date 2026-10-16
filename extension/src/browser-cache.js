@@ -6,6 +6,7 @@ import { deserializeMembership, serializeMembership } from './persistence.js';
 export function createBrowserCache(api, changed = () => {}) {
   const memberships = new Map();
   const tabLists = new Map();
+  const tabSnapshots = new WeakMap();
   const ancillary = new Map();
   const listeners = [];
 
@@ -37,6 +38,41 @@ export function createBrowserCache(api, changed = () => {}) {
     else tabLists.delete(windowId);
   }
 
+  function rememberTabs(windowId, tabs) {
+    const pending = tabLists.get(windowId);
+    if (!tabSnapshots.has(pending))
+      tabSnapshots.set(pending, {
+        tabs,
+        positions: new Map(tabs.map((tab, index) => [tab.id, index])),
+      });
+  }
+
+  // These events carry all changed values and cannot move tabs or alter which
+  // tabs belong to a window. Keep old arrays immutable for in-flight snapshots.
+  // Navigation, structural changes, unknown fields and pending reads still query.
+  const metadataProperties = new Set([
+    'title',
+    'favIconUrl',
+    'status',
+    'audible',
+    'mutedInfo',
+    'discarded',
+  ]);
+
+  function updateMetadata(id, properties, windowId) {
+    if (!Object.keys(properties).every((key) => metadataProperties.has(key))) return false;
+    const cached = tabSnapshots.get(tabLists.get(windowId));
+    const position = cached?.positions.get(id);
+    if (position === undefined) return false;
+    const tabs = cached.tabs.slice();
+    tabs[position] = { ...tabs[position], ...structuredClone(properties) };
+    const pending = Promise.resolve(tabs);
+    tabLists.delete(null);
+    tabLists.set(windowId, pending);
+    tabSnapshots.set(pending, { tabs, positions: cached.positions });
+    return true;
+  }
+
   const tabChanged = (windowId, removedTabId) => {
     invalidateTabs(windowId);
     if (removedTabId !== undefined) memberships.delete(removedTabId);
@@ -57,8 +93,8 @@ export function createBrowserCache(api, changed = () => {}) {
     'active',
     'lastAccessed',
   ]);
-  watch(api.tabs.onUpdated, (_id, properties, tab) => {
-    invalidateTabs(tab.windowId);
+  watch(api.tabs.onUpdated, (id, properties, tab) => {
+    if (!updateMetadata(id, properties, tab.windowId)) invalidateTabs(tab.windowId);
     if (Object.keys(properties).some((key) => visibleProperties.has(key)))
       changed({ windowId: tab.windowId });
   });
@@ -104,8 +140,12 @@ export function createBrowserCache(api, changed = () => {}) {
               windows.get(tab.windowId).push(tab);
             }
             for (const [id, values] of windows)
-              if (!tabLists.has(id)) tabLists.set(id, Promise.resolve(values));
+              if (!tabLists.has(id)) {
+                tabLists.set(id, Promise.resolve(values));
+                rememberTabs(id, values);
+              }
           }
+          rememberTabs(windowId, tabs);
           return tabs;
         },
       );

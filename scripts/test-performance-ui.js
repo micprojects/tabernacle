@@ -31,7 +31,8 @@ try {
     const ready = Promise.all([
       import('/preview/browser.js'),
       import('/extension/src/controller.js'),
-    ]).then(([{ memoryBrowser }, { createController }]) => {
+      import('/extension/src/snapshot-transfer.js'),
+    ]).then(([{ memoryBrowser }, { createController }, { createSnapshotEncoder }]) => {
       const tabs = Array.from({ length: 1020 }, (_, i) => ({
         id: i + 1,
         windowId: i < 1000 ? 1 : 2,
@@ -71,12 +72,22 @@ try {
       };
 
       let controller = createController(testing.api, notify);
+      let snapshots = createSnapshotEncoder();
       testing.restart = () => {
         controller.dispose();
         controller = createController(testing.api, notify);
+        snapshots = createSnapshotEncoder();
       };
       testing.snapshot = () => controller.request({ type: 'snapshot', windowId: 1 });
-      return { request: (message) => controller.request(message) };
+      return {
+        async request(message) {
+          const state = await controller.request(message);
+          if (message.type !== 'snapshot' || !message.incremental) return state;
+          const result = snapshots.encode(message.windowId, state, message.snapshotToken);
+          testing.transfer = result;
+          return structuredClone(result);
+        },
+      };
     });
     window.browser = {
       windows: { getCurrent: async () => ({ id: 1 }) },
@@ -126,6 +137,10 @@ try {
   ).toBe(true);
   expect(await page.evaluate(() => perfTest.calls.snapshot)).toBe(1);
   expect(await page.evaluate(() => perfIndexBuilds)).toBe(0);
+  expect(await page.evaluate(() => perfTest.transfer.changes.map(({ tab }) => tab.id))).toEqual([
+    2,
+  ]);
+  expect(await page.evaluate(() => Object.hasOwn(perfTest.transfer.state, 'tabs'))).toBe(false);
   console.log('✓ A title update keeps unrelated rows and their contents in place');
 
   await page.locator('#search-toggle').click();
