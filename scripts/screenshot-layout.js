@@ -10,6 +10,13 @@ export function resolveScreenshotCrop(framing, measured, sourceOrigin) {
     bottom;
   if (measured.element) {
     ({ left, top, right, bottom } = measured.element);
+    if (framing.inset) {
+      // Snap inset crops inward so fractional dialog edges cannot include the backdrop.
+      left = Math.ceil(left + framing.inset);
+      top = Math.ceil(top + framing.inset);
+      right = Math.floor(right - framing.inset);
+      bottom = Math.floor(bottom - framing.inset);
+    }
   } else {
     top = measured.top ? measured.top.top - (framing.paddingTop || 0) : 0;
     bottom = measured.bottom.bottom + (framing.paddingBottom || 0);

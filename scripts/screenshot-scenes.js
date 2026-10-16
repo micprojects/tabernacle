@@ -50,6 +50,8 @@ export async function setupScreenshotDemo(
         id: group.id,
         cookieStoreId: containers[group.container],
       });
+    if (group.appearance)
+      await send('setGroupAppearance', { id: group.id, appearance: group.appearance });
   }
   const existing = new Map();
   const windowTabs = await browser.tabs.query({ windowId: win.id });

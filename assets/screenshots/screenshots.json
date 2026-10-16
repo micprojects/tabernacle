@@ -56,7 +56,10 @@
       "key": "personal",
       "id": "c7999750-3d73-4d2b-8daa-11fcd598e004",
       "name": "Personal",
-      "container": "personal"
+      "container": "personal",
+      "appearance": {
+        "icon": "single-user"
+      }
     },
     {
       "key": "trip",
@@ -427,7 +430,8 @@
         "dark": false
       },
       "framing": {
-        "element": "#dialog"
+        "element": "#dialog",
+        "inset": 1
       }
     },
     {
