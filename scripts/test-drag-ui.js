@@ -169,23 +169,22 @@ try {
   await reset();
   await tab(8).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move tab…' }).click();
-  await page.getByLabel('Destination', { exact: true }).selectOption('tab:1');
-  await page.getByLabel('Position', { exact: true }).selectOption('first');
+  await page.getByRole('searchbox', { name: 'Destination', exact: true }).fill('Research');
+  await page.getByRole('searchbox', { name: 'Destination', exact: true }).press('Enter');
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(tab(8)).toBeVisible();
   await expect(
-    tab(1).locator('..').locator(':scope > .tab-branch > .tab-node > .row .label'),
-  ).toHaveText(['Roadmap', 'Typography reference', 'Brand guidelines']);
-  console.log('✓ The keyboard dialog nests at an exact sibling position');
+    group('research').locator('..').locator(':scope > .branch > .tab-node > .row .label'),
+  ).toHaveText(['Sidebar patterns', 'Roadmap']);
+  console.log('✓ The keyboard dialog appends to a searched folder');
 
   await reset();
   await tab(8).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move tab…' }).click();
-  await page.getByLabel('Destination', { exact: true }).selectOption('tab:1');
-  await page.getByLabel('Position', { exact: true }).selectOption('first');
-  await expect(page.locator('.move-summary')).toContainText('before Typography reference');
-  await send('moveTab', { id: 2, groupId: null });
-  await expect(page.locator('#tree > .tab-node > [data-key="tab:2"]')).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Destination', exact: true }).fill('Design');
+  await page.getByRole('searchbox', { name: 'Destination', exact: true }).press('Enter');
+  await send('moveTab', { id: 1, groupId: null });
+  await expect(page.locator('#tree > .tab-node > [data-key="tab:1"]')).toBeVisible();
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.locator('#dialog-error')).toBeVisible();
   expect((await state()).tabs.find((tab) => tab.id === 8).parentTabId).toBe(null);
@@ -194,14 +193,11 @@ try {
   const keyboardShortcut = page.locator('[data-pin-kind="group"][data-pin-id="later"]');
   await expect(keyboardShortcut).toBeVisible();
   await keyboardShortcut.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Move shortcut…' }).click();
-  await page.getByLabel('Position', { exact: true }).selectOption('first');
-  await page.getByRole('button', { name: 'Move', exact: true }).click();
-  await expect(page.locator('#dialog')).not.toBeVisible();
-  expect((await state()).pins[0]).toEqual({ kind: 'group', id: 'later' });
+  await expect(page.getByRole('menuitem', { name: 'Move shortcut…' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   expect((await state()).groups.find((group) => group.id === 'later').parentId).toBe(null);
   console.log(
-    '✓ Keyboard previews reject stale slots and shortcuts reorder without moving folders',
+    '✓ Folder moves reject stale destinations and shortcut menus omit the removed picker',
   );
 
   for (const selector of ['.tab-icon', '.disclosure']) {

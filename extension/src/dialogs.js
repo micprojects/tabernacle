@@ -18,7 +18,7 @@ function el(tag, className, text) {
 }
 
 // Own modal state here; the sidebar owns the current snapshot and rendering.
-export function createDialogs({ getState, request, closeMenu, onChange, onMove }) {
+export function createDialogs({ getState, request, closeMenu, onChange, onMove, favicon }) {
   let dialogAction, dialogContext, dialogCancel, dialogComplete, dialogCleanup;
   let dialogBusy = false;
 
@@ -46,7 +46,9 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove }
     dialogContext = Symbol();
     dialogBusy = false;
     $('dialog').classList.toggle('compact-container-dialog', compact);
-    $('dialog').classList.remove('folder-appearance-dialog');
+    $('dialog').classList.remove('folder-appearance-dialog', 'move-dialog');
+    $('dialog').removeAttribute('aria-describedby');
+    $('dialog-close').hidden = true;
     $('dialog-icon').replaceChildren(icon('groupPlus'));
     $('dialog-back').hidden = !onBack;
     $('dialog-back').replaceChildren(icon('back'), document.createTextNode(backLabel));
@@ -406,24 +408,19 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove }
 
   function moveDialog(kind, id) {
     if (kind !== 'contents') {
-      const picker = createMovePicker(getState, kind, id);
+      const picker = createMovePicker(getState, kind, id, { favicon });
       let operationId = crypto.randomUUID();
       let message;
-      const openingRow = document.querySelector(
-        kind === 'pin-group'
-          ? `[data-pin-kind="group"][data-pin-id="${CSS.escape(id)}"]`
-          : `[data-key="${kind}:${CSS.escape(String(id))}"]`,
-      );
-      picker.node.addEventListener('change', () => {
+      const openingRow = document.querySelector(`[data-key="${kind}:${CSS.escape(String(id))}"]`);
+      picker.node.addEventListener('destinationchange', () => {
         message = undefined;
         operationId = crypto.randomUUID();
+        $('dialog-submit').disabled = !picker.valid();
+        $('dialog-error').textContent = picker.error() || '';
+        $('dialog-error').hidden = !picker.error();
       });
       showDialog({
-        title: kind === 'tab' ? 'Move tab' : kind === 'pin-group' ? 'Move shortcut' : 'Move folder',
-        description:
-          kind === 'tab'
-            ? 'The tab and its children move together. Pinning changes only this tab.'
-            : 'Choose a destination and position.',
+        title: kind === 'tab' ? 'Move tab' : 'Move folder',
         input: false,
         content: picker.node,
         submit: 'Move',
@@ -447,6 +444,10 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove }
         afterSubmit: onMove,
         onCancel: () => openingRow?.isConnected && openingRow.focus({ preventScroll: true }),
       });
+      $('dialog').classList.add('move-dialog');
+      $('dialog').setAttribute('aria-describedby', 'move-source');
+      $('dialog-close').hidden = false;
+      $('dialog-submit').disabled = !picker.valid();
       picker.focus();
       return;
     }
@@ -503,6 +504,8 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove }
   }
 
   $('dialog-cancel').addEventListener('click', cancelDialog);
+  $('dialog-close').replaceChildren(icon('close'));
+  $('dialog-close').addEventListener('click', cancelDialog);
   $('dialog').addEventListener('close', () => {
     // A cancel callback can immediately reopen this shared dialog for another step.
     if (!$('dialog').open) {

@@ -319,7 +319,11 @@ try {
   check('New tab is created inside the focused group');
   await page.locator('[data-key="tab:2"]').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move tab…' }).click();
-  await page.getByLabel('Destination', { exact: true }).selectOption('design');
+  await page.getByRole('searchbox', { name: 'Destination', exact: true }).fill('Design');
+  await page
+    .getByRole('treeitem', { name: 'Design', exact: true })
+    .locator(':scope > .move-tree-row')
+    .click();
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.locator('#scope-heading')).toHaveText('Design');
   await expect(page.locator('[data-key="tab:2"]')).toBeVisible();

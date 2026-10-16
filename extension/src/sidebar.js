@@ -201,6 +201,7 @@ const {
   request: (...args) => (args[0] === 'moveItem' ? requestMove(args[1]) : request(...args)),
   closeMenu,
   onMove: moveFeedback,
+  favicon: tabFavicon,
 
   onChange(next, key) {
     acceptState(next);
@@ -1440,7 +1441,6 @@ function contextMenu(kind, id, x, y) {
         ...(state.folderPins.some((item) => item.id === id)
           ? [
               { label: 'Change default action…', icon: 'pin', run: () => pinFolderDialog(id) },
-              { label: 'Move shortcut…', icon: 'pin', run: () => moveDialog('pin-group', id) },
               {
                 label: 'Unpin folder',
                 icon: 'pin',
