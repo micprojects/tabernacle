@@ -37,7 +37,21 @@ async function pixels(icon) {
 }
 
 const caption = (id) => page.locator(`[data-key="${id}"] .label`);
-const textColor = (label) => label.evaluate((node) => getComputedStyle(node).color);
+
+async function textColor(label) {
+  let color;
+  // A live update can replace the label between locator resolution and evaluation.
+  // Read a connected label before comparing its colour or measuring contrast.
+  await expect
+    .poll(async () => {
+      color = await label.evaluate((node) =>
+        node.isConnected ? getComputedStyle(node).color : '',
+      );
+      return color;
+    })
+    .not.toBe('');
+  return color;
+}
 
 async function checkCaptionContrast(label) {
   const foreground = (await textColor(label))
