@@ -1,10 +1,10 @@
 import { labelColor } from './appearance-colors.js';
 
-// Resolve theme surfaces once per appearance change, not once per tab. Shared
+// Resolve neutral surfaces once per appearance change, not once per tab. Shared
 // CSS variables update existing labels without replacing focused/clicked rows.
 export function createLabelColors(root, surface) {
   const colors = new Map();
-  let themeKey, backgrounds;
+  let appearanceKey, backgrounds;
 
   function paint(entry) {
     for (const [name, surfaces] of Object.entries(backgrounds)) {
@@ -16,10 +16,10 @@ export function createLabelColors(root, surface) {
   }
 
   return {
-    configure(palette, dark, forcedColors) {
-      const key = JSON.stringify([palette, root.dataset.colorScheme, dark, forcedColors]);
-      if (key === themeKey) return;
-      themeKey = key;
+    configure(dark, forcedColors) {
+      const key = JSON.stringify([root.dataset.colorScheme, dark, forcedColors]);
+      if (key === appearanceKey) return;
+      appearanceKey = key;
       const probe = document.createElement('span');
       probe.hidden = true;
       surface.append(probe);
@@ -37,13 +37,7 @@ export function createLabelColors(root, surface) {
         return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
       }
 
-      // Bundled themes use a uniform translucent tint over their frame colour.
-      const tint = palette?.vars['theme-sidebar-gradient']?.match(
-        /^linear-gradient\((.+), \1\)$/,
-      )?.[1];
-      const base = ['Canvas', 'var(--background)', ...(tint ? [tint] : [])];
-      // Firefox themes blend the top of the tree into the native Canvas surface.
-      const layers = palette ? [base, ['Canvas']] : [base];
+      const layers = [['Canvas', 'var(--background)']];
       const normal = layers.map((layers) => composite(...layers));
       const hover = layers.map((layers) => composite(...layers, 'var(--hover)'));
       backgrounds = {

@@ -2,7 +2,6 @@ import { expect } from '@playwright/test';
 import sharp from 'sharp';
 import { startUiTest } from './ui-test.js';
 import { prepareSettings } from './settings-test.js';
-import { knownThemes } from '../extension/src/theme-palette.js';
 
 const { page, base, close } = await startUiTest({
   viewport: { width: 360, height: 640 },
@@ -67,28 +66,10 @@ async function checkCaptionContrast(label) {
 
 try {
   await page.addInitScript(() => {
-    const listeners = new Set(),
-      themeListeners = new Set();
-    window.captionTheme = { active: null };
-    window.setCaptionTheme = async (id) => {
-      const { knownThemes } = await import('/extension/src/theme-palette.js');
-      const theme = knownThemes.find((theme) => theme.id === id);
-      window.captionTheme.active = theme ? { ...theme, type: 'theme', enabled: true } : null;
-      for (const listener of themeListeners) listener({});
-    };
+    const listeners = new Set();
     let ready;
     window.browser = {
       windows: { getCurrent: async () => ({ id: 1 }) },
-      management: {
-        getAll: async () => (window.captionTheme.active ? [window.captionTheme.active] : []),
-      },
-      theme: {
-        getCurrent: async () => null,
-        onUpdated: {
-          addListener: (listener) => themeListeners.add(listener),
-          removeListener: (listener) => themeListeners.delete(listener),
-        },
-      },
       runtime: {
         id: 'favicon-tint-test',
         onMessage: { addListener: (listener) => listeners.add(listener) },
@@ -232,27 +213,18 @@ try {
     await send('setLook', { partial: true, value: { folderCounts: false } });
   }
 
-  // Caption shades follow live Firefox palettes, including their translucent surfaces.
-  await send('setLook', {
-    partial: true,
-    value: { themeSource: 'firefox', colorScheme: 'default' },
-  });
+  // Automatic neutral appearance also repaints custom caption shades live.
+  await send('setLook', { partial: true, value: { colorScheme: 'default' } });
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'default');
   for (const colorScheme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme });
-    for (const theme of knownThemes) {
-      await page.evaluate((id) => window.setCaptionTheme(id), theme.id);
-      await expect(page.locator('html')).toHaveAttribute(
-        'data-firefox-theme',
-        theme.id === 'default-theme@mozilla.org' ? 'default' : 'custom',
-      );
+    // Media-query change events repaint calculated caption shades asynchronously.
+    await expect(async () => {
       await checkCaptionContrast(redLabel);
       await checkCaptionContrast(blueLabel);
-    }
+    }).toPass({ timeout: 3000 });
   }
-  await send('setLook', {
-    partial: true,
-    value: { themeSource: 'tabernacle', colorScheme: 'light' },
-  });
+  await send('setLook', { partial: true, value: { colorScheme: 'light' } });
   await page.emulateMedia({ forcedColors: 'active' });
   expect(await textColor(redLabel)).toBe(await textColor(neutralLabel));
   await page.emulateMedia({ forcedColors: 'none' });
@@ -260,7 +232,7 @@ try {
   await send('setLook', { partial: true, value: { domains: false } });
   await expect(redLabel).not.toHaveCSS('color', await textColor(neutralLabel));
   console.log(
-    '✓ Always-on caption colours: independent tab containers, custom/inherited folders, appearance reset, live themes and measured text contrast',
+    '✓ Always-on caption colours: independent tab containers, custom/inherited folders, appearance reset, live colour modes and measured text contrast',
   );
   const tint = settings.getByRole('checkbox', { name: 'Tint website icons', exact: true });
   await expect(tint).not.toBeChecked();

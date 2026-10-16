@@ -140,7 +140,7 @@ try {
     );
   await lines.uncheck();
   await send('setLook', {
-    value: { colorScheme: 'dark', themeSource: 'tabernacle' },
+    value: { colorScheme: 'dark' },
     partial: true,
   });
   await expect(settings.locator('#look-color-scheme')).toHaveValue('dark');
@@ -156,7 +156,6 @@ try {
     animations: true,
     folderCounts: false,
     tintFavicons: false,
-    themeSource: 'tabernacle',
     colorScheme: 'dark',
   });
   await settings.reload();
@@ -290,8 +289,8 @@ try {
   }
   await settings.emulateMedia({ forcedColors: 'active' });
   await expect(settings.locator('html')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-  await settings.locator('#look-theme-source').focus();
-  await expect(settings.locator('#look-theme-source')).toBeFocused();
+  await settings.locator('#look-color-scheme').focus();
+  await expect(settings.locator('#look-color-scheme')).toBeFocused();
   await settings.screenshot({ path: 'test-results/settings-forced-colours.png', fullPage: true });
   await page.evaluate(() => {
     window.failOpenSettings = true;

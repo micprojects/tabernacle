@@ -6,7 +6,6 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
-import { knownThemes } from '../extension/src/theme-palette.js';
 
 const root = await mkdtemp(join(tmpdir(), 'tabernacle-toolbar-firefox-'));
 const appData = join(root, 'app-data');
@@ -82,11 +81,6 @@ try {
       `,
             selector,
           );
-          const actual = native.color
-            .match(/[\d.]+/g)
-            .slice(0, 3)
-            .map(Number);
-          if (!actual.every((value, channel) => value === expected[channel])) return false;
           png = Buffer.from(await driver.findElement(By.css(selector)).takeScreenshot(), 'base64');
           const { data, info } = await sharp(png)
             .ensureAlpha()
@@ -99,7 +93,7 @@ try {
           return matching >= 8;
         },
         10000,
-        `${label}: painted toolbar pixels must match Firefox's icon colour`,
+        `${label}: painted toolbar pixels must match the neutral icon colour`,
       )
       .catch(async (error) => {
         console.error({ label, expected, native });
@@ -108,99 +102,39 @@ try {
       });
     assert.equal(native.width, 16);
     await writeFile(`test-results/toolbar-${label}.png`, png);
-    if (label.startsWith('firefox-default') || label.startsWith('pine-'))
+    if (label.startsWith('neutral-'))
       await writeFile(
         `test-results/toolbar-context-${label}.png`,
         await driver.findElement(By.id('nav-bar')).takeScreenshot(),
         'base64',
       );
-    console.log(`✓ ${label}: actual toolbar pixels match ${native.color}`);
+    console.log(`✓ ${label}: actual toolbar pixels match ${color}`);
   }
 
-  for (const theme of knownThemes) {
-    if (theme.id !== 'default-theme@mozilla.org') {
-      const directory = join(root, theme.name);
-      await mkdir(directory);
-      await writeFile(join(directory, 'manifest.json'), JSON.stringify(theme.manifest));
-      await driver.installAddon(directory, true);
-    }
-    await browserCall('await browser.management.setEnabled(arguments[0], true);', theme.id);
+  for (const scale of [1, 2]) {
+    await driver.setContext(firefox.Context.CHROME);
+    await driver.executeScript(
+      'Services.prefs.setCharPref("layout.css.devPixelsPerPx", arguments[0]);',
+      String(scale),
+    );
     for (const dark of [false, true]) {
-      await driver.setContext(firefox.Context.CHROME);
       await driver.executeScript(
         'Services.prefs.setIntPref("ui.systemUsesDarkTheme", arguments[0]);',
         dark ? 1 : 0,
       );
-      await checkIcon(
-        `${theme.name.toLowerCase().replaceAll(' ', '-')}-${dark ? 'dark' : 'light'}`,
-        theme.manifest[dark ? 'dark_theme' : 'theme'].colors.icons,
-      );
+      const label = `neutral-${scale}x-${dark ? 'dark' : 'light'}`;
+      await checkIcon(label, dark ? '#fbfbfb' : '#5e5e5e');
+      const meta = await sharp(`test-results/toolbar-${label}.png`).metadata();
+      assert.equal(meta.width, 16 * scale, 'Toolbar screenshot uses the expected device pixels');
     }
-  }
-  await browserCall('await browser.management.setEnabled("default-theme@mozilla.org", true);');
-  await driver.setContext(firefox.Context.CHROME);
-  await driver.executeScript('Services.prefs.setCharPref("layout.css.devPixelsPerPx", "2.0");');
-  for (const dark of [false, true]) {
-    await driver.executeScript(
-      'Services.prefs.setIntPref("ui.systemUsesDarkTheme", arguments[0]);',
-      dark ? 1 : 0,
-    );
-    await checkIcon(
-      `firefox-default-retina-${dark ? 'dark' : 'light'}`,
-      knownThemes[0].manifest[dark ? 'dark_theme' : 'theme'].colors.icons,
-    );
-    const meta = await sharp(
-      `test-results/toolbar-firefox-default-retina-${dark ? 'dark' : 'light'}.png`,
-    ).metadata();
-    assert.equal(meta.width, 32, 'Retina toolbar screenshot uses 32 device pixels');
   }
 
   // Keep the user's sidebar preference separate from browser toolbar appearance.
   await browserCall(`
-    const response = await browser.runtime.sendMessage({type:'tabernacle:setLook', windowId:(await browser.windows.getCurrent()).id, value:{themeSource:'tabernacle',colorScheme:'light',connectingLines:true,domains:false}});
+    const response = await browser.runtime.sendMessage({type:'tabernacle:setLook', windowId:(await browser.windows.getCurrent()).id, value:{colorScheme:'light',connectingLines:true,domains:false}});
     if (!response.ok) throw new Error(response.error);
   `);
-  await checkIcon('monochrome-sidebar', knownThemes[0].manifest.dark_theme.colors.icons);
-
-  await driver.setContext(firefox.Context.CONTENT);
-  const firstHandle = await driver.getWindowHandle();
-  const previousHandles = new Set(await driver.getAllWindowHandles());
-  const firstId = await browserCall('return (await browser.windows.getCurrent()).id;');
-  const secondId = await browserCall(
-    'return (await browser.windows.create({url:"about:blank"})).id;',
-  );
-  const handles = await driver.getAllWindowHandles();
-  const secondHandle = handles.find((handle) => !previousHandles.has(handle));
-  assert(secondHandle, 'New Firefox window has a new WebDriver handle');
-  const helper = join(root, 'per-window-theme');
-  await mkdir(helper);
-  await writeFile(
-    join(helper, 'manifest.json'),
-    JSON.stringify({
-      manifest_version: 3,
-      name: 'Toolbar theme test',
-      version: '1.0',
-      permissions: ['theme'],
-      background: { scripts: ['background.js'] },
-      browser_specific_settings: { gecko: { id: 'toolbar-theme-test@example.test' } },
-    }),
-  );
-  await writeFile(
-    join(helper, 'background.js'),
-    `
-    for (const [id, color] of ${JSON.stringify([
-      [firstId, '#9b2244'],
-      [secondId, '#176d50'],
-    ])})
-      browser.theme.update(id, { colors: { frame:'#eeeeee', tab_background_text:'#15141a', toolbar:'#ffffff', icons:color } });
-  `,
-  );
-  await driver.installAddon(helper, true);
-  await driver.switchTo().window(firstHandle);
-  await checkIcon('per-window-first', '#9b2244');
-  await driver.setContext(firefox.Context.CONTENT);
-  await driver.switchTo().window(secondHandle);
-  await checkIcon('per-window-second', '#176d50');
+  await checkIcon('neutral-sidebar-light', '#fbfbfb');
 } finally {
   await driver?.quit();
   await rm(root, { recursive: true, force: true });

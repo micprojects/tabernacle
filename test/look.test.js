@@ -43,14 +43,14 @@ test('retired appearance and density selections preserve Look preferences and ar
     });
     const before = await api.storage.local.get(MODEL_KEY);
     const state = await send('snapshot');
-    assert.deepEqual(state.look, { ...look, themeSource: 'tabernacle', colorScheme: 'default' });
+    assert.deepEqual(state.look, { ...look, colorScheme: 'default' });
     assert.equal(Object.hasOwn(state, 'appearance'), false);
     assert.equal(Object.hasOwn(state, 'combinedLook'), false);
     assert.equal(Object.hasOwn(state, 'compact'), false);
     assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
     await send('setLook', { value: state.look });
     const saved = api.testing.saved[MODEL_KEY];
-    assert.deepEqual(saved.look, { ...look, themeSource: 'tabernacle', colorScheme: 'default' });
+    assert.deepEqual(saved.look, { ...look, colorScheme: 'default' });
     assert.deepEqual(saved.groups, before[MODEL_KEY].groups);
     assert.equal(Object.hasOwn(saved, 'appearance'), false);
     assert.equal(Object.hasOwn(saved, 'combinedLook'), false);
@@ -59,7 +59,6 @@ test('retired appearance and density selections preserve Look preferences and ar
     const restarted = createController(api);
     assert.deepEqual((await restarted.request({ type: 'snapshot', windowId: 1 })).look, {
       ...look,
-      themeSource: 'tabernacle',
       colorScheme: 'default',
     });
     restarted.dispose();
@@ -93,8 +92,8 @@ test('Look defaults missing or malformed preferences independently, with current
     [{ look: { leftAlignNewTab: true } }, { connectingLines: true, domains: false }],
     [{ look: { leftAlignNewTab: false } }, { connectingLines: true, domains: false }],
     [
-      { look: { themeSource: 'firefox', colorScheme: 'dark' } },
-      { connectingLines: true, domains: false, themeSource: 'firefox', colorScheme: 'dark' },
+      { look: { colorScheme: 'dark' } },
+      { connectingLines: true, domains: false, colorScheme: 'dark' },
     ],
     [
       { look: { connectingLines: true, domains: 'true' } },
@@ -119,7 +118,6 @@ test('Look defaults missing or malformed preferences independently, with current
       animations: true,
       folderCounts: false,
       tintFavicons: false,
-      themeSource: 'tabernacle',
       colorScheme: 'default',
       ...expected,
     });
@@ -138,10 +136,10 @@ test('Look preferences persist across windows and restarts without changing grou
   await send('enterGroup', { id: 'work' });
   const before = await send('snapshot');
   for (const value of [
-    { connectingLines: true, domains: false, themeSource: 'firefox', colorScheme: 'light' },
-    { connectingLines: false, domains: true, themeSource: 'firefox', colorScheme: 'dark' },
-    { connectingLines: true, domains: true, themeSource: 'firefox', colorScheme: 'default' },
-    { connectingLines: false, domains: false, themeSource: 'firefox', colorScheme: 'dark' },
+    { connectingLines: true, domains: false, colorScheme: 'light' },
+    { connectingLines: false, domains: true, colorScheme: 'dark' },
+    { connectingLines: true, domains: true, colorScheme: 'default' },
+    { connectingLines: false, domains: false, colorScheme: 'dark' },
   ].map((value) => ({
     animations: true,
     folderCounts: false,
@@ -163,7 +161,6 @@ test('Look preferences persist across windows and restarts without changing grou
     tintFavicons: false,
     connectingLines: true,
     domains: false,
-    themeSource: 'firefox',
     colorScheme: 'dark',
   };
   await send('setLook', { value });
@@ -199,34 +196,54 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
     tintFavicons: false,
     connectingLines: true,
     domains: false,
-    themeSource: 'tabernacle',
     colorScheme: 'default',
   });
   assert.equal(changes.length, 0);
   controller.dispose();
 });
 
-test('theme source saves across windows and restarts, with failed saves retaining the prior source', async () => {
-  const { api, send, controller } = await fixture({
-    look: { themeSource: 'tabernacle', colorScheme: 'dark' },
-  });
-  const original = (await send('snapshot')).look;
-  assert.equal(original.themeSource, 'tabernacle');
-  const value = { ...original, themeSource: 'firefox' };
-  await send('setLook', { value });
-  assert.deepEqual((await send('snapshot', {}, 2)).look, value);
-  assert.equal(api.testing.saved[MODEL_KEY].look.themeSource, 'firefox');
-  const set = api.storage.local.set;
-  api.storage.local.set = async () => {
-    throw new Error('Storage unavailable');
-  };
-  await assert.rejects(send('setLook', { value: original }), /Storage unavailable/);
-  assert.deepEqual((await send('snapshot', {}, 2)).look, value);
-  api.storage.local.set = set;
-  controller.dispose();
-  const restarted = createController(api);
-  assert.deepEqual((await restarted.request({ type: 'snapshot', windowId: 1 })).look, value);
-  restarted.dispose();
+test('retired theme sources are ignored and removed on save without losing colour mode or other preferences', async () => {
+  for (const themeSource of ['firefox', 'tabernacle', 'unknown']) {
+    for (const colorScheme of ['default', 'light', 'dark']) {
+      const preferences = {
+        connectingLines: false,
+        domains: true,
+        folderCounts: true,
+        tintFavicons: true,
+        animations: false,
+        colorScheme,
+      };
+      const { api, send, controller } = await fixture({ look: { ...preferences, themeSource } });
+      const before = await api.storage.local.get(MODEL_KEY);
+      const original = await send('snapshot');
+      assert.deepEqual(original.look, preferences);
+      assert.deepEqual((await send('getSettings', {}, 2)).look, preferences);
+      assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
+      const set = api.storage.local.set;
+      api.storage.local.set = async () => {
+        throw new Error('Storage unavailable');
+      };
+      await assert.rejects(
+        send('setLook', { partial: true, value: { domains: false } }),
+        /Storage unavailable/,
+      );
+      assert.deepEqual((await send('getSettings')).look, preferences);
+      assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
+      api.storage.local.set = set;
+      // A still-open older settings page cannot restore the removed preference.
+      await send('setLook', { partial: true, value: { themeSource } });
+      assert.deepEqual(api.testing.saved[MODEL_KEY].look, preferences);
+      assert.deepEqual((await send('snapshot')).groups, original.groups);
+      assert.deepEqual((await send('snapshot')).tabs, original.tabs);
+      controller.dispose();
+      const restarted = createController(api);
+      assert.deepEqual(
+        (await restarted.request({ type: 'getSettings', windowId: 2 })).look,
+        preferences,
+      );
+      restarted.dispose();
+    }
+  }
 });
 
 test('settings updates merge only edited fields across windows and reject invalid partial changes', async () => {

@@ -1,6 +1,4 @@
 import { normalizeLook } from './look.js';
-import { observeTheme } from './theme-observer.js';
-import { resolveTheme, createPaletteRenderer } from './theme-palette.js';
 import { containerListIcon, visualChoices } from './container-dialogs.js';
 import { sortContainers } from './containers.js';
 import { icon } from './icons.js';
@@ -10,9 +8,7 @@ const $ = (id) => document.getElementById(id);
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
 const fields = $('appearance-form').elements;
 const dirty = new Set();
-const paintPalette = createPaletteRenderer(document.documentElement);
-const forcedColors = matchMedia('(forced-colors: active)');
-let savedLook, request, observer, windowId;
+let savedLook, request, windowId;
 let savingLook = false,
   savingContainer = false;
 let containerItems = [],
@@ -45,18 +41,7 @@ function readLook() {
 
 function renderAppearance() {
   if (!savedLook) return;
-  const result = resolveTheme(savedLook, observer?.snapshot || {}, observer?.dark || false);
-  paintPalette(forcedColors.matches ? null : result.palette, savedLook.colorScheme);
-  const selected = resolveTheme(
-    { themeSource: fields.themeSource.value },
-    observer?.snapshot || {},
-    observer?.dark || false,
-  );
-  $('look-theme-status').textContent = selected.status;
-  fields.colorScheme.disabled = Boolean(selected.palette);
-  $('look-color-scheme-help').textContent = selected.palette
-    ? 'Firefox controls the light/dark appearance while its theme is in use.'
-    : 'Automatic follows Firefox’s light/dark appearance.';
+  document.documentElement.dataset.colorScheme = savedLook.colorScheme;
 }
 
 function updateSaveState(message) {
@@ -427,7 +412,6 @@ window.addEventListener('focus', () => {
 window.addEventListener('beforeunload', (event) => {
   if (dirty.size || savingContainer || folderBackup.isBusy()) event.preventDefault();
 });
-forcedColors.addEventListener('change', renderAppearance);
 for (const link of document.querySelectorAll('nav a')) link.prepend(icon(link.dataset.icon));
 navigate();
 
@@ -477,13 +461,6 @@ async function start() {
     manifest = browser.runtime.getManifest();
   }
   $('extension-version').textContent = `Version ${manifest.version}`;
-  observer = observeTheme({
-    api: demo ? null : browser,
-    windowId,
-    media: matchMedia('(prefers-color-scheme: dark)'),
-    onChange: renderAppearance,
-  });
-  window.addEventListener('pagehide', () => observer.dispose(), { once: true });
   acceptLook((await request('getSettings')).look);
   $('appearance-fields').disabled = false;
   navigate();

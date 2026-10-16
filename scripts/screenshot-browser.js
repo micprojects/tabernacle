@@ -97,13 +97,6 @@ export class ScreenshotBrowser {
     await this.evaluate(async () => {
       await document.fonts.ready;
     });
-    this.environment.theme = await this.evaluate(async () => {
-      const active = (await browser.management.getAll()).find(
-        (addon) => addon.type === 'theme' && addon.enabled,
-      );
-      return active ? { id: active.id, name: active.name, version: active.version } : null;
-    });
-    assert.equal(this.environment.theme?.id, 'default-theme@mozilla.org');
     return this.environment;
   }
 

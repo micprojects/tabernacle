@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 import { toolbarIconSVG } from '../extension/src/toolbar-icon.js';
 
-// Store artwork stays fixed; the transparent toolbar symbol follows Firefox.
+// Store artwork stays fixed; the transparent toolbar symbol uses neutral light/dark colours.
 const source = await readFile('extension/icons/tabernacle.svg');
 await writeFile('extension/icons/tabernacle-toolbar.svg', toolbarIconSVG());
 const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 1024];

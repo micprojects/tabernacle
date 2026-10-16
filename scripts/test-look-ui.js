@@ -268,14 +268,14 @@ try {
     await page
       .locator('link[rel="stylesheet"]')
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('href'))),
-  ).toEqual(['sidebar.css', 'tree.css', 'theme.css']);
+  ).toEqual(['sidebar.css', 'tree.css']);
   await page.screenshot({ path: 'test-results/look-default.png' });
   await expect(page.locator('.row-detail')).toHaveCount(0);
   await expect.poll(guides).toBe('none');
 
   // Editing then cancelling does not apply either preference.
   await openLook();
-  await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toBeVisible();
+  await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toHaveCount(0);
   await expect(lines).not.toBeChecked();
   await expect(domains).not.toBeChecked();
   await lines.check();

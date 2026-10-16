@@ -318,8 +318,7 @@ svg.folder-icon,
   .tab-row.discarded:is(:hover, .selected):not(.active) .label {
     color: var(--label-muted-hover, currentColor);
   }
-  .row.active .label,
-  :root[data-firefox-theme='default'] .tab-row.selected:not(.active) .label {
+  .row.active .label {
     color: var(--label-selected, currentColor);
   }
   .row.drop-inside .label {

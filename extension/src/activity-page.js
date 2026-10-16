@@ -8,8 +8,6 @@ import {
   activityDay,
   activityTime,
 } from './activity-data.js';
-import { observeTheme } from './theme-observer.js';
-import { createPaletteRenderer, resolveTheme } from './theme-palette.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -20,9 +18,7 @@ const results = $('activity-results');
 const search = $('activity-search');
 const period = $('activity-period');
 const folderEvent = $('folder-event');
-const paint = createPaletteRenderer(document.documentElement);
-const forced = matchMedia('(forced-colors: active)');
-let state, request, observer, windowId, busyKey, readFailed;
+let state, request, windowId, busyKey, readFailed;
 let refreshing = false,
   refreshAgain = false,
   refreshTimer,
@@ -45,20 +41,7 @@ function button(className, text, action) {
 
 function appearance() {
   if (!state) return;
-  const theme = resolveTheme(state.look, observer?.snapshot || {}, observer?.dark || false);
-  paint(forced.matches ? null : theme.palette, state.look?.colorScheme);
-}
-
-function setWindow(id) {
-  if (id === windowId) return;
-  windowId = id;
-  observer?.dispose();
-  observer = observeTheme({
-    api: demo ? null : browser,
-    windowId,
-    media: matchMedia('(prefers-color-scheme: dark)'),
-    onChange: appearance,
-  });
+  document.documentElement.dataset.colorScheme = state.look.colorScheme;
 }
 
 function itemIcon(item) {
@@ -299,7 +282,6 @@ search.addEventListener('input', render);
 period.addEventListener('change', render);
 folderEvent.addEventListener('change', render);
 window.addEventListener('hashchange', navigate);
-forced.addEventListener('change', appearance);
 document.addEventListener('keydown', (event) => {
   const typing = event.target.closest('input, textarea, select, [contenteditable="true"]');
   if (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -328,14 +310,14 @@ async function start() {
     const controller = mockup
       ? await (await import('../../preview/activity-demo.js')).createActivityDemo(scheduleRefresh)
       : await (await import('../../preview/session.js')).connectDemo(scheduleRefresh);
-    setWindow(1);
+    windowId = 1;
     request = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
     $('activity-demo').hidden = false;
   } else {
     if (!globalThis.browser?.runtime?.id)
       throw new Error('Open this page from Tabernacle in Firefox.');
     request = async (type, args = {}) => {
-      setWindow((await browser.windows.getCurrent()).id);
+      windowId = (await browser.windows.getCurrent()).id;
       const result = await browser.runtime.sendMessage({
         type: `tabernacle:${type}`,
         windowId,
@@ -372,7 +354,6 @@ window.addEventListener(
     disposed = true;
     clearTimeout(refreshTimer);
     clearInterval(timer);
-    observer?.dispose();
   },
   { once: true },
 );

@@ -69,7 +69,7 @@ try {
     const listeners = new Set();
     let ready;
     window.browser = {
-      // A failed theme API must leave the original fallback palette usable.
+      // Neutral appearance must not read Firefox theme colours.
       get theme() {
         throw new Error('Firefox theme colours must not be queried');
       },
@@ -108,7 +108,7 @@ try {
   settings = await openLook();
   mode = settings.getByRole('combobox', { name: 'Colour mode', exact: true });
   await openLook();
-  await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toBeVisible();
+  await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toHaveCount(0);
   await expect(mode).toHaveValue('default');
   await expect(mode).toHaveAccessibleDescription(
     'Automatic follows Firefox’s light/dark appearance.',
@@ -167,7 +167,7 @@ try {
   await checkPalette('light');
   expect(errors).toEqual([]);
   console.log(
-    '✓ Accessible compact palettes, live Default mode, saved overrides, cancellation, save retry, narrow layouts and forced colours work when Firefox theme access fails',
+    '✓ Accessible compact palettes, live Default mode, saved overrides, cancellation, save retry, narrow layouts and forced colours work without Firefox theme access',
   );
 } finally {
   await close();

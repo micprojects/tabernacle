@@ -6,7 +6,7 @@ Tabernacle is a Firefox extension I made to help me navigate and organise my tab
 - Keep related tabs in collapsible trees, with drag and drop to move or nest them.
 - Search folders, tab titles and URLs.
 - Use Firefox containers and set default containers for folders.
-- Choose neutral Automatic, Light or Dark appearance, or use your Firefox theme colours.
+- Choose Automatic, Light or Dark colour mode for the neutral appearance.
 - Access pinned tabs and folders, mute audio and reopen recently closed tabs.
 - Revisit viewed tabs, recently opened folders and closed tabs in one searchable timeline.
 

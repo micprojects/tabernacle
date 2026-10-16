@@ -1,5 +1,3 @@
-import { observeTheme } from './theme-observer.js';
-import { resolveTheme, createPaletteRenderer } from './theme-palette.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
@@ -60,8 +58,7 @@ function markSelected(row) {
 let audioInTabs = new Map(),
   audioInGroups = new Map();
 let recentlyClosed;
-let themeObserver;
-const paintPalette = createPaletteRenderer(document.documentElement);
+const darkMode = matchMedia('(prefers-color-scheme: dark)');
 const forcedColors = matchMedia('(forced-colors: active)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const treeMotion = createTreeMotion(
@@ -70,29 +67,17 @@ const treeMotion = createTreeMotion(
 );
 let motionContext;
 
-function themeResult(source = state?.look?.themeSource) {
-  return resolveTheme(
-    { themeSource: source },
-    themeObserver?.snapshot || {},
-    themeObserver?.dark || false,
-  );
-}
-
 function renderAppearance() {
   if (!state) return;
-  const result = themeResult();
-  paintPalette(forcedColors.matches ? null : result.palette, state.look.colorScheme);
-  labelColors.configure(
-    forcedColors.matches ? null : result.palette,
-    themeObserver?.dark,
-    forcedColors.matches,
-  );
+  document.documentElement.dataset.colorScheme = state.look.colorScheme;
+  labelColors.configure(darkMode.matches, forcedColors.matches);
   const motionOff = state.look.animations === false || reducedMotion.matches;
   document.documentElement.classList.toggle('motion-off', motionOff);
   document.documentElement.classList.toggle('tint-favicons', state.look.tintFavicons);
   if (motionOff) treeMotion.finishAll();
 }
 
+darkMode.addEventListener('change', renderAppearance);
 forcedColors.addEventListener('change', renderAppearance);
 reducedMotion.addEventListener('change', renderAppearance);
 let state, request, windowId, selected, drag, refreshTimer, toastTimer, menuReturnFocus;
@@ -1846,13 +1831,6 @@ async function start() {
     });
   } else
     throw new Error('Load Tabernacle as a Firefox extension, or open the interactive preview.');
-  themeObserver = observeTheme({
-    api: demo ? null : globalThis.browser,
-    windowId,
-    media: matchMedia('(prefers-color-scheme: dark)'),
-    onChange: renderAppearance,
-  });
-  window.addEventListener('pagehide', () => themeObserver.dispose(), { once: true });
   await refresh();
 }
 
