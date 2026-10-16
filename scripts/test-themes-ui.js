@@ -145,7 +145,7 @@ try {
       } else
         await expect(page.locator('html')).toHaveCSS(
           'background-color',
-          dark ? 'rgb(32, 32, 32)' : 'rgb(247, 247, 247)',
+          dark ? 'rgb(32, 32, 32)' : 'rgb(255, 255, 255)',
         );
       const geometry = await page.locator('.row.active').boundingBox();
       expect(geometry).toEqual(beforeGeometry);

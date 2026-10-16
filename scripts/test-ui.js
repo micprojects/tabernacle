@@ -547,7 +547,7 @@ try {
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page.locator('.tab-row')).toHaveCount(5);
   await expect(fresh).toHaveAccessibleName('New tab, container: Work');
-  await expect(fresh.locator('.container-indicator')).toHaveCount(1);
+  await expect(fresh.locator('.container-indicator')).toHaveCount(0);
   await expect(fresh).toHaveClass(/active/);
   await fresh.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click();
@@ -559,10 +559,7 @@ try {
   await page.getByRole('menuitem', { name: 'Undo last closed tab' }).click();
   await expect(page.locator('[data-key="tab:1"]')).toBeVisible();
   await expect(
-    page
-      .locator('.tab-row')
-      .filter({ hasText: 'New tab' })
-      .filter({ has: page.locator('.container-indicator') }),
+    page.getByRole('treeitem', { name: 'New tab, container: Work', exact: true }),
   ).toBeVisible();
   check(
     'Container tabs use the focused group; undo reveals saved groups without changing row menus',

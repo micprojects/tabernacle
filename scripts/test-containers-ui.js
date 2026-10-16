@@ -51,15 +51,11 @@ const expectIconsLoaded = async (icons) => {
   expect(loaded.every(Boolean)).toBe(true);
 };
 
-const expectVerticalIndicator = async (row) => {
-  await expect(row.locator('.tab-icon .container-indicator')).toHaveCount(0);
-  if (await row.evaluate((node) => node.matches('.pinned-tab'))) {
-    await expect(row).toHaveCSS('border-top-width', '1px');
-    await expect(row.locator('.container-indicator')).toHaveCount(0);
-  } else {
-    await expect(row.locator(':scope > .container-indicator')).toHaveCSS('width', '2px');
-    await expect(row.locator(':scope > .container-indicator')).toHaveCSS('height', '16px');
-  }
+// Container assignment remains available to assistive technology and menus,
+// while the tab list leaves visual identity to Firefox's address bar.
+const expectQuietTab = async (row) => {
+  await expect(row.locator('.container-indicator')).toHaveCount(0);
+  await expect(row).toHaveCSS('box-shadow', 'none');
 };
 
 const markerColor = (color, text = false) =>
@@ -249,17 +245,14 @@ try {
   expect(state.tabs.find((tab) => tab.id === 2).parentTabId).toBe(source.id);
   parent = page.locator(`[data-key="tab:${source.id}"]`);
   await expect(parent).toBeVisible();
-  await expect(parent.locator('.container-indicator')).toHaveCSS(
-    'background-color',
-    await markerColor('#00a7e0'),
-  );
+  await expectQuietTab(parent);
   await expect(parent).not.toHaveAttribute('title');
   await expect(parent).toHaveAccessibleName('Parent page, container: Work, 1 nested tab');
   await expect(page.locator('[data-key="tab:2"] .container-indicator')).toHaveCount(0);
   await expect(page.locator('.group-row .container-indicator')).toHaveCount(0);
-  await expectVerticalIndicator(parent);
+  await expectQuietTab(parent);
   await page.screenshot({ path: 'test-results/container-indicators-nested.png' });
-  check('Reopening updates the parent’s vertical container indicator independently of children');
+  check('Reopening updates container identity without adding visual tab markers');
 
   await openPicker(parent);
   await expect(page.getByRole('radio', { name: 'Work Current' })).toBeChecked();
@@ -285,10 +278,10 @@ try {
   expect(source.cookieStoreId).toBe('firefox-container-2');
   expect(source.pinned).toBe(true);
   await expect(page.locator('.pinned-tab')).toHaveCount(1);
-  await expect(pin).toHaveCSS('border-color', await markerColor('#f89c24'));
+  await expectQuietTab(pin);
   await expect(pin).toHaveAccessibleName('Parent page, pinned, container: Personal');
   await expect(pin).not.toHaveAttribute('title');
-  await expectVerticalIndicator(pin);
+  await expectQuietTab(pin);
   check(
     'No container removes the container and pinned tabs use the same picker while staying pinned',
   );
@@ -302,20 +295,17 @@ try {
   const child = page
     .locator('.tab-row')
     .filter({ has: page.locator('.label', { hasText: 'Child page' }) });
-  await expect(child.locator('.container-indicator')).toHaveCSS(
-    'background-color',
-    await markerColor('#00a7e0'),
-  );
+  await expectQuietTab(child);
   await page.screenshot({ path: 'test-results/container-indicators-light.png' });
   await page.evaluate(() => {
     window.containerTest.identities[1].name = 'Shopping';
     window.containerTest.identities[1].colorCode = '#af51f5';
     window.containerTest.notify();
   });
-  await expect(pin).toHaveCSS('border-color', await markerColor('#af51f5'));
+  await expectQuietTab(pin);
   await expect(pin).toHaveAccessibleName('Parent page, pinned, container: Shopping');
   await expect(pin).not.toHaveAttribute('title');
-  check('Container colour and name changes refresh existing pin indicators without a tab event');
+  check('Container name changes refresh accessible pin identity without a tab event');
 
   await openPicker(pin);
   await page.getByRole('radio', { name: 'Work', exact: true }).check();
@@ -360,12 +350,9 @@ try {
 
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.setViewportSize({ width: 240, height: 540 });
-  await expect(child.locator('.container-indicator')).toHaveCSS(
-    'background-color',
-    await markerColor('#00a7e0'),
-  );
-  await expect(child).toHaveCSS('min-height', '26px');
-  await expectVerticalIndicator(child);
+  await expectQuietTab(child);
+  await expect(child).toHaveCSS('min-height', '30px');
+  await expectQuietTab(child);
   expect(
     await page.locator('.sidebar').evaluate((node) => node.scrollWidth <= node.clientWidth),
   ).toBe(true);

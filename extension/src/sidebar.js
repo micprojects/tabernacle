@@ -6,7 +6,6 @@ import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createDialogs } from './dialogs.js';
 import { folderIcon, folderIconColor } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
-import { appearanceColor, setItemColor } from './appearance-colors.js';
 import { pinActionLabels } from './pinned-items.js';
 import { createPointerMove } from './pointer-move.js';
 import { createRecentActivity } from './recently-closed.js';
@@ -482,8 +481,6 @@ function tabDomain(tab) {
 
 function createGroupRow(group, container) {
   const row = rowBase('group', group.id);
-  const color = folderIconColor(folderAppearance(group, container, state).color);
-  if (color) row.style.setProperty('--folder-text', color);
   row.setAttribute('aria-label', `${group.name}, ${count(group.id)} tabs`);
   row.title = `${group.name}\nClick to expand/collapse · Double-click to open · Right-click for options`;
   describeContainer(row, { container }, 'Default container');
@@ -500,10 +497,14 @@ function createGroupRow(group, container) {
     'disclosure',
   );
   disclosure.tabIndex = -1;
+  const total = el('span', 'group-count', String(count(group.id)));
+  total.setAttribute('aria-hidden', 'true');
   row.append(
     disclosure,
     el('span', 'label', group.name),
     ...(playing ? [audioIndicator(audio)] : []),
+    total,
+    icon('chevron', 'group-chevron'),
   );
   row.addEventListener('click', (event) => {
     if (!event.target.closest('button') && event.detail < 2) {
@@ -664,10 +665,6 @@ function createPinnedTab(tab) {
   node.removeAttribute('title');
   node.setAttribute('aria-pressed', String(Boolean(tab.active)));
   node.classList.toggle('active', Boolean(tab.active));
-  if (tab.container) {
-    setItemColor(node, tab.container.colorCode);
-    node.classList.add('has-container');
-  }
   pinnedDrag(node, { kind: 'tab', id: tab.treeId });
   node.append(tabFavicon(tab));
   describeContainer(node, tab);
@@ -712,10 +709,6 @@ function pinnedFolder(pin) {
       node.title = `${path}\n${pinActionLabels[pin.action]} · Right-click for options`;
       node.dataset.key = `pin:group:${group.id}`;
       node.classList.toggle('active', current);
-      if (appearance.color) {
-        setItemColor(node, appearance.color);
-        node.classList.add('has-container');
-      }
       if (current) node.setAttribute('aria-current', 'location');
       node.append(folderIcon(group, container, { state }));
       pinnedDrag(node, { kind: 'group', id: group.id });
@@ -747,11 +740,6 @@ function pinnedTab(tab) {
 function createTabRow(tab, expanded, stats) {
   const favicon = tabFavicon(tab);
   const row = rowBase('tab', tab.id);
-  if (tab.container) {
-    const marker = el('span', 'container-indicator');
-    marker.setAttribute('aria-hidden', 'true');
-    row.append(marker);
-  }
   row.classList.toggle('active', Boolean(tab.active));
   row.classList.toggle('contains-active', !expanded && stats.active);
   row.classList.toggle('discarded', Boolean(tab.discarded));
@@ -829,11 +817,8 @@ function tabNode(tab, query, ancestorMatch = false) {
   if (query && !matchAll && !stats.descendantMatch) return null;
   const expanded = Boolean(query) || !tab.collapsed;
   const { node, branch } = wrapperFor('tab', tab.id);
-  setItemColor(node, tab.container?.colorCode);
-  branch.style.setProperty(
-    '--parent-guide',
-    appearanceColor(tab.container?.colorCode) || 'var(--neutral-marker)',
-  );
+  // Nested tab guides show structure without repeating container identity.
+  branch.style.setProperty('--parent-guide', 'var(--neutral-marker)');
   node.classList.toggle('tab-parent', stats.descendants > 0);
   const row = markSelected(
     rowCache.get(
@@ -860,12 +845,8 @@ function newTabItem(groupId, parentTab = null) {
   const group = groupById(state, groupId);
   const container = group && groupContainerDetails(group);
   const folderColor = group && folderAppearance(group, container, state).color;
-  // Folder controls follow its icon, including inherited custom colours. With
-  // no folder colour or assigned default, child controls follow their parent tab.
-  const color =
-    group && (folderColor || container || !parentTab)
-      ? folderIconColor(folderColor) || 'var(--folder-icon)'
-      : appearanceColor(parentTab?.container?.colorCode) || 'var(--neutral-marker)';
+  // Creation controls follow the folder, never an individual tab's container.
+  const color = folderIconColor(folderColor) || 'var(--folder-icon)';
   const parentTabId = parentTab?.id ?? null;
   const label = parentTab
     ? `New child tab of ${parentTab.title || 'New tab'}`
@@ -1043,6 +1024,7 @@ function render() {
   recentlyClosed?.render();
   tree.classList.toggle('show-connecting-lines', state.look.connectingLines);
   tree.classList.toggle('show-domains', state.look.domains);
+  tree.classList.toggle('show-folder-counts', state.look.folderCounts);
   const focusedKey = document.activeElement?.closest('[data-key]')?.dataset.key;
   const scroll = tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);

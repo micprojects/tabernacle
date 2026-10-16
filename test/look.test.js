@@ -28,7 +28,7 @@ async function fixture(settings = {}) {
 }
 
 test('retired appearance and density selections preserve Look preferences and are removed on the next save', async () => {
-  const look = { connectingLines: true, domains: false };
+  const look = { connectingLines: true, domains: false, folderCounts: false };
   for (const appearance of ['whitespace', 'colourful', 'outline', 'combined', 'unknown']) {
     const { api, send, controller } = await fixture({
       appearance,
@@ -64,6 +64,11 @@ test('Look defaults missing or malformed preferences independently, with current
   for (const [settings, expected] of [
     [{}, { connectingLines: true, domains: false }],
     [{ look: null }, { connectingLines: true, domains: false }],
+    [{ look: { folderCounts: 'true' } }, { connectingLines: true, domains: false }],
+    [
+      { look: { folderCounts: true } },
+      { connectingLines: true, domains: false, folderCounts: true },
+    ],
     [{ look: { colorScheme: 'invalid' } }, { connectingLines: true, domains: false }],
     [{ look: { centerNewTab: 'true' } }, { connectingLines: true, domains: false }],
     [{ look: { centerNewTab: true } }, { connectingLines: true, domains: false }],
@@ -95,6 +100,7 @@ test('Look defaults missing or malformed preferences independently, with current
     const before = await api.storage.local.get(MODEL_KEY);
     const look = (await send('snapshot')).look;
     assert.deepEqual(look, {
+      folderCounts: false,
       themeSource: 'tabernacle',
       colorScheme: 'default',
       ...expected,
@@ -118,7 +124,7 @@ test('Look preferences persist across windows and restarts without changing grou
     { connectingLines: false, domains: true, themeSource: 'firefox', colorScheme: 'dark' },
     { connectingLines: true, domains: true, themeSource: 'firefox', colorScheme: 'default' },
     { connectingLines: false, domains: false, themeSource: 'firefox', colorScheme: 'dark' },
-  ]) {
+  ].map((value) => ({ folderCounts: false, ...value }))) {
     const saved = await send('setLook', { value });
     assert.deepEqual(saved.look, value);
     assert.deepEqual(api.testing.saved[MODEL_KEY].look, value);
@@ -129,6 +135,7 @@ test('Look preferences persist across windows and restarts without changing grou
     assert.deepEqual(saved.view, before.view);
   }
   const value = {
+    folderCounts: false,
     connectingLines: true,
     domains: false,
     themeSource: 'firefox',
@@ -162,6 +169,7 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
   );
   assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
   assert.deepEqual((await send('snapshot')).look, {
+    folderCounts: false,
     connectingLines: true,
     domains: false,
     themeSource: 'tabernacle',
@@ -209,4 +217,32 @@ test('settings updates merge only edited fields across windows and reject invali
   );
   assert.deepEqual((await send('getSettings', {}, 2)).look, saved);
   controller.dispose();
+});
+
+test('folder tab counts default off and persist independently across windows and restarts', async () => {
+  const { api, send, controller } = await fixture();
+  const before = (await send('getSettings')).look;
+  assert.equal(before.folderCounts, false);
+  await send('setLook', { partial: true, value: { folderCounts: true } });
+  const expected = { ...before, folderCounts: true };
+  assert.deepEqual((await send('getSettings', {}, 2)).look, expected);
+  assert.deepEqual(api.testing.saved[MODEL_KEY].look, expected);
+  for (const folderCounts of [null, 'true', 1]) {
+    await assert.rejects(
+      send('setLook', { partial: true, value: { folderCounts } }),
+      /Choose whether to show folder tab counts/,
+    );
+    assert.deepEqual((await send('getSettings')).look, expected);
+  }
+  controller.dispose();
+  const restarted = createController(api);
+  assert.deepEqual((await restarted.request({ type: 'getSettings', windowId: 1 })).look, expected);
+  await restarted.request({
+    type: 'setLook',
+    windowId: 1,
+    partial: true,
+    value: { folderCounts: false },
+  });
+  assert.deepEqual((await restarted.request({ type: 'getSettings', windowId: 2 })).look, before);
+  restarted.dispose();
 });
