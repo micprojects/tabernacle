@@ -2,7 +2,7 @@ import { createController } from '../extension/src/controller.js';
 import { VIEW_KEY } from '../extension/src/model.js';
 import { memoryBrowser } from './browser.js';
 
-export async function createDemo(notify) {
+export async function createDemo(notify, readCloseFilter) {
   const groups = [
     { id: 'work', name: 'Work', parentId: null },
     { id: 'design', name: 'Design', parentId: 'work' },
@@ -30,10 +30,12 @@ export async function createDemo(notify) {
     ['Objects of interest', 'later', 'https://are.na'],
   ];
   const memberships = {};
+  const openedStart = Date.now() - entries.length * 60_000;
   const parents = { 2: [1], 3: [1], 4: [3, 1], 6: [5], 7: [5] };
   const tabs = entries.map(([title, groupId, url], index) => {
     memberships[index + 1] = {
       groupId,
+      openedAt: openedStart + index * 60_000,
       treeId: `demo-tab-${index + 1}`,
       ancestors: (parents[index + 1] ?? []).map((id) => `demo-tab-${id}`),
     };
@@ -59,7 +61,7 @@ export async function createDemo(notify) {
     scopeId: null,
     collapsed: ['research', 'personal', 'later'],
   });
-  const controller = createController(api, notify);
+  const controller = createController(api, notify, { readCloseFilter });
   api.testing.setCreatedHandler((tab) => {
     controller.created(tab).catch(() => {});
   });

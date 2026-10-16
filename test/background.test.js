@@ -52,6 +52,7 @@ test('background validates messages and forwards container and session lifecycle
       { type: 42 },
       { type: 'other' },
       { type: 'tabernacle:changed' },
+      { type: 'tabernacle:getCloseFilter', windowId: 1 },
     ]) {
       assert.equal(receive(message, sender), undefined);
     }

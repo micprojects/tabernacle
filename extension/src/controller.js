@@ -45,7 +45,14 @@ async function readTogether(reads) {
 
 /** All writes are serialized, including new-tab events, so sidebar windows cannot
  * overwrite one another. Durable state lives in storage/sessions, not tab IDs. */
-export function createController(api, notify = () => {}) {
+export function createController(
+  api,
+  notify = () => {},
+  {
+    readCloseFilter = (windowId) =>
+      api.runtime?.sendMessage?.({ type: 'tabernacle:getCloseFilter', windowId }),
+  } = {},
+) {
   const receiptKey = 'tabernacle.move-receipts.v1';
   let model;
   let treeOwners = new Map();
@@ -59,6 +66,7 @@ export function createController(api, notify = () => {}) {
   let stateWrites = 0;
   let queue = Promise.resolve();
   let pendingCreations;
+  const openedTimes = new Map();
   const forgottenPins = new Map();
   const publish = (windowId) => notify({ windowId, revision: ++revision, generation });
   const cache = createBrowserCache(api, ({ windowId, removedTabId, detachedTabId }) => {
@@ -73,6 +81,7 @@ export function createController(api, notify = () => {}) {
       forgottenPins.get(windowId).add(forgotten);
     }
     if (removedTabId !== undefined) {
+      openedTimes.delete(removedTabId);
       const key = tabTreeKeys.get(removedTabId);
       if (treeOwners.get(key) === removedTabId) treeOwners.delete(key);
       tabTreeKeys.delete(removedTabId);
@@ -295,8 +304,17 @@ export function createController(api, notify = () => {}) {
 
   async function settleClose(windowId, before, closedId, current) {
     if (!current()) return;
+    // Ask the live sidebar, so native closes use its current query too. A closed
+    // sidebar has no filter; nothing is persisted or left behind when it closes.
+    let filter = null;
+    try {
+      filter = await readCloseFilter(windowId);
+    } catch {
+      // No receiver when the sidebar is closed or the extension is reloading.
+    }
+    if (!current()) return;
     const after = await selectionState(windowId);
-    const id = closeFallback(before, after, closedId);
+    const id = closeFallback(before, after, closedId, filter);
     if (id !== null && current()) {
       await writeTab(windowId, 'update', id, { active: true });
       publish(windowId);
@@ -414,9 +432,17 @@ export function createController(api, notify = () => {}) {
       ) {
         const duplicate = owner !== undefined;
         value.treeId = crypto.randomUUID();
-        if (duplicate) value.collapsed = false;
+        if (duplicate) {
+          value.collapsed = false;
+          // Firefox copies session values on duplication, including the source's date.
+          delete value.openedAt;
+        }
         // Do not set a group here: a just-created tab may still be waiting for
         // its queued onCreated handler to place it beneath its opener.
+        needsSave = true;
+      }
+      if (!(Number.isFinite(value.openedAt) && value.openedAt > 0) && openedTimes.has(tab.id)) {
+        value.openedAt = openedTimes.get(tab.id);
         needsSave = true;
       }
       // Native indices change when Firefox inserts, pins or moves another tab.
@@ -434,6 +460,7 @@ export function createController(api, notify = () => {}) {
         groupId: groupIds.has(value.groupId) ? value.groupId : null,
         nativeGroupId,
         order: value.order,
+        openedAt: value.openedAt,
         treeId: value.treeId,
         ancestors: Array.isArray(value.ancestors)
           ? [...new Set(value.ancestors.filter((id) => typeof id === 'string'))]
@@ -1358,7 +1385,7 @@ export function createController(api, notify = () => {}) {
           const value = await membership(tab.id);
           await updateMembership(tab.id, { collapsed: !value?.collapsed });
         } else {
-          await expandAncestors(tabs, tab.id);
+          if (message.expandAncestors !== false) await expandAncestors(tabs, tab.id);
           await writeTab(windowId, 'update', tab.id, { active: true });
           if (!window.focused) await api.windows.update(windowId, { focused: true });
         }
@@ -1419,6 +1446,7 @@ export function createController(api, notify = () => {}) {
           treeId: crypto.randomUUID(),
           ancestors: [],
           collapsed: false,
+          openedAt: openedTimes.get(tab.id) ?? Date.now(),
         });
         await moveTab(tab.id, source.groupId, windowId, null, source.parentTabId);
         break;
@@ -1466,7 +1494,13 @@ export function createController(api, notify = () => {}) {
     if (tab.incognito || internalPage(api, tab.url)) return;
     const saved = await membership(tab.id);
     if (saved && Object.hasOwn(saved, 'groupId')) {
-      if (treeOwners.get(saved.treeId) === tab.id) return;
+      if (treeOwners.get(saved.treeId) === tab.id) {
+        if (!(Number.isFinite(saved.openedAt) && saved.openedAt > 0)) {
+          await updateMembership(tab.id, { openedAt: openedTimes.get(tab.id) });
+          publish(tab.windowId);
+        }
+        return;
+      }
       await listTabs(tab.windowId);
       contexts.delete(tab.windowId);
       publish(tab.windowId);
@@ -1550,6 +1584,12 @@ export function createController(api, notify = () => {}) {
   }
 
   function created(tab) {
+    // Capture the event time before queued work runs. Existing tabs discovered at
+    // startup have no known creation date; restored tabs retain their saved date.
+    openedTimes.set(tab.id, Date.now());
+    requestTabs.clear();
+    resolvedTabs.delete(tab.windowId);
+    resolvedTabs.delete(null);
     let batch = pendingCreations;
     if (!batch) {
       batch = { entries: [] };
@@ -1569,12 +1609,17 @@ export function createController(api, notify = () => {}) {
             contexts.clear();
             needsRecovery = true;
             entry.reject(error);
+          } finally {
+            openedTimes.delete(entry.tab.id);
           }
         }
       });
       pendingCreations = batch;
       work.catch((error) => {
-        for (const entry of batch.entries) entry.reject(error);
+        for (const entry of batch.entries) {
+          openedTimes.delete(entry.tab.id);
+          entry.reject(error);
+        }
       });
     }
     return new Promise((resolve, reject) => batch.entries.push({ tab, resolve, reject }));
