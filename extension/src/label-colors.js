@@ -58,6 +58,12 @@ export function createLabelColors(root, surface) {
       // Row reconciliation keeps the row but replaces its contents and style
       // attributes. A new first child invalidates this cache after that rebuild.
       if (previous?.color === key && previous.content === row.firstChild) return;
+      // Uncoloured rows already use the CSS currentColor fallbacks. Avoid five
+      // identical inline declarations on every new ordinary tab.
+      if (!key && !row.hasAttribute('style')) {
+        applied.set(row, { color: key, content: row.firstChild });
+        return;
+      }
       let entry;
       if (key) {
         if (!colors.has(key)) {

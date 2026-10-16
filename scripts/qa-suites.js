@@ -30,6 +30,7 @@ export const uiSuites = [
   'test-backup-ui',
   'test-neutral-ui',
   'test-performance-ui',
+  'test-cold-render-ui',
   'test-refresh-ui',
 ];
 

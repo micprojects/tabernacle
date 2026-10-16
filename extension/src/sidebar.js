@@ -39,17 +39,20 @@ function canToggleTabChildren() {
   return windowFocused && performance.now() - windowFocusedAt > 200;
 }
 
-function wrapperFor(kind, id) {
+function wrapperFor(kind, id, needsBranch = true) {
   const key = `${kind}:${id}`;
   usedWrappers.add(key);
   if (!wrappers.has(key)) {
     const node = el('div', `${kind}-node`);
     node.setAttribute('role', 'none');
-    const branch = el('div', kind === 'group' ? 'branch' : 'tab-branch');
-    branch.setAttribute('role', 'group');
-    wrappers.set(key, { node, branch });
+    wrappers.set(key, { node });
   }
-  return wrappers.get(key);
+  const wrapper = wrappers.get(key);
+  if (needsBranch && !wrapper.branch) {
+    wrapper.branch = el('div', kind === 'group' ? 'branch' : 'tab-branch');
+    wrapper.branch.setAttribute('role', 'group');
+  }
+  return wrapper;
 }
 
 function markSelected(row) {
@@ -134,12 +137,19 @@ function el(tag, className, text) {
   return node;
 }
 
+const buttonTemplates = new Map();
+
 function button(label, iconName, handler, className = 'icon-button') {
-  const node = el('button', className);
-  node.type = 'button';
+  const key = JSON.stringify([iconName, className]);
+  if (!buttonTemplates.has(key)) {
+    const template = el('button', className);
+    template.type = 'button';
+    if (iconName) template.append(icon(iconName));
+    buttonTemplates.set(key, template);
+  }
+  const node = buttonTemplates.get(key).cloneNode(true);
   node.title = label;
   node.setAttribute('aria-label', label);
-  if (iconName) node.append(icon(iconName));
   node.addEventListener('click', (event) => {
     event.stopPropagation();
     handler(event);
@@ -413,14 +423,20 @@ function selectRow(row) {
   row.focus({ preventScroll: true });
 }
 
+const rowTemplates = new Map();
+
 function rowBase(kind, id) {
-  const row = el('div', `row ${kind}-row`);
+  if (!rowTemplates.has(kind)) {
+    const template = el('div', `row ${kind}-row`);
+    template.dataset.kind = kind;
+    template.tabIndex = 0;
+    template.setAttribute('role', 'treeitem');
+    template.draggable = false;
+    rowTemplates.set(kind, template);
+  }
+  const row = rowTemplates.get(kind).cloneNode(true);
   row.dataset.key = `${kind}:${id}`;
-  row.dataset.kind = kind;
   row.dataset.id = id;
-  row.tabIndex = 0;
-  row.setAttribute('role', 'treeitem');
-  row.draggable = false;
   row.classList.toggle('selected', selected === row.dataset.key);
   row.addEventListener('click', () => selectRow(row));
   row.addEventListener('contextmenu', (event) => {
@@ -847,11 +863,15 @@ function tabNode(tab, query, ancestorMatch = false) {
   const matchAll = ancestorMatch || stats.match;
   if (query && !matchAll && !stats.descendantMatch) return null;
   const expanded = Boolean(query) || !tab.collapsed;
-  const { node, branch } = wrapperFor('tab', tab.id);
+  const { node, branch } = wrapperFor('tab', tab.id, stats.descendants > 0);
   // A tab owns its child rail, even when a child uses a different container.
-  paintGuide(branch, tab.container?.colorCode);
+  if (stats.descendants) paintGuide(branch, tab.container?.colorCode);
   node.classList.toggle('tab-parent', stats.descendants > 0);
   const row = tabRow(tab, expanded, stats);
+  if (!branch) {
+    reconcileChildren(node, [row]);
+    return node;
+  }
   treeMotion.reconcile(node, row, branch, Boolean(stats.descendants && expanded), () => {
     const nodes = (index.children.get(tab.id) || [])
       .map((child) => tabNode(child, query, matchAll))
@@ -1111,7 +1131,7 @@ function patchMetadata(context) {
       if (!wrapper?.node.isConnected) continue;
       const stats = index.tabStats.get(tab.id);
       tabRow(tab, !tab.collapsed, stats);
-      paintGuide(wrapper.branch, tab.container?.colorCode);
+      if (wrapper.branch) paintGuide(wrapper.branch, tab.container?.colorCode);
       if (stats.descendants && !tab.collapsed) newTabItem(tab.groupId, tab);
     }
   }

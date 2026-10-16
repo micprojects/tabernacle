@@ -38,21 +38,27 @@ const assets = {
   subtractCircle: 'subtract-circle-12',
 };
 const sprite = new URL('../icons/ui/acorn.svg', import.meta.url).href;
+const templates = new Map();
 
 export function svgIcon(asset, spriteUrl, className = '') {
-  const ns = 'http://www.w3.org/2000/svg';
-  const size = asset.split('-').at(-1);
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-  svg.setAttribute('width', size);
-  svg.setAttribute('height', size);
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('focusable', 'false');
-  svg.dataset.icon = asset;
+  const key = `${spriteUrl}#${asset}`;
+  if (!templates.has(key)) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const size = asset.split('-').at(-1);
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.dataset.icon = asset;
+    const use = document.createElementNS(ns, 'use');
+    use.setAttribute('href', key);
+    svg.append(use);
+    templates.set(key, svg);
+  }
+  const svg = templates.get(key).cloneNode(true);
   if (className) svg.setAttribute('class', className);
-  const use = document.createElementNS(ns, 'use');
-  use.setAttribute('href', `${spriteUrl}#${asset}`);
-  svg.append(use);
   return svg;
 }
 
