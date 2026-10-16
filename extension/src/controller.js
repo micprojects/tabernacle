@@ -44,11 +44,18 @@ export function createController(api, notify = () => {}) {
   let revision = 0;
   const generation = crypto.randomUUID();
   let requestTabs = new Map();
+  const resolvedTabs = new Map();
+  let membershipVersion = 0;
   let queue = Promise.resolve();
+  let pendingCreations;
   const forgottenPins = new Map();
   const publish = (windowId) => notify({ windowId, revision: ++revision, generation });
   const cache = createBrowserCache(api, ({ windowId, removedTabId, detachedTabId }) => {
     requestTabs.clear();
+    if (windowId != null) {
+      resolvedTabs.delete(windowId);
+      resolvedTabs.delete(null);
+    }
     const forgotten = tabTreeKeys.get(removedTabId ?? detachedTabId);
     if (forgotten) {
       if (!forgottenPins.has(windowId)) forgottenPins.set(windowId, new Set());
@@ -189,6 +196,9 @@ export function createController(api, notify = () => {}) {
   }
 
   const enqueue = (work, recoverMoves = true) => {
+    // A request is an ordering boundary: later native creations must not join
+    // a batch already queued before that request.
+    pendingCreations = null;
     const result = queue.then(async () => {
       await initialize();
       if (recoverMoves) await moves.recover();
@@ -242,6 +252,7 @@ export function createController(api, notify = () => {}) {
 
   async function saveMembership(tabId, value) {
     await cache.saveMembership(tabId, value);
+    membershipVersion++;
     requestTabs.clear();
   }
 
@@ -339,6 +350,14 @@ export function createController(api, notify = () => {}) {
     // Subsequent reads only visit the requested window and reuse memberships.
     const allWindows = !initializedTabs || windowId == null;
     const tabs = await cache.tabs(allWindows ? null : windowId);
+    const key = windowId ?? null;
+    const cached = resolvedTabs.get(key);
+    if (
+      cached?.native === tabs &&
+      cached.groups === model.groups &&
+      cached.membershipVersion === membershipVersion
+    )
+      return cached.tabs;
     const records = await readRecords(tabs);
     records.sort(
       (a, b) =>
@@ -414,11 +433,18 @@ export function createController(api, notify = () => {}) {
     treeOwners = owners;
     tabTreeKeys = new Map([...owners].map(([key, id]) => [id, key]));
     initializedTabs = true;
-    return resolveTabTree(
+    const resolved = resolveTabTree(
       result.filter(
         (tab) => !closed.has(tab.id) && (windowId == null || tab.windowId === windowId),
       ),
     );
+    resolvedTabs.set(key, {
+      native: tabs,
+      groups: model.groups,
+      membershipVersion,
+      tabs: resolved,
+    });
+    return resolved;
   }
 
   async function snapshot(windowId, extra = {}) {
@@ -464,6 +490,8 @@ export function createController(api, notify = () => {}) {
         const identity = byStore.get(tab.cookieStoreId);
         return {
           ...tab,
+          ancestors: [...tab.ancestors],
+          ...(tab.mutedInfo ? { mutedInfo: { ...tab.mutedInfo } } : {}),
           container: identity ? { name: identity.name, colorCode: identity.colorCode } : null,
         };
       }),
@@ -1401,6 +1429,124 @@ export function createController(api, notify = () => {}) {
     return snapshot(windowId, extra);
   }
 
+  async function assignCreated(tab, contexts) {
+    if (tab.incognito || internalPage(api, tab.url)) return;
+    const saved = await membership(tab.id);
+    if (saved && Object.hasOwn(saved, 'groupId')) {
+      if (treeOwners.get(saved.treeId) === tab.id) return;
+      await listTabs(tab.windowId);
+      contexts.delete(tab.windowId);
+      publish(tab.windowId);
+      return;
+    }
+    await checkedTab(tab.id, tab.windowId);
+    let context = contexts.get(tab.windowId);
+    if (!context || context.revision !== revision) {
+      requestTabs = new Map();
+      const before = revision;
+      const [tabs, view] = await Promise.all([listTabs(tab.windowId), viewFor(tab.windowId)]);
+      // This projection belongs only to this batch. Never edit cached snapshots.
+      const projected = tabs.map((tab) => ({ ...tab }));
+      const byId = new Map(projected.map((tab) => [tab.id, tab]));
+      const siblings = new Map();
+      for (const item of sortTabs(unpinnedTabTree(projected))) {
+        const key = JSON.stringify([item.groupId, item.parentTabId]);
+        if (!siblings.has(key)) siblings.set(key, []);
+        siblings.get(key).push(byId.get(item.id));
+      }
+      context = { tabs: projected, byId, siblings, view, revision: before };
+      contexts.set(tab.windowId, context);
+    }
+    const source = context.byId.get(tab.id);
+    if (!source) throw new Error('That tab has closed or moved to another window.');
+    const candidate = context.byId.get(tab.openerTabId);
+    const opener = candidate && candidate.id !== tab.id && !candidate.pinned ? candidate : null;
+    const groupId = opener ? opener.groupId : context.view.scopeId;
+    const parentTabId = opener?.id ?? null;
+    const key = JSON.stringify([groupId, parentTabId]);
+    const peers = (context.siblings.get(key) || []).filter((item) => item.id !== tab.id);
+    const order = insertionOrder(peers, peers.length);
+    const ancestors = [];
+    const seen = new Set([tab.id]);
+    let collapsedParent = false;
+    for (
+      let parent = opener;
+      parent && !seen.has(parent.id);
+      parent = context.byId.get(parent.parentTabId)
+    ) {
+      seen.add(parent.id);
+      ancestors.push(parent.treeId);
+      collapsedParent ||= parent.collapsed;
+    }
+    // Restored relationships, parent expansion, pinned siblings and exhausted
+    // orders keep the complete move/recovery path. Ordinary new leaves only
+    // need one membership write and can share this batch's index.
+    if (
+      order === null ||
+      source.pinned ||
+      collapsedParent ||
+      context.tabs.some(
+        (item) =>
+          item.parentTabId === tab.id ||
+          (parentTabId !== null &&
+            item.pinned &&
+            item.groupId === groupId &&
+            item.parentTabId === parentTabId),
+      )
+    ) {
+      await moveTab(tab.id, groupId, tab.windowId, null, parentTabId);
+      contexts.delete(tab.windowId);
+      publish(tab.windowId);
+      return;
+    }
+    const before = revision;
+    await updateMembership(tab.id, { groupId, ancestors, order });
+    const oldParent = context.byId.get(source.parentTabId);
+    const oldKey = JSON.stringify([source.groupId, oldParent?.pinned ? null : source.parentTabId]);
+    const oldPeers = context.siblings.get(oldKey);
+    const oldIndex = oldPeers?.findIndex((item) => item.id === tab.id) ?? -1;
+    if (oldIndex >= 0) oldPeers.splice(oldIndex, 1);
+    Object.assign(source, { groupId, ancestors, order, parentTabId });
+    if (!source.pinned) {
+      peers.push(source);
+      context.siblings.set(key, peers);
+    }
+    const fresh = context.revision === before && revision === before;
+    publish(tab.windowId);
+    if (fresh) context.revision = revision;
+  }
+
+  function created(tab) {
+    let batch = pendingCreations;
+    if (!batch) {
+      batch = { entries: [] };
+      const work = enqueue(async () => {
+        if (pendingCreations === batch) pendingCreations = null;
+        const contexts = new Map();
+        let needsRecovery = false;
+        for (const entry of batch.entries) {
+          try {
+            if (needsRecovery) {
+              await moves.recover();
+              needsRecovery = false;
+            }
+            await assignCreated(entry.tab, contexts);
+            entry.resolve();
+          } catch (error) {
+            contexts.clear();
+            needsRecovery = true;
+            entry.reject(error);
+          }
+        }
+      });
+      pendingCreations = batch;
+      work.catch((error) => {
+        for (const entry of batch.entries) entry.reject(error);
+      });
+    }
+    return new Promise((resolve, reject) => batch.entries.push({ tab, resolve, reject }));
+  }
+
   return {
     start: () => enqueue(() => {}),
     request: (message) =>
@@ -1419,30 +1565,9 @@ export function createController(api, notify = () => {}) {
     dispose() {
       closeSelection.dispose();
       cache.dispose();
+      resolvedTabs.clear();
     },
 
-    created: (tab) =>
-      enqueue(async () => {
-        if (tab.incognito || internalPage(api, tab.url)) return;
-        requestTabs = new Map();
-        const saved = await membership(tab.id);
-        if (saved && Object.hasOwn(saved, 'groupId')) {
-          if (treeOwners.get(saved.treeId) === tab.id) return;
-          await listTabs(tab.windowId);
-          publish(tab.windowId);
-          return;
-        }
-        const view = await viewFor(tab.windowId);
-        let groupId = view.scopeId;
-        const tabs = await listTabs(tab.windowId);
-        // Pins are global shortcuts: their links belong to the current folder,
-        // not to the pin's saved group or tree.
-        const opener = tabs.find(
-          (item) => item.id === tab.openerTabId && item.id !== tab.id && !item.pinned,
-        );
-        if (opener) groupId = opener.groupId;
-        await moveTab(tab.id, groupId, tab.windowId, null, opener?.id ?? null);
-        publish(tab.windowId);
-      }),
+    created,
   };
 }
