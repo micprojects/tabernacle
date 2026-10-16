@@ -265,6 +265,7 @@ export function createMovePicker(getState, kind, id, { favicon } = {}) {
     render();
   });
   search.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       focusRow(event.key === 'ArrowDown' ? 0 : rows.length - 1);

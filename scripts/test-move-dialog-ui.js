@@ -74,6 +74,24 @@ try {
   await expect(folder('Work')).toBeVisible();
   await expect(folder('Research')).toBeVisible();
   await expect(move).toBeDisabled();
+  // IME confirmation/navigation belongs to text composition, not the picker.
+  for (const key of ['Enter', 'ArrowDown', 'ArrowUp']) {
+    expect(
+      await search.evaluate((node, key) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          isComposing: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        node.dispatchEvent(event);
+        return event.defaultPrevented;
+      }, key),
+    ).toBe(false);
+    await expect(search).toBeFocused();
+    await expect(move).toBeDisabled();
+    await expect(folder('Research')).toHaveAttribute('aria-selected', 'false');
+  }
   await search.press('Enter');
   await expect(folder('Research')).toBeFocused();
   await expect(folder('Research')).toHaveAttribute('aria-selected', 'true');
