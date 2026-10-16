@@ -139,6 +139,9 @@ export function memoryBrowser({
 
       update: async (id, changes) => {
         const tab = getTab(id);
+        const previousTabId = liveTabs.find(
+          (item) => item.windowId === tab.windowId && item.active,
+        )?.id;
         if (changes.active)
           liveTabs
             .filter((item) => item.windowId === tab.windowId)
@@ -151,7 +154,8 @@ export function memoryBrowser({
         }
         Object.assign(tab, next);
         api.tabs.onUpdated?.emit?.(id, structuredClone(next), structuredClone(tab));
-        if (next.active) api.tabs.onActivated?.emit?.({ tabId: id, windowId: tab.windowId });
+        if (next.active)
+          api.tabs.onActivated?.emit?.({ tabId: id, windowId: tab.windowId, previousTabId });
         return structuredClone(tab);
       },
 
@@ -198,7 +202,10 @@ export function memoryBrowser({
           api.tabs.onRemoved?.emit?.(tab.id, { windowId: tab.windowId });
           api.sessions.onChanged?.emit?.();
           if (tab.active) {
-            const next = liveTabs.find((item) => item.windowId === tab.windowId);
+            const next =
+              liveTabs.find(
+                (item) => item.windowId === tab.windowId && item.id === tab.successorTabId,
+              ) || liveTabs.find((item) => item.windowId === tab.windowId);
             if (next) {
               next.active = true;
               next.lastAccessed = Date.now();

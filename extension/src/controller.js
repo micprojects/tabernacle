@@ -1,6 +1,7 @@
 import { createMoveRecovery } from './move-recovery.js';
 import { resolveMove } from './move-plan.js';
 import { createBrowserCache } from './browser-cache.js';
+import { closeFallback, createCloseSelection } from './close-selection.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
@@ -60,6 +61,9 @@ export function createController(api, notify = () => {}) {
     }
     publish(windowId);
   });
+  const closeSelection = createCloseSelection(api, (windowId, before, closedId, current) =>
+    enqueue(() => settleClose(windowId, before, closedId, current)),
+  );
   let ready;
   const folderBackup = createFolderBackupController({
     api,
@@ -251,6 +255,30 @@ export function createController(api, notify = () => {}) {
     }
   }
 
+  async function selectionState(windowId) {
+    const [tabs, view] = await Promise.all([listTabs(windowId), viewFor(windowId)]);
+    return { groups: structuredClone(model.groups), tabs, view };
+  }
+
+  async function settleClose(windowId, before, closedId, current) {
+    if (!current()) return;
+    const after = await selectionState(windowId);
+    const id = closeFallback(before, after, closedId);
+    if (id !== null && current()) {
+      await writeTab(windowId, 'update', id, { active: true });
+      publish(windowId);
+    }
+  }
+
+  async function closeTabs(windowId, ids) {
+    const before = await selectionState(windowId);
+    const closing = Array.isArray(ids) ? ids : [ids];
+    const active = before.tabs.find((tab) => tab.active && closing.includes(tab.id));
+    const current = closeSelection.guard(windowId, closing);
+    await writeTab(windowId, 'remove', ids);
+    if (active) await settleClose(windowId, before, active.id, current);
+  }
+
   function listTabs(windowId) {
     const key = windowId ?? null;
     if (!requestTabs.has(key)) requestTabs.set(key, loadTabs(windowId));
@@ -408,6 +436,7 @@ export function createController(api, notify = () => {}) {
     const failed = results.find((result) => result.status === 'rejected');
     if (failed) throw failed.reason;
     const [tabs, view, identities, history] = results.map((result) => result.value);
+    closeSelection.remember(windowId, { groups: structuredClone(model.groups), tabs, view });
     const pins = reconcilePins(view.pinLayout, model.folderPins, tabs, forgottenPins.get(windowId));
     // Tab-only installations need no additional session writes. Once a mixed
     // layout exists, remember new slots without discarding pending restorations.
@@ -1277,7 +1306,7 @@ export function createController(api, notify = () => {}) {
       }
       case 'closeTab':
         await checkedTab(message.id, windowId);
-        await writeTab(windowId, 'remove', message.id);
+        await closeTabs(windowId, message.id);
         break;
       case 'closeTabTree': {
         if (
@@ -1294,7 +1323,7 @@ export function createController(api, notify = () => {}) {
           .filter((tab) => confirmed.has(tab.id))
           .map((tab) => tab.id)
           .reverse();
-        if (ids.length) await writeTab(windowId, 'remove', ids);
+        if (ids.length) await closeTabs(windowId, ids);
         break;
       }
       case 'closeGroupTabs': {
@@ -1308,7 +1337,7 @@ export function createController(api, notify = () => {}) {
         const ids = (await listTabs(windowId))
           .filter((tab) => confirmed.has(tab.id) && isWithin(model, tab.groupId, group.id))
           .map((tab) => tab.id);
-        if (ids.length) await writeTab(windowId, 'remove', ids);
+        if (ids.length) await closeTabs(windowId, ids);
         break;
       }
       case 'pinTab': {
@@ -1386,7 +1415,12 @@ export function createController(api, notify = () => {}) {
           throw error;
         }
       }, !folderBackupActions.has(message.type)),
-    dispose: () => cache.dispose(),
+
+    dispose() {
+      closeSelection.dispose();
+      cache.dispose();
+    },
+
     created: (tab) =>
       enqueue(async () => {
         if (tab.incognito || internalPage(api, tab.url)) return;
