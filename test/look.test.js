@@ -28,7 +28,7 @@ async function fixture(settings = {}) {
 }
 
 test('retired appearance and density selections preserve Look preferences and are removed on the next save', async () => {
-  const look = { connectingLines: true, domains: false, folderCounts: false };
+  const look = { connectingLines: true, domains: false, folderCounts: false, animations: true };
   for (const appearance of ['whitespace', 'colourful', 'outline', 'combined', 'unknown']) {
     const { api, send, controller } = await fixture({
       appearance,
@@ -64,6 +64,8 @@ test('Look defaults missing or malformed preferences independently, with current
   for (const [settings, expected] of [
     [{}, { connectingLines: true, domains: false }],
     [{ look: null }, { connectingLines: true, domains: false }],
+    [{ look: { animations: false } }, { connectingLines: true, domains: false, animations: false }],
+    [{ look: { animations: 'false' } }, { connectingLines: true, domains: false }],
     [{ look: { folderCounts: 'true' } }, { connectingLines: true, domains: false }],
     [
       { look: { folderCounts: true } },
@@ -100,6 +102,7 @@ test('Look defaults missing or malformed preferences independently, with current
     const before = await api.storage.local.get(MODEL_KEY);
     const look = (await send('snapshot')).look;
     assert.deepEqual(look, {
+      animations: true,
       folderCounts: false,
       themeSource: 'tabernacle',
       colorScheme: 'default',
@@ -124,7 +127,7 @@ test('Look preferences persist across windows and restarts without changing grou
     { connectingLines: false, domains: true, themeSource: 'firefox', colorScheme: 'dark' },
     { connectingLines: true, domains: true, themeSource: 'firefox', colorScheme: 'default' },
     { connectingLines: false, domains: false, themeSource: 'firefox', colorScheme: 'dark' },
-  ].map((value) => ({ folderCounts: false, ...value }))) {
+  ].map((value) => ({ animations: true, folderCounts: false, ...value }))) {
     const saved = await send('setLook', { value });
     assert.deepEqual(saved.look, value);
     assert.deepEqual(api.testing.saved[MODEL_KEY].look, value);
@@ -135,6 +138,7 @@ test('Look preferences persist across windows and restarts without changing grou
     assert.deepEqual(saved.view, before.view);
   }
   const value = {
+    animations: true,
     folderCounts: false,
     connectingLines: true,
     domains: false,
@@ -169,6 +173,7 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
   );
   assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
   assert.deepEqual((await send('snapshot')).look, {
+    animations: true,
     folderCounts: false,
     connectingLines: true,
     domains: false,
@@ -244,5 +249,24 @@ test('folder tab counts default off and persist independently across windows and
     value: { folderCounts: false },
   });
   assert.deepEqual((await restarted.request({ type: 'getSettings', windowId: 2 })).look, before);
+  restarted.dispose();
+});
+
+test('animation preference persists across windows and restarts and rejects invalid values', async () => {
+  const { api, send, controller } = await fixture();
+  const before = (await send('getSettings')).look;
+  assert.equal(before.animations, true);
+  await send('setLook', { partial: true, value: { animations: false } });
+  const expected = { ...before, animations: false };
+  assert.deepEqual((await send('getSettings', {}, 2)).look, expected);
+  assert.deepEqual(api.testing.saved[MODEL_KEY].look, expected);
+  for (const animations of [null, 'false', 0])
+    await assert.rejects(
+      send('setLook', { partial: true, value: { animations } }),
+      /Choose whether to show animations/,
+    );
+  controller.dispose();
+  const restarted = createController(api);
+  assert.deepEqual((await restarted.request({ type: 'getSettings', windowId: 1 })).look, expected);
   restarted.dispose();
 });

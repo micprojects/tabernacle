@@ -507,6 +507,7 @@ try {
   await reloadAddon();
   state = await send('snapshot');
   assert.deepEqual(state.look, {
+    animations: true,
     folderCounts: false,
     connectingLines: true,
     domains: true,

@@ -34,6 +34,7 @@ test('theme settings default, validate, and keep fallback colour preferences', (
   assert.deepEqual(normalizeLook({ themeSource: 'unknown', colorScheme: 'dark' }), {
     connectingLines: true,
     domains: false,
+    animations: true,
     folderCounts: false,
     themeSource: 'tabernacle',
     colorScheme: 'dark',

@@ -3,6 +3,7 @@ import { resolveTheme, createPaletteRenderer } from './theme-palette.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
+import { createTreeMotion } from './tree-motion.js';
 import { createDialogs } from './dialogs.js';
 import { folderIcon, folderIconColor } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
@@ -58,6 +59,12 @@ let recentlyClosed;
 let themeObserver;
 const paintPalette = createPaletteRenderer(document.documentElement);
 const forcedColors = matchMedia('(forced-colors: active)');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const treeMotion = createTreeMotion(
+  tree,
+  () => state?.look.animations !== false && !reducedMotion.matches,
+);
+let motionContext;
 
 function themeResult(source = state?.look?.themeSource) {
   return resolveTheme(
@@ -71,9 +78,13 @@ function renderAppearance() {
   if (!state) return;
   const result = themeResult();
   paintPalette(forcedColors.matches ? null : result.palette, state.look.colorScheme);
+  const motionOff = state.look.animations === false || reducedMotion.matches;
+  document.documentElement.classList.toggle('motion-off', motionOff);
+  if (motionOff) treeMotion.finishAll();
 }
 
 forcedColors.addEventListener('change', renderAppearance);
+reducedMotion.addEventListener('change', renderAppearance);
 let state, request, windowId, selected, drag, refreshTimer, toastTimer, menuReturnFocus;
 let confirmedState;
 let pointerMoves;
@@ -217,11 +228,18 @@ async function requestMove(args) {
 }
 
 function action(type, args = {}) {
+  const motionKey =
+    type === 'toggleGroup'
+      ? `group:${args.id}`
+      : type === 'toggleTab' || (type === 'clickTab' && args.toggleChildren !== false)
+        ? `tab:${args.id}`
+        : null;
+  if (!motionKey) treeMotion.finishAll();
   const viewAction = ['toggleGroup', 'enterGroup'].includes(type) ? { type, args } : null;
   if (viewAction) {
     pendingViewActions.push(viewAction);
     acceptState(confirmedState);
-    render();
+    render(motionKey);
   }
   activeActions++;
 
@@ -234,7 +252,7 @@ function action(type, args = {}) {
       const next = await (type === 'moveItem' ? requestMove(args) : request(type, args));
       finishViewAction();
       acceptState(next);
-      render();
+      render(viewAction ? null : motionKey);
       return state;
     } catch (error) {
       finishViewAction();
@@ -551,7 +569,7 @@ function groupNode(group, query, ancestorMatch = false) {
   setAttribute(disclosure, 'aria-expanded', expanded);
   setAttribute(disclosure, 'aria-label', label);
   setAttribute(disclosure, 'title', label);
-  if (expanded) {
+  treeMotion.reconcile(node, row, branch, expanded, () => {
     const matchAll = ancestorMatch || (Boolean(query) && group.name.toLowerCase().includes(query));
     fillChildren(branch, group.id, query, matchAll);
     if (!branch.childElementCount) {
@@ -560,11 +578,7 @@ function groupNode(group, query, ancestorMatch = false) {
       dropTarget(empty, 'inside', group.id);
       branch.append(empty);
     }
-    reconcileChildren(node, [row, branch]);
-  } else {
-    branch.replaceChildren();
-    reconcileChildren(node, [row]);
-  }
+  });
   return node;
 }
 
@@ -827,17 +841,13 @@ function tabNode(tab, query, ancestorMatch = false) {
       () => createTabRow(tab, expanded, stats),
     ),
   );
-  if (stats.descendants && expanded) {
+  treeMotion.reconcile(node, row, branch, Boolean(stats.descendants && expanded), () => {
     const nodes = (index.children.get(tab.id) || [])
       .map((child) => tabNode(child, query, matchAll))
       .filter(Boolean);
     if (!query) nodes.push(newTabItem(tab.groupId, tab));
     reconcileChildren(branch, nodes);
-    reconcileChildren(node, [row, branch]);
-  } else {
-    branch.replaceChildren();
-    reconcileChildren(node, [row]);
-  }
+  });
   return node;
 }
 
@@ -862,10 +872,14 @@ function newTabItem(groupId, parentTab = null) {
     const add = button(
       label,
       null,
-      () =>
-        parentTabId !== null
-          ? blankAreaAction('newChildTab', { id: parentTabId })
-          : blankAreaAction('newTab', { groupId }),
+      (event) => {
+        const result =
+          parentTabId !== null
+            ? blankAreaAction('newChildTab', { id: parentTabId })
+            : blankAreaAction('newTab', { groupId });
+        treeMotion.addFeedback(event.currentTarget);
+        return result;
+      },
       'new-tab-action',
     );
     add.dataset.key = key;
@@ -1006,7 +1020,7 @@ function toggleFolderMenu(trigger, parentId) {
   folderMenuKey = folderHierarchyKey();
 }
 
-function render() {
+function render(motionKey = null) {
   if (!state) return;
   renderAppearance();
   $('new-tab').disabled = false;
@@ -1029,6 +1043,10 @@ function render() {
   const scroll = tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
   const query = $('search').value.trim().toLowerCase();
+  const nextMotionContext = JSON.stringify([state.generation, state.view.scopeId, query]);
+  if (nextMotionContext !== motionContext) treeMotion.finishAll();
+  motionContext = nextMotionContext;
+  treeMotion.prepare(!query && !drag && !changingTree ? motionKey : null);
   index = createTreeIndex(state, query);
   // Folder menus must not retain destinations renamed, moved or removed elsewhere.
   if (folderMenuKey && folderMenuKey !== folderHierarchyKey()) closeMenu(true);
@@ -1081,11 +1099,12 @@ function render() {
   }
   const active = state.tabs.find((tab) => tab.active);
   fillChildren(tree, state.view.scopeId, query);
+  treeMotion.finish();
   $('reveal').hidden =
     Boolean(query) ||
     !active ||
     active.pinned ||
-    Boolean(tree.querySelector(`[data-key="tab:${active.id}"]`));
+    Boolean(tree.querySelector(`[data-key="tab:${active.id}"]:not([inert] *)`));
   if (query && !tree.querySelector('.row')) {
     const empty = el('div', 'empty-state');
     empty.setAttribute('role', 'none');
@@ -1105,7 +1124,7 @@ function render() {
   tree.scrollTop = scroll;
   if (focusedKey)
     [...document.querySelectorAll('[data-key]')]
-      .find((row) => row.dataset.key === focusedKey)
+      .find((row) => row.dataset.key === focusedKey && !row.closest('[inert]'))
       ?.focus({ preventScroll: true });
   pointerMoves?.refresh();
 }
@@ -1134,7 +1153,7 @@ function showSearch(show = true, { restoreFocus = true } = {}) {
 function moveTreeFocus(event, row) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return false;
   event.preventDefault();
-  const rows = [...tree.querySelectorAll('.row, .new-tab-action')];
+  const rows = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')];
   const index = rows.indexOf(row);
   const next =
     event.key === 'Home'
@@ -1149,7 +1168,7 @@ function moveTreeFocus(event, row) {
 function rowKey(event, row, kind, id) {
   cancelGroupClick();
   if (event.target !== row || moveTreeFocus(event, row)) return;
-  const rows = [...tree.querySelectorAll('.row, .new-tab-action')];
+  const rows = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')];
   const index = rows.indexOf(row);
   const tab = kind === 'tab' ? treeTabs.find((tab) => tab.id === id) : null;
   const hasChildren = kind === 'group' || tabChildren(treeTabs, id).length > 0;
@@ -1603,6 +1622,7 @@ pointerMoves = createPointerMove({
   commit: commitMove,
 
   onStart() {
+    treeMotion.finishAll();
     cancelGroupClick();
     closeMenu();
     drag = true;
@@ -1670,7 +1690,11 @@ $('search').addEventListener('input', () => {
   });
 });
 $('reveal').addEventListener('click', () => action('revealActive'));
-$('new-tab').addEventListener('click', () => action('newTab', { groupId: state.view.scopeId }));
+$('new-tab').addEventListener('click', (event) => {
+  const result = action('newTab', { groupId: state.view.scopeId });
+  treeMotion.addFeedback(event.currentTarget);
+  return result;
+});
 $('new-tab').addEventListener('contextmenu', (event) => newTabMenu(event, state?.view.scopeId));
 $('new-tab').addEventListener('keydown', (event) => newTabMenu(event, state?.view.scopeId));
 $('new-group').addEventListener('click', () => createDialog());
