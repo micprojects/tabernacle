@@ -115,6 +115,24 @@
   cursor: default;
   outline-offset: -2px;
 }
+.tab-row {
+  /* Keep every row in the tree, but defer offscreen icon/text layout. Rails
+     belong to the outer tab-node, so row containment cannot clip them.
+     Use the current content height, not a remembered height: switching domain
+     lines must also resize rows the browser has not painted yet. */
+  content-visibility: auto;
+  contain-intrinsic-block-size: calc(var(--tab-height) - 2 * var(--tab-padding, 0px));
+}
+/* Deep rows can be narrower than their icon and buttons, even at the sidebar's
+   minimum width. Preserve their horizontal overflow and reachable controls. */
+:is(.branch, .tab-branch)
+  :is(.branch, .tab-branch)
+  :is(.branch, .tab-branch)
+  :is(.branch, .tab-branch)
+  > .tab-node
+  > .tab-row {
+  content-visibility: visible;
+}
 .tab-row:hover,
 .group-row:hover {
   background: var(--hover);
