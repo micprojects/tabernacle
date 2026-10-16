@@ -547,7 +547,8 @@ try {
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page.locator('.tab-row')).toHaveCount(5);
   await expect(fresh).toHaveAccessibleName('New tab, container: Work');
-  await expect(fresh.locator('.container-indicator')).toBeVisible();
+  await expect(fresh.locator('.container-indicator')).toHaveCount(1);
+  await expect(fresh).toHaveClass(/active/);
   await fresh.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click();
   await page.locator('#home').click();

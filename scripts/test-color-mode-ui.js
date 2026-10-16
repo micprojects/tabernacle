@@ -106,12 +106,12 @@ try {
 
   openLook = await prepareSettings(page);
   settings = await openLook();
-  mode = settings.getByRole('combobox', { name: 'Monochrome colour mode', exact: true });
+  mode = settings.getByRole('combobox', { name: 'Colour mode', exact: true });
   await openLook();
   await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toBeVisible();
   await expect(mode).toHaveValue('default');
   await expect(mode).toHaveAccessibleDescription(
-    'Used for Monochrome, including the fallback. Follow Firefox uses its light/dark preference.',
+    'Automatic follows Firefox’s light/dark appearance.',
   );
   await mode.selectOption('light');
   await settings.getByRole('button', { name: 'Discard changes', exact: true }).click();

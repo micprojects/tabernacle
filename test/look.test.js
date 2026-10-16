@@ -37,14 +37,14 @@ test('retired appearance and density selections preserve Look preferences and ar
     });
     const before = await api.storage.local.get(MODEL_KEY);
     const state = await send('snapshot');
-    assert.deepEqual(state.look, { ...look, themeSource: 'firefox', colorScheme: 'default' });
+    assert.deepEqual(state.look, { ...look, themeSource: 'tabernacle', colorScheme: 'default' });
     assert.equal(Object.hasOwn(state, 'appearance'), false);
     assert.equal(Object.hasOwn(state, 'combinedLook'), false);
     assert.equal(Object.hasOwn(state, 'compact'), false);
     assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
     await send('setLook', { value: state.look });
     const saved = api.testing.saved[MODEL_KEY];
-    assert.deepEqual(saved.look, { ...look, themeSource: 'firefox', colorScheme: 'default' });
+    assert.deepEqual(saved.look, { ...look, themeSource: 'tabernacle', colorScheme: 'default' });
     assert.deepEqual(saved.groups, before[MODEL_KEY].groups);
     assert.equal(Object.hasOwn(saved, 'appearance'), false);
     assert.equal(Object.hasOwn(saved, 'combinedLook'), false);
@@ -53,7 +53,7 @@ test('retired appearance and density selections preserve Look preferences and ar
     const restarted = createController(api);
     assert.deepEqual((await restarted.request({ type: 'snapshot', windowId: 1 })).look, {
       ...look,
-      themeSource: 'firefox',
+      themeSource: 'tabernacle',
       colorScheme: 'default',
     });
     restarted.dispose();
@@ -95,7 +95,7 @@ test('Look defaults missing or malformed preferences independently, with current
     const before = await api.storage.local.get(MODEL_KEY);
     const look = (await send('snapshot')).look;
     assert.deepEqual(look, {
-      themeSource: 'firefox',
+      themeSource: 'tabernacle',
       colorScheme: 'default',
       ...expected,
     });
@@ -151,7 +151,7 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
   for (const colorScheme of [null, true, 'system', 'invalid'])
     await assert.rejects(
       send('setLook', { value: { connectingLines: true, domains: true, colorScheme } }),
-      /Choose Follow Firefox/,
+      /Choose Automatic/,
     );
   api.storage.local.set = async () => {
     throw new Error('Storage unavailable');
@@ -164,7 +164,7 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
   assert.deepEqual((await send('snapshot')).look, {
     connectingLines: true,
     domains: false,
-    themeSource: 'firefox',
+    themeSource: 'tabernacle',
     colorScheme: 'default',
   });
   assert.equal(changes.length, 0);

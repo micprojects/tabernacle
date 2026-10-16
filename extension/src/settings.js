@@ -47,11 +47,16 @@ function renderAppearance() {
   if (!savedLook) return;
   const result = resolveTheme(savedLook, observer?.snapshot || {}, observer?.dark || false);
   paintPalette(forcedColors.matches ? null : result.palette, savedLook.colorScheme);
-  $('look-theme-status').textContent = resolveTheme(
+  const selected = resolveTheme(
     { themeSource: fields.themeSource.value },
     observer?.snapshot || {},
     observer?.dark || false,
-  ).status;
+  );
+  $('look-theme-status').textContent = selected.status;
+  fields.colorScheme.disabled = Boolean(selected.palette);
+  $('look-color-scheme-help').textContent = selected.palette
+    ? 'Firefox controls the light/dark appearance while its theme is in use.'
+    : 'Automatic follows Firefox’s light/dark appearance.';
 }
 
 function updateSaveState(message) {

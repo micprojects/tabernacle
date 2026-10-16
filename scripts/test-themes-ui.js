@@ -105,14 +105,27 @@ try {
   await expect(page.locator('.row.active')).toBeVisible();
   openAppearance = await prepareSettings(page);
   settings = await openAppearance();
+  source = settings.getByRole('combobox', { name: 'Theme', exact: true });
+  await expect(source).toHaveValue('tabernacle');
+  // Neutral remains neutral even when Firefox exposes a colourful theme.
+  await setTheme('default-theme@mozilla.org');
+  await expect(settings.locator('#look-theme-status')).toHaveText('Using neutral colours');
+  await expect(page.locator('html')).not.toHaveAttribute('data-firefox-theme');
+  await source.selectOption('firefox');
+  await settings.locator('#appearance-save').click();
+  await expect(settings.locator('#look-color-scheme')).toBeDisabled();
   const opened = page.waitForEvent('popup');
   await page.evaluate(() => window.open('activity.html', 'theme-activity'));
   activity = await opened;
   await expect(activity.locator('#activity-results')).toHaveAttribute('aria-busy', 'false');
   for (const tab of [settings, activity])
     tab.on('pageerror', (error) => errors.push(error.message));
+  const folder = page.locator('[data-key="group:work"]');
+  await folder.click({ button: 'right' });
+  await page.keyboard.press('Escape');
+  await expect(folder).toHaveClass(/selected/);
   const beforeGeometry = await page.locator('.row.active').boundingBox();
-  const cases = [{ id: null, name: 'Monochrome fallback' }, ...knownThemes];
+  const cases = [{ id: null, name: 'Neutral fallback' }, ...knownThemes];
   for (const dark of [false, true]) {
     for (const tab of [page, settings, activity])
       await tab.emulateMedia({ colorScheme: dark ? 'dark' : 'light' });
@@ -137,14 +150,31 @@ try {
       const geometry = await page.locator('.row.active').boundingBox();
       expect(geometry).toEqual(beforeGeometry);
       await checkSharedPalette();
+      await folder.hover();
+      await expect(folder).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(folder).toHaveCSS('box-shadow', 'none');
+      const [folderIcon, folderRail, folderPlus] = await folder.evaluate((row) => {
+        const branch = row.parentElement.querySelector(':scope > .branch');
+        return [
+          getComputedStyle(row.querySelector('.folder-glyph')).color,
+          getComputedStyle(branch.firstElementChild, '::before').backgroundColor,
+          getComputedStyle(branch.querySelector(':scope > .new-tab-item > button')).color,
+        ];
+      });
+      expect(folderRail).toBe(folderIcon);
+      expect(folderPlus).toBe(folderIcon);
+      const hoveredTab = page.locator('[data-key="tab:2"]');
+      await hoveredTab.click({ button: 'right' });
+      await page.keyboard.press('Escape');
+      await hoveredTab.hover();
+      await expect(hoveredTab.locator('.container-indicator')).toHaveCount(0);
+      await expect(hoveredTab).not.toHaveCSS('box-shadow', /3px 0px 0px 0px inset/);
       const newTab = page.locator('.new-tab-action').first();
+      const plusColour = await newTab.evaluate((node) => getComputedStyle(node).color);
       await newTab.hover();
       const expected = await palette(page);
-      await expect(newTab).toHaveCSS('color', theme.id ? expected.text : expected.accent);
-      await expect(newTab.locator('svg')).toHaveCSS(
-        'fill',
-        theme.id ? expected.text : expected.accent,
-      );
+      await expect(newTab).toHaveCSS('color', plusColour);
+      await expect(newTab.locator('svg')).toHaveCSS('fill', plusColour);
       const pixels = await page.screenshot();
       // Check the visible backdrop after live theme changes, including the
       // default theme's translucent tint composited over its frame colour.
@@ -169,7 +199,7 @@ try {
       // Establish keyboard modality before asserting :focus-visible styles.
       await page.keyboard.press('Tab');
       await newTab.focus();
-      await expect(newTab).toHaveCSS('color', theme.id ? expected.text : expected.accent);
+      await expect(newTab).toHaveCSS('color', plusColour);
       await page.locator('#tree').focus();
       const title = Buffer.from(
         `<svg width="300" height="28"><rect width="300" height="28" fill="white"/><text x="10" y="19" font-family="sans-serif" font-size="13">${theme.name} — ${dark ? 'dark' : 'light'}</text></svg>`,

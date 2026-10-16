@@ -29,10 +29,12 @@ function event() {
 }
 
 test('theme settings default, validate, and keep fallback colour preferences', () => {
+  assert.equal(normalizeLook().themeSource, 'tabernacle');
+  assert.equal(resolveTheme({}, { active: knownThemes[0] }, false).palette, null);
   assert.deepEqual(normalizeLook({ themeSource: 'unknown', colorScheme: 'dark' }), {
     connectingLines: true,
     domains: false,
-    themeSource: 'firefox',
+    themeSource: 'tabernacle',
     colorScheme: 'dark',
   });
   for (const themeSource of ['firefox', 'tabernacle'])
@@ -43,7 +45,7 @@ test('theme settings default, validate, and keep fallback colour preferences', (
   for (const themeSource of [null, true, 'sun'])
     assert.throws(
       () => requireLook({ connectingLines: true, domains: false, themeSource }),
-      /Choose Follow Firefox or Monochrome/,
+      /Choose Neutral or Use Firefox theme/,
     );
 });
 
@@ -116,7 +118,7 @@ test('manual and empty themes restore fallback; unknown themes use validated col
       images: { additional_backgrounds: ['https://example.com/image.png'] },
     },
   };
-  const { palette } = resolveTheme({}, unknown, false);
+  const { palette } = resolveTheme({ themeSource: 'firefox' }, unknown, false);
   assert.equal(palette.vars.background, '#123456');
   assert.equal(palette.vars.selected, 'rgba(1, 2, 3, 0.5)');
   assert.equal(palette.vars.panel, 'Field');
@@ -146,9 +148,9 @@ test('palette replacement clears every owned override, preserving unrelated inli
     },
   };
   const paint = createPaletteRenderer(root);
-  paint(resolveTheme({}, { active: knownThemes[1] }, false).palette);
+  paint(resolveTheme({ themeSource: 'firefox' }, { active: knownThemes[1] }, false).palette);
   assert.match(properties.get('--theme-gradient'), /gradient/);
-  paint(resolveTheme({}, { active: knownThemes[1] }, true).palette);
+  paint(resolveTheme({ themeSource: 'firefox' }, { active: knownThemes[1] }, true).palette);
   assert.equal(properties.get('--theme-gradient'), 'none');
   paint(null, 'dark');
   assert.deepEqual([...properties], [['--unrelated', 'value']]);
@@ -179,7 +181,7 @@ test('custom controls use theme roles instead of unrelated system accent colours
   assert.equal(fallback.focus, colors.icons);
   for (const theme of knownThemes)
     for (const dark of [false, true]) {
-      const { palette } = resolveTheme({}, { active: theme }, dark);
+      const { palette } = resolveTheme({ themeSource: 'firefox' }, { active: theme }, dark);
       assert.doesNotMatch(Object.values(palette.vars).join(' '), /AccentColor/);
     }
 });
@@ -276,7 +278,8 @@ test('observer API failures remain safe and recover on a later theme event', asy
 });
 
 test('external themes keep the exposed palette scheme rather than inventing a dark variant', () => {
-  const resolve = (details, dark) => resolveTheme({}, { details }, dark).palette;
+  const resolve = (details, dark) =>
+    resolveTheme({ themeSource: 'firefox' }, { details }, dark).palette;
   assert.equal(
     resolve({ colors: { toolbar: '#ffffff', toolbar_text: '#000000' } }, true).dark,
     false,

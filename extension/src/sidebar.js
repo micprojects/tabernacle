@@ -4,8 +4,9 @@ import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createDialogs } from './dialogs.js';
-import { folderIcon } from './folder-icons.js';
+import { folderIcon, folderIconColor } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
+import { appearanceColor, setItemColor } from './appearance-colors.js';
 import { pinActionLabels } from './pinned-items.js';
 import { createPointerMove } from './pointer-move.js';
 import { createRecentActivity } from './recently-closed.js';
@@ -481,6 +482,8 @@ function tabDomain(tab) {
 
 function createGroupRow(group, container) {
   const row = rowBase('group', group.id);
+  const color = folderIconColor(folderAppearance(group, container, state).color);
+  if (color) row.style.setProperty('--folder-text', color);
   row.setAttribute('aria-label', `${group.name}, ${count(group.id)} tabs`);
   row.title = `${group.name}\nClick to expand/collapse · Double-click to open · Right-click for options`;
   describeContainer(row, { container }, 'Default container');
@@ -514,6 +517,10 @@ function groupNode(group, query, ancestorMatch = false) {
   if (query && !ancestorMatch && !searchVisible(group.id)) return null;
   const { node, branch } = wrapperFor('group', group.id);
   const container = groupContainerDetails(group);
+  const appearance = folderAppearance(group, container, state);
+  const color = folderIconColor(appearance.color) || 'var(--folder-icon)';
+  node.style.setProperty('--item-colour', color);
+  branch.style.setProperty('--parent-guide', color);
   const row = markSelected(
     rowCache.get(
       `group:${group.id}`,
@@ -521,7 +528,7 @@ function groupNode(group, query, ancestorMatch = false) {
         group.name,
         group.appearance?.icon,
         group.defaultCookieStoreId,
-        folderAppearance(group, container, state).color,
+        appearance.color,
         count(group.id),
         audioInGroups.get(group.id) || 0,
         container?.name,
@@ -578,19 +585,7 @@ function tabFavicon(tab) {
     favicon.classList.add('tab-fallback');
     favicon.textContent = (tab.title || 'T').charAt(0);
   } else favicon.append(icon('globe'));
-  if (tab.container) {
-    const marker = el('span', 'container-indicator');
-    marker.setAttribute('aria-hidden', 'true');
-    const color = containerColor(tab.container);
-    if (color) marker.style.setProperty('--container-color', color);
-    favicon.append(marker);
-  }
   return favicon;
-}
-
-function containerColor(container) {
-  const color = container?.colorCode;
-  return color && CSS.supports('color', color) ? color : null;
 }
 
 function groupContainerDetails(group) {
@@ -669,6 +664,10 @@ function createPinnedTab(tab) {
   node.removeAttribute('title');
   node.setAttribute('aria-pressed', String(Boolean(tab.active)));
   node.classList.toggle('active', Boolean(tab.active));
+  if (tab.container) {
+    setItemColor(node, tab.container.colorCode);
+    node.classList.add('has-container');
+  }
   pinnedDrag(node, { kind: 'tab', id: tab.treeId });
   node.append(tabFavicon(tab));
   describeContainer(node, tab);
@@ -713,6 +712,10 @@ function pinnedFolder(pin) {
       node.title = `${path}\n${pinActionLabels[pin.action]} · Right-click for options`;
       node.dataset.key = `pin:group:${group.id}`;
       node.classList.toggle('active', current);
+      if (appearance.color) {
+        setItemColor(node, appearance.color);
+        node.classList.add('has-container');
+      }
       if (current) node.setAttribute('aria-current', 'location');
       node.append(folderIcon(group, container, { state }));
       pinnedDrag(node, { kind: 'group', id: group.id });
@@ -744,6 +747,11 @@ function pinnedTab(tab) {
 function createTabRow(tab, expanded, stats) {
   const favicon = tabFavicon(tab);
   const row = rowBase('tab', tab.id);
+  if (tab.container) {
+    const marker = el('span', 'container-indicator');
+    marker.setAttribute('aria-hidden', 'true');
+    row.append(marker);
+  }
   row.classList.toggle('active', Boolean(tab.active));
   row.classList.toggle('contains-active', !expanded && stats.active);
   row.classList.toggle('discarded', Boolean(tab.discarded));
@@ -821,6 +829,11 @@ function tabNode(tab, query, ancestorMatch = false) {
   if (query && !matchAll && !stats.descendantMatch) return null;
   const expanded = Boolean(query) || !tab.collapsed;
   const { node, branch } = wrapperFor('tab', tab.id);
+  setItemColor(node, tab.container?.colorCode);
+  branch.style.setProperty(
+    '--parent-guide',
+    appearanceColor(tab.container?.colorCode) || 'var(--neutral-marker)',
+  );
   node.classList.toggle('tab-parent', stats.descendants > 0);
   const row = markSelected(
     rowCache.get(
@@ -845,6 +858,14 @@ function tabNode(tab, query, ancestorMatch = false) {
 
 function newTabItem(groupId, parentTab = null) {
   const group = groupById(state, groupId);
+  const container = group && groupContainerDetails(group);
+  const folderColor = group && folderAppearance(group, container, state).color;
+  // Folder controls follow its icon, including inherited custom colours. With
+  // no folder colour or assigned default, child controls follow their parent tab.
+  const color =
+    group && (folderColor || container || !parentTab)
+      ? folderIconColor(folderColor) || 'var(--folder-icon)'
+      : appearanceColor(parentTab?.container?.colorCode) || 'var(--neutral-marker)';
   const parentTabId = parentTab?.id ?? null;
   const label = parentTab
     ? `New child tab of ${parentTab.title || 'New tab'}`
@@ -852,8 +873,9 @@ function newTabItem(groupId, parentTab = null) {
       ? `New tab in ${group.name}`
       : 'New tab';
   const key = parentTab ? `new-child-tab:${parentTabId}` : `new-tab:${groupId}`;
-  return rowCache.get(key, [label], () => {
+  return rowCache.get(key, [label, color], () => {
     const item = el('div', 'new-tab-item');
+    item.style.setProperty('--item-colour', color);
     item.setAttribute('role', 'treeitem');
     item.setAttribute('aria-label', label);
     const add = button(

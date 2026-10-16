@@ -55,7 +55,7 @@ try {
     await home();
   }
   console.log(
-    '✓ Folder names and icons highlight immediately, wait 120 ms, and skip fast double-click toggles',
+    '✓ Folder names and icons receive focus immediately, wait 120 ms, and skip fast double-click toggles',
   );
 
   // Slower double-clicks still enter immediately and restore the folder's

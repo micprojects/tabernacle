@@ -51,16 +51,30 @@ const expectIconsLoaded = async (icons) => {
   expect(loaded.every(Boolean)).toBe(true);
 };
 
-const expectFaviconUnderline = async (row) => {
-  const favicon = await row.locator('.tab-icon').boundingBox();
-  const underline = await row.locator('.container-indicator').boundingBox();
-  const bounds = await row.boundingBox();
-  expect(underline.x).toBe(favicon.x);
-  expect(underline.width).toBe(favicon.width);
-  expect(underline.height).toBe(2);
-  expect(underline.y).toBe(favicon.y + favicon.height + 2);
-  expect(underline.y + underline.height).toBeLessThan(bounds.y + bounds.height);
+const expectVerticalIndicator = async (row) => {
+  await expect(row.locator('.tab-icon .container-indicator')).toHaveCount(0);
+  if (await row.evaluate((node) => node.matches('.pinned-tab'))) {
+    await expect(row).toHaveCSS('border-top-width', '1px');
+    await expect(row.locator('.container-indicator')).toHaveCount(0);
+  } else {
+    await expect(row.locator(':scope > .container-indicator')).toHaveCSS('width', '2px');
+    await expect(row.locator(':scope > .container-indicator')).toHaveCSS('height', '16px');
+  }
 };
+
+const markerColor = (color, text = false) =>
+  page.evaluate(
+    async ({ color, text }) => {
+      const { appearanceColor } = await import('/extension/src/appearance-colors.js');
+      const probe = document.createElement('span');
+      probe.style.color = appearanceColor(color, text);
+      document.body.append(probe);
+      const result = getComputedStyle(probe).color;
+      probe.remove();
+      return result;
+    },
+    { color, text },
+  );
 
 const openPicker = async (row) => {
   await row.click({ button: 'right' });
@@ -237,17 +251,15 @@ try {
   await expect(parent).toBeVisible();
   await expect(parent.locator('.container-indicator')).toHaveCSS(
     'background-color',
-    'rgb(0, 167, 224)',
+    await markerColor('#00a7e0'),
   );
   await expect(parent).not.toHaveAttribute('title');
   await expect(parent).toHaveAccessibleName('Parent page, container: Work, 1 nested tab');
   await expect(page.locator('[data-key="tab:2"] .container-indicator')).toHaveCount(0);
   await expect(page.locator('.group-row .container-indicator')).toHaveCount(0);
-  await expectFaviconUnderline(parent);
+  await expectVerticalIndicator(parent);
   await page.screenshot({ path: 'test-results/container-indicators-nested.png' });
-  check(
-    'Reopening underlines the parent favicon in its container colour, independently of children',
-  );
+  check('Reopening updates the parent’s vertical container indicator independently of children');
 
   await openPicker(parent);
   await expect(page.getByRole('radio', { name: 'Work Current' })).toBeChecked();
@@ -273,13 +285,10 @@ try {
   expect(source.cookieStoreId).toBe('firefox-container-2');
   expect(source.pinned).toBe(true);
   await expect(page.locator('.pinned-tab')).toHaveCount(1);
-  await expect(pin.locator('.container-indicator')).toHaveCSS(
-    'background-color',
-    'rgb(248, 156, 36)',
-  );
+  await expect(pin).toHaveCSS('border-color', await markerColor('#f89c24'));
   await expect(pin).toHaveAccessibleName('Parent page, pinned, container: Personal');
   await expect(pin).not.toHaveAttribute('title');
-  await expectFaviconUnderline(pin);
+  await expectVerticalIndicator(pin);
   check(
     'No container removes the container and pinned tabs use the same picker while staying pinned',
   );
@@ -295,7 +304,7 @@ try {
     .filter({ has: page.locator('.label', { hasText: 'Child page' }) });
   await expect(child.locator('.container-indicator')).toHaveCSS(
     'background-color',
-    'rgb(0, 167, 224)',
+    await markerColor('#00a7e0'),
   );
   await page.screenshot({ path: 'test-results/container-indicators-light.png' });
   await page.evaluate(() => {
@@ -303,10 +312,7 @@ try {
     window.containerTest.identities[1].colorCode = '#af51f5';
     window.containerTest.notify();
   });
-  await expect(pin.locator('.container-indicator')).toHaveCSS(
-    'background-color',
-    'rgb(175, 81, 245)',
-  );
+  await expect(pin).toHaveCSS('border-color', await markerColor('#af51f5'));
   await expect(pin).toHaveAccessibleName('Parent page, pinned, container: Shopping');
   await expect(pin).not.toHaveAttribute('title');
   check('Container colour and name changes refresh existing pin indicators without a tab event');
@@ -356,10 +362,10 @@ try {
   await page.setViewportSize({ width: 240, height: 540 });
   await expect(child.locator('.container-indicator')).toHaveCSS(
     'background-color',
-    'rgb(0, 167, 224)',
+    await markerColor('#00a7e0'),
   );
   await expect(child).toHaveCSS('min-height', '26px');
-  await expectFaviconUnderline(child);
+  await expectVerticalIndicator(child);
   expect(
     await page.locator('.sidebar').evaluate((node) => node.scrollWidth <= node.clientWidth),
   ).toBe(true);
@@ -402,7 +408,10 @@ try {
   await expect(page.getByRole('dialog')).toBeHidden();
   expect((await snapshot()).tabs).toEqual(existingTabs);
   await expect(group).toHaveAttribute('title', /Default container: Work/);
-  await expect(group.locator('.group-container-icon')).toHaveCSS('color', 'rgb(0, 167, 224)');
+  await expect(group.locator('.group-container-icon')).toHaveCSS(
+    'color',
+    await markerColor('#00a7e0', true),
+  );
   await expect(group.locator('.group-container-icon')).toHaveCSS(
     'mask-image',
     /\/icons\/containers\/fingerprint\.svg/,
@@ -431,7 +440,10 @@ try {
   );
   const subgroup = page.locator(`[data-key="group:${subgroupId}"]`);
   await expect(subgroup).toHaveAttribute('title', /Default container: Work \(inherited\)/);
-  await expect(subgroup.locator('.folder-icon')).toHaveCSS('color', 'rgb(0, 167, 224)');
+  await expect(subgroup.locator('.folder-icon')).toHaveCSS(
+    'color',
+    await markerColor('#00a7e0', true),
+  );
   await expect(subgroup.locator('.folder-icon')).toHaveAttribute('data-icon', 'folder-open-16');
   await expect(subgroup.locator('.group-container-icon')).toHaveCount(0);
   await expect(subgroup).toHaveAccessibleName(
@@ -462,10 +474,16 @@ try {
   await openGroupPicker(subgroup);
   await expect(page.getByRole('radio', { name: 'Inherit (Work) Current' })).toBeChecked();
   await saveDefault('Shopping');
-  await expect(subgroup.locator('.group-container-icon')).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await expect(subgroup.locator('.group-container-icon')).toHaveCSS(
+    'color',
+    await markerColor('#af51f5', true),
+  );
   await openGroupPicker(subgroup);
   await saveDefault('Inherit (Work)');
-  await expect(subgroup.locator('.folder-icon')).toHaveCSS('color', 'rgb(0, 167, 224)');
+  await expect(subgroup.locator('.folder-icon')).toHaveCSS(
+    'color',
+    await markerColor('#00a7e0', true),
+  );
   await subgroup.dblclick();
   const heading = page.locator('#scope-heading');
   await expect(heading).toHaveAttribute('title', 'Default container: Work (inherited)');
@@ -515,7 +533,10 @@ try {
   await expect(heading).toHaveAttribute('title', 'Default container: Team (inherited)');
   await page.locator('#home').click();
   await expect(subgroup).toHaveAttribute('title', /Default container: Team \(inherited\)/);
-  await expect(subgroup.locator('.folder-icon')).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await expect(subgroup.locator('.folder-icon')).toHaveCSS(
+    'color',
+    await markerColor('#af51f5', true),
+  );
   await page.screenshot({ path: 'test-results/group-container-inheritance.png' });
   for (const color of [undefined, 'not-a-colour']) {
     await page.evaluate((color) => {
@@ -529,7 +550,10 @@ try {
     window.containerTest.identities[0].colorCode = '#af51f5';
     window.containerTest.notify();
   });
-  await expect(group.locator('.group-container-icon')).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await expect(group.locator('.group-container-icon')).toHaveCSS(
+    'color',
+    await markerColor('#af51f5', true),
+  );
   await page.emulateMedia({ forcedColors: 'active' });
   await expect(group.locator('.group-container-icon')).toHaveCSS('forced-color-adjust', 'none');
   await expect(group.locator('.group-container-icon')).toHaveCSS('color', 'rgb(255, 255, 255)');
@@ -539,7 +563,10 @@ try {
     delete window.containerTest.identities[0].iconUrl;
     window.containerTest.notify();
   });
-  await expect(group.locator('.folder-icon')).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await expect(group.locator('.folder-icon')).toHaveCSS(
+    'color',
+    await markerColor('#af51f5', true),
+  );
   await expect(subgroup.locator('.folder-icon')).toBeVisible();
   await expect(group.locator('.group-container-icon')).toHaveCount(0);
   await page.evaluate(() => {

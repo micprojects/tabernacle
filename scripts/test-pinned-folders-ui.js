@@ -88,7 +88,10 @@ try {
   await send('setGroupAppearance', { id: 'work', appearance: { color: 'purple' } });
   await expect(pin('design')).toHaveAttribute('title', /Work \/ Ideas\nOpen folder/);
   await expect(pin('design').locator('use')).toHaveAttribute('href', /#book-16$/);
-  await expect(pin('design').locator('.folder-glyph')).toHaveCSS('color', 'rgb(161, 107, 212)');
+  const folderColour = await row('design')
+    .locator('.label')
+    .evaluate((node) => getComputedStyle(node).color);
+  await expect(pin('design').locator('.folder-glyph')).toHaveCSS('color', folderColour);
   expect(await pin('design').textContent()).toBe('');
   await pin('design').focus();
   await send('renameGroup', { id: 'design', name: 'Design' });

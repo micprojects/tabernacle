@@ -21,6 +21,7 @@ for (const name of [
   'test-drag-ui',
   'test-audio-ui',
   'test-containers-ui',
+  'test-container-style-ui',
   'test-color-mode-ui',
   'test-look-ui',
   'test-settings-ui',

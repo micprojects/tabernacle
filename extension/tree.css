@@ -28,8 +28,15 @@
 }
 .pinned-tab.active {
   color: var(--selected-text);
-  background: var(--selected);
+  background: var(--pin-active-background, var(--selected));
   border-color: var(--accent);
+}
+.pinned-tab.has-container {
+  border-color: var(--item-colour);
+  --pin-active-background: color-mix(in srgb, var(--item-colour) 12%, var(--selected));
+}
+.pinned-tab.has-container.active {
+  box-shadow: inset 0 0 0 1px var(--item-colour);
 }
 .pinned-tab.dragging {
   cursor: grabbing;
@@ -87,13 +94,17 @@
   min-height: var(--row-height);
   padding: 0 var(--row-padding);
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--item-colour, var(--neutral-marker));
   text-align: start;
 }
 .new-tab-action:hover:not(:disabled),
 .new-tab-action:focus-visible {
-  color: var(--action-text);
   background: var(--action-hover);
+}
+.new-tab-action svg {
+  stroke: currentColor;
+  stroke-width: 0.65px;
+  stroke-linejoin: round;
 }
 @media (hover: none) {
   .new-tab-item {
@@ -112,20 +123,34 @@
   cursor: default;
   outline-offset: -2px;
 }
-.row:hover {
+.tab-row:hover {
   background: var(--hover);
 }
-.row.selected:not(.active) {
+.tab-row:hover:not(.active):has(> .container-indicator) {
+  --hover-indicator: inset 3px 0 0 var(--item-colour);
+  box-shadow: var(--hover-indicator);
+}
+.tab-row:hover:not(.active):has(> .container-indicator):dir(rtl) {
+  --hover-indicator: inset -3px 0 0 var(--item-colour);
+}
+.tab-row.selected:not(.active) {
   background: var(--hover);
 }
 .row.active {
   color: var(--selected-text);
   --muted: currentColor;
-  /* Leave room for the parent guide without shifting the icon or label. */
-  margin-inline-start: var(--row-padding);
-  padding-inline-start: 0;
   background: var(--selected);
-  box-shadow: inset 0 0 0 1px var(--selected-border);
+  box-shadow:
+    inset 0 0 0 1px var(--item-colour),
+    inset 3px 0 0 var(--item-colour);
+}
+.row.active:dir(rtl) {
+  box-shadow:
+    inset 0 0 0 1px var(--item-colour),
+    inset -3px 0 0 var(--item-colour);
+}
+.row.active:has(> .container-indicator) {
+  background: color-mix(in srgb, var(--item-colour) 12%, var(--selected));
 }
 .row.active > .label,
 .row.contains-active > .label {
@@ -152,6 +177,7 @@ svg.folder-icon,
 }
 .group-row > .label {
   font-size: 13px;
+  color: var(--folder-text, inherit);
 }
 .icon-slot,
 .disclosure {
@@ -190,12 +216,16 @@ svg.folder-icon,
 }
 .container-indicator {
   position: absolute;
-  inset-inline: 0;
-  bottom: -4px;
-  height: 2px;
+  inset-inline-start: 0;
+  top: calc(var(--tab-icon-centre) - 8px);
+  width: 2px;
+  height: 16px;
   border-radius: 2px;
-  background: var(--container-color, currentColor);
+  background: var(--item-colour);
   pointer-events: none;
+}
+.row.active > .container-indicator {
+  display: none;
 }
 .tab-icon {
   position: relative;
@@ -548,76 +578,136 @@ svg.folder-icon,
   font-weight: 550;
 }
 
-/* Connect the parent icon's bottom to each child icon's left edge. */
-.tree.show-connecting-lines {
-  --tree-guide: color-mix(in srgb, var(--text) 12%, var(--background));
+/* Fixed depth lanes: continuous ancestor rails, separate marks for leaf rows. */
+.tree {
   --guide-x: calc(var(--row-padding) + var(--icon-slot) / 2);
   --guide-gap: 2px;
 }
-.show-connecting-lines :is(.group-node, .tab-node, .new-tab-item) {
+.tree :is(.group-node, .tab-node, .new-tab-item) {
+  --item-colour: var(--neutral-marker);
   --node-height: var(--row-height);
   --node-icon-size: 16px;
   --node-icon-centre: calc(var(--node-height) / 2);
   position: relative;
 }
-.show-connecting-lines .tab-node {
+.tree .tab-node {
   --node-height: var(--tab-height);
   --node-icon-centre: var(--tab-icon-centre);
 }
 .show-connecting-lines :is(.branch, .tab-branch) {
   position: relative;
 }
-.show-connecting-lines :is(.branch, .tab-branch)::before {
+.show-connecting-lines
+  :is(.branch, .tab-branch):has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))::before {
   content: '';
   position: absolute;
   pointer-events: none;
-  inset-inline-start: calc(var(--guide-x) - var(--tree-indent));
+  inset-inline-start: calc(var(--guide-x) - var(--tree-indent) - 1px);
   top: calc(
     var(--node-icon-centre) + var(--node-icon-size) / 2 + var(--guide-gap) - var(--node-height)
   );
   height: calc(
     var(--node-height) - var(--node-icon-centre) - var(--node-icon-size) / 2 - var(--guide-gap)
   );
-  border-inline-start: 1px solid var(--tree-guide);
-}
-.show-connecting-lines
-  :is(.branch, .tab-branch)
-  > :is(.group-node, .tab-node, .new-tab-item)::before,
-.show-connecting-lines
-  :is(.branch, .tab-branch)
-  > :is(.group-node, .tab-node, .new-tab-item)::after {
-  content: '';
-  position: absolute;
-  pointer-events: none;
-  inset-inline-start: calc(var(--guide-x) - var(--tree-indent));
-  border-inline-start: 1px solid var(--tree-guide);
+  width: 2px;
+  background: var(--parent-guide);
+  border-start-start-radius: 2px;
+  border-start-end-radius: 2px;
 }
 .show-connecting-lines
   :is(.branch, .tab-branch)
   > :is(.group-node, .tab-node, .new-tab-item)::before {
-  top: calc(-1 * var(--branch-gap));
-  bottom: 0;
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset-inline-start: calc(var(--guide-x) - var(--tree-indent) - 1px);
+  top: calc(var(--node-icon-centre) - 8px);
+  width: 2px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--item-colour);
 }
 .show-connecting-lines
-  :is(.branch, .tab-branch)
-  > :is(.group-node, .tab-node, .new-tab-item)::after {
-  box-sizing: border-box;
-  top: 0;
-  width: calc(var(--tree-indent) - var(--node-icon-size) / 2 - var(--guide-gap));
-  height: var(--node-icon-centre);
-  border-bottom: 1px solid var(--tree-guide);
-  border-end-start-radius: 5px;
+  :is(.branch, .tab-branch):has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))
+  > :is(.group-node, .tab-node, .new-tab-item)::before {
+  top: calc(-1 * var(--branch-gap));
+  bottom: 0;
+  height: auto;
+  border-radius: 0;
+  background: var(--parent-guide);
 }
-.show-connecting-lines :is(.branch, .tab-branch) > .tab-node:has(> .row.active)::after {
-  border-bottom-color: var(--selected-border);
-}
-.show-connecting-lines :is(.branch, .tab-branch) > :last-child::before {
+.show-connecting-lines
+  :is(.branch, .tab-branch):has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))
+  > :last-child::before {
   bottom: auto;
-  height: var(--branch-gap);
+  height: calc(var(--node-icon-centre) + var(--branch-gap));
+  border-end-start-radius: 2px;
+  border-end-end-radius: 2px;
+}
+.show-connecting-lines :is(.branch, .tab-branch) > .tab-node > .row > .container-indicator {
+  display: none;
+}
+/* A direct tab beside a continuous ancestor rail still needs its own identity,
+   particularly when siblings use different containers. Keep the rail outside
+   active and hovered tabs without moving their favicons or text. */
+.show-connecting-lines
+  :is(.branch, .tab-branch):has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))
+  > .tab-node
+  > .row:not(.active, :hover)
+  > .container-indicator {
+  display: block;
+  inset-inline-start: 4px;
+}
+:is(.branch, .tab-branch):has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))
+  > .tab-node
+  > .row.active {
+  margin-inline-start: var(--row-padding);
+  padding-inline-start: 0;
+}
+:is(.branch, .tab-branch):has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))
+  > .tab-node
+  > .row:hover:not(.active) {
+  /* Leave room for the rail without moving the hover hit area. */
+  border-inline-start: var(--row-padding) solid transparent;
+  border-start-start-radius: calc(6px + var(--row-padding)) 6px;
+  border-end-start-radius: calc(6px + var(--row-padding)) 6px;
+  padding-inline-start: 0;
+  background-clip: padding-box;
+}
+/* Paint the marker above the hover fill. It also preserves the indicator in
+   forced colours, where the full-height inset shadow is suppressed. */
+.show-connecting-lines .tab-row:hover:not(.active) > .container-indicator {
+  display: block;
+  inset-inline-start: 0;
+}
+.show-connecting-lines
+  :is(.branch, .tab-branch):not(:has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch)))
+  > .tab-node:has(> .row.active)::before {
+  display: none;
 }
 @media (forced-colors: active) {
-  .tree.show-connecting-lines {
-    --tree-guide: GrayText;
+  .tree :is(.group-node, .tab-node, .new-tab-item),
+  .pinned-tab {
+    --item-colour: GrayText !important;
+  }
+  .tree :is(.branch, .tab-branch) {
+    --parent-guide: GrayText !important;
+  }
+  .group-row > .label {
+    color: CanvasText;
+  }
+  .row.active,
+  .row.active:has(> .container-indicator) {
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+  .container-indicator,
+  .show-connecting-lines :is(.branch, .tab-branch)::before,
+  .show-connecting-lines
+    :is(.branch, .tab-branch)
+    > :is(.group-node, .tab-node, .new-tab-item)::before {
+    forced-color-adjust: none;
   }
   .show-domains .row-detail {
     color: CanvasText;
