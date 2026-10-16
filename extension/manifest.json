@@ -3,15 +3,7 @@
   "name": "Tabernacle",
   "version": "0.1.8",
   "description": "Organise your Firefox tabs with sidebar folders, nested tab trees and search.",
-  "permissions": [
-    "tabs",
-    "storage",
-    "sessions",
-    "tabGroups",
-    "contextualIdentities",
-    "cookies",
-    "management"
-  ],
+  "permissions": ["tabs", "storage", "sessions", "tabGroups", "contextualIdentities", "cookies"],
   "incognito": "not_allowed",
   "browser_specific_settings": {
     "gecko": {

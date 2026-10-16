@@ -432,7 +432,7 @@
     },
     {
       "file": "05-dark-mode.png",
-      "caption": "Choose how the sidebar looks. Follow Firefox in light or dark mode. Show website domains and lines connecting nested tabs.",
+      "caption": "Choose how the sidebar looks. Use neutral light or dark colours. Show website domains and lines connecting nested tabs.",
       "scope": "trip",
       "collapsedGroups": ["work", "recipes", "reading"],
       "colorScheme": "dark",
@@ -440,7 +440,7 @@
       "composition": {
         "title": ["Choose how", "the sidebar looks"],
         "body": [
-          "Follow Firefox in light or dark mode.",
+          "Use neutral light or dark colours.",
           "Show website domains and lines",
           "connecting nested tabs."
         ],
@@ -552,6 +552,5 @@
       "top": 134
     }
   },
-  "browserTheme": "Default",
-  "browserAppearance": "Follow Firefox Default: light for captures, dark for shot 5"
+  "browserAppearance": "Neutral: light for captures, dark for shot 5"
 }

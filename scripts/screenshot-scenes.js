@@ -98,7 +98,6 @@ export async function setupScreenshotDemo(
     value: {
       connectingLines: true,
       domains: false,
-      themeSource: 'firefox',
       colorScheme: 'default',
     },
   });
@@ -151,8 +150,7 @@ export async function showScreenshotScene(fixture, session, index) {
     value: {
       connectingLines: true,
       domains: Boolean(shot.domains),
-      themeSource: 'firefox',
-      colorScheme: 'default',
+      colorScheme: shot.colorScheme,
     },
   });
   const state = await send('snapshot');
@@ -166,7 +164,6 @@ export async function showScreenshotScene(fixture, session, index) {
   await waitFor(
     () =>
       document.querySelector(`[data-key="tab:${session.tabs[fixture.activeTab]}"]`) &&
-      document.documentElement.dataset.firefoxTheme === 'default' &&
       document.documentElement.dataset.colorScheme === shot.colorScheme &&
       Boolean(document.querySelector('#home[aria-current]')) === !scopeId,
     'the sidebar scene',
@@ -258,7 +255,6 @@ export async function showScreenshotScene(fixture, session, index) {
     scene: shot.file,
     width: innerWidth,
     height: innerHeight,
-    theme: document.documentElement.dataset.firefoxTheme,
     colorScheme: document.documentElement.dataset.colorScheme,
     background: surface.backgroundColor,
     gradient: surface.backgroundImage,

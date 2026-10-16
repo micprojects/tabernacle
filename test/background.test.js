@@ -39,10 +39,6 @@ test('background validates messages and forwards container and session lifecycle
     setIcon: async () => {},
   };
   api.sidebarAction = { setIcon: async () => {} };
-  api.theme = { getCurrent: async () => ({}), onUpdated: event() };
-  api.management = { getAll: async () => [] };
-  for (const name of ['onEnabled', 'onDisabled', 'onInstalled', 'onUninstalled'])
-    api.management[name] = event();
   for (const name of ['onCreated', 'onRemoved']) api.windows[name] = event();
   const previous = globalThis.browser;
   globalThis.browser = api;

@@ -1,5 +1,5 @@
 // Preserve container hues while giving text and thin indicators enough contrast
-// on the neutral surfaces. CSS light-dark() also responds to live theme changes.
+// on the neutral surfaces. CSS light-dark() also responds to live colour-mode changes.
 const cache = new Map();
 // Softer light/dark pairs for Firefox's container colours (including the older
 // identity palette). Custom folder colours retain their chosen hue below.
@@ -64,8 +64,8 @@ export function setItemColor(node, color) {
 }
 
 // Keep the identity hue as strong as possible while meeting text contrast on
-// every supplied surface. Some themes cannot share a readable identity shade;
-// those use their native text colour instead.
+// every supplied surface. Surfaces that cannot share a readable identity shade
+// use the neutral text colour instead.
 export function labelColor(color, backgrounds, target = 7) {
   if (!/^#[\da-f]{6}$/i.test(color || '') || !backgrounds.length) return null;
   const rgb = [1, 3, 5].map((index) => parseInt(color.slice(index, index + 2), 16));

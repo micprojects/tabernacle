@@ -28,7 +28,7 @@ for (const name of [
   'test-favicon-tint-ui',
   'test-settings-ui',
   'test-backup-ui',
-  'test-themes-ui',
+  'test-neutral-ui',
   'test-performance-ui',
 ]) {
   const result = spawnSync(process.execPath, [`scripts/${name}.js`], {

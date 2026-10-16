@@ -30,8 +30,7 @@
     "test:settings": "node scripts/test-settings-ui.js",
     "test:backup": "node scripts/test-backup-ui.js",
     "test:backup:firefox": "node scripts/test-backup-firefox.js",
-    "test:themes": "node scripts/test-themes-ui.js",
-    "test:themes:firefox": "node scripts/test-themes-firefox.js",
+    "test:neutral": "node scripts/test-neutral-ui.js",
     "test:toolbar:firefox": "node scripts/test-toolbar-icon-firefox.js"
   },
   "devDependencies": {

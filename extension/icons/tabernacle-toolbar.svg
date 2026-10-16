@@ -18,6 +18,6 @@
       <path d="M0.75 5.25h14.5M6.25 5.25v10" />
     </g>
   </defs>
-  <use class="light" href="#mark" stroke="#75669f" />
-  <use class="dark" href="#mark" stroke="#e7e1f8" />
+  <use class="light" href="#mark" stroke="#5e5e5e" />
+  <use class="dark" href="#mark" stroke="#fbfbfb" />
 </svg>

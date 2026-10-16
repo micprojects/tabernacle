@@ -1,5 +1,4 @@
-/* Shared Monochrome tokens for the sidebar, settings and activity page.
-   Firefox palettes override these on the root through theme-palette.js. */
+/* Shared neutral tokens for the sidebar, settings and activity page. */
 :root {
   color-scheme: light dark;
   --background: light-dark(#ffffff, #202020);
@@ -70,14 +69,5 @@
     --field-text: FieldText !important;
     --field-line: ButtonBorder !important;
     --danger: CanvasText !important;
-    --theme-gradient: none !important;
-    --theme-sidebar-gradient: none !important;
-    --toolbar-surface: Canvas !important;
-    --toolbar-text: CanvasText !important;
-    --toolbar-hover: ButtonFace !important;
-    --toolbar-active: Highlight !important;
-    --field-focus: Field !important;
-    --field-focus-text: FieldText !important;
-    --field-focus-line: Highlight !important;
   }
 }
