@@ -209,7 +209,7 @@ svg.folder-icon,
 .tab-branch {
   margin-inline-start: var(--tree-indent);
 }
-/* Clip only the short unfold. Keep rails outside the branch's left edge. */
+/* Clip the unfold without scaling its contents or cutting off the tree rails. */
 :is(.branch, .tab-branch)[data-tree-motion='unfold'] {
   clip-path: inset(-6px -6px 0);
 }
