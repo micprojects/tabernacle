@@ -7,6 +7,15 @@ Automatic uses the document's preferred colour scheme; Light and Dark are explic
 The retired theme source is ignored when loading existing preferences and omitted on the next
 save. Custom folder and container colours remain explicit choices. Favicons come directly from Firefox.
 
+Local folder and nested-tab folds use one height animation per branch in
+`src/tree-motion.js`: 100 ms to open and 80 ms to close, regardless of tree size.
+Reversals begin at the displayed height and shorten their duration to match the
+remaining distance. Related parent/child animations settle before measurement;
+unrelated branches can continue independently. There is no per-frame JavaScript
+or per-row animation. Closing content becomes inert immediately. Background
+updates, search, bulk folding, offscreen actions and reduced motion stay immediate.
+Run `node scripts/test-tree-motion-ui.js` for interruption and accessibility checks.
+
 `extension/settings.html` is the native Firefox options page. The Settings button
 reuses one live page across windows, without navigating or reloading it, so its
 section, scroll position and unsaved edits survive switching to another tab.

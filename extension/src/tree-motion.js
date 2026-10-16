@@ -1,7 +1,7 @@
 import { reconcileChildren } from './dom.js';
 
 const standard = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
-const emphasized = 'cubic-bezier(0.2, 0, 0, 1)';
+const unfold = 'cubic-bezier(0.2, 0, 0, 1)';
 
 // Only an explicit, local fold action supplies a key. Ordinary reconciliation
 // never starts motion, including initial load, search and background updates.
@@ -44,20 +44,24 @@ export function createTreeMotion(tree, enabled) {
       if (!key) return;
       const row = tree.querySelector(`[data-key="${CSS.escape(key)}"]`);
       if (!row || row.closest('[inert]')) return;
+      const node = row.parentElement;
+      // Nested folds must measure settled content, not another animation's
+      // temporary height. Unrelated branches can continue independently.
+      for (const branch of running.keys())
+        if (branch.contains(row) || (node.contains(branch) && branch.parentElement !== node))
+          stop(branch);
       const bounds = row.getBoundingClientRect();
       const viewport = tree.getBoundingClientRect();
       if (bounds.bottom <= viewport.top || bounds.top >= viewport.bottom) return;
-      const node = row.parentElement;
       const branch = node.querySelector(':scope > .branch, :scope > .tab-branch');
       // A collapsed branch is detached, so reconcile() supplies it below.
-      const style = branch && getComputedStyle(branch);
+      const entry = running.get(branch);
       pending = {
         node,
         expanded: row.getAttribute('aria-expanded') === 'true',
         height: branch?.getBoundingClientRect().height || 0,
-        opacity: style?.opacity || '0',
-        transform: style?.transform || 'none',
-        mode: running.get(branch)?.mode,
+        fullHeight: entry?.fullHeight,
+        interrupted: Boolean(entry),
       };
       if (branch) stop(branch, false);
     },
@@ -95,27 +99,31 @@ export function createTreeMotion(tree, enabled) {
       pending = null;
       if (!change?.branch || !tree.contains(change.node)) return;
       const { branch, nextExpanded: expanded } = change;
-      if (change.expanded === expanded && !change.mode) return;
+      if (change.expanded === expanded && !change.interrupted) return;
       const height = expanded ? branch.getBoundingClientRect().height : 0;
-      const limit = Math.min(240, tree.clientHeight / 2);
-      const mode = change.mode || (Math.max(height, change.height) > limit ? 'reveal' : 'unfold');
-      branch.dataset.treeMotion = mode;
-      const frames =
-        mode === 'unfold'
-          ? [{ height: `${change.height}px` }, { height: `${height}px` }]
-          : [
-              {
-                opacity: change.height ? change.opacity : 0,
-                transform: change.height ? change.transform : 'translateY(-3px)',
-              },
-              { opacity: expanded ? 1 : 0, transform: expanded ? 'none' : 'translateY(-3px)' },
-            ];
-      const animation = branch.animate(frames, {
-        duration: expanded ? 100 : 80,
-        easing: mode === 'unfold' ? emphasized : standard,
-        fill: 'both',
-      });
-      running.set(branch, { animation, expanded, mode });
+      const fullHeight = expanded ? height : change.fullHeight || change.height;
+      const distance = Math.abs(height - change.height);
+      if (distance < 0.5) {
+        clear(branch);
+        if (!expanded) {
+          branch.remove();
+          branch.replaceChildren();
+        }
+        return;
+      }
+      branch.dataset.treeMotion = 'unfold';
+      // One height animation per branch, with no per-frame script or per-row
+      // effects. A reversal starts at the displayed height and only takes the
+      // time needed for the remaining distance.
+      const animation = branch.animate(
+        [{ height: `${change.height}px` }, { height: `${height}px` }],
+        {
+          duration: (expanded ? 100 : 80) * Math.min(1, distance / fullHeight),
+          easing: unfold,
+          fill: 'both',
+        },
+      );
+      running.set(branch, { animation, expanded, fullHeight });
       animation.onfinish = () => {
         if (running.get(branch)?.animation === animation) stop(branch);
       };

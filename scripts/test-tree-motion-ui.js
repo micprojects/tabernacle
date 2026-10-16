@@ -72,10 +72,13 @@ try {
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-key="group:research"]')).toBeFocused();
 
+  const reversingHeight = await branch.evaluate((node) => node.getBoundingClientRect().height);
   await fold(design);
   await expect(design).toHaveAttribute('aria-expanded', 'true');
   await expect(branch).not.toHaveAttribute('inert');
-  expect((await calls()).at(-1).duration).toBe(100);
+  expect((await calls()).at(-1).duration).toBeLessThan(100);
+  expect((await calls()).at(-1).duration).toBeGreaterThan(0);
+  expect(parseFloat((await calls()).at(-1).frames[0].height)).toBeCloseTo(reversingHeight, 1);
   expect(await page.locator('[data-key="tab:4"]').count()).toBe(1);
   await finish();
   await expect(branch).toHaveCSS('opacity', '1');
@@ -88,15 +91,31 @@ try {
   await fold(work);
   await expect(work).toHaveAttribute('aria-expanded', 'false');
   const large = work.locator('..').locator(':scope > .branch');
-  await expect(large).toHaveAttribute('data-tree-motion', 'reveal');
-  expect((await calls()).at(-1).frames.every((frame) => !('height' in frame))).toBe(true);
+  await expect(large).toHaveAttribute('data-tree-motion', 'unfold');
+  expect(
+    (await calls()).at(-1).frames.every((frame) => Object.keys(frame).join() === 'height'),
+  ).toBe(true);
   await finish();
   await expect(large).toHaveCount(0);
   await fold(work);
-  await expect(large).toHaveAttribute('data-tree-motion', 'reveal');
+  await expect(large).toHaveAttribute('data-tree-motion', 'unfold');
+  expect((await calls()).at(-1).duration).toBe(100);
+  // Folding a child while its parent opens must not leave two competing
+  // heights. Folding the parent then settles the outgoing child as well.
+  await fold(design);
+  await expect(large).not.toHaveAttribute('data-tree-motion');
+  await expect(branch).toHaveAttribute('data-tree-motion', 'unfold');
+  await fold(work);
+  await expect(page.locator('[data-tree-motion]')).toHaveCount(1);
+  await expect(large).toHaveAttribute('data-tree-motion', 'unfold');
+  await expect(branch).toHaveCount(0);
   await finish();
+  await fold(work);
+  await finish();
+  await send('toggleGroup', { id: 'design' });
+  await expect(design).toHaveAttribute('aria-expanded', 'true');
   console.log(
-    '✓ Large branches use opacity and a tiny translation, without animating their height',
+    '✓ Large branches unfold; overlapping parent/child folds settle without competing heights',
   );
 
   await reset();
