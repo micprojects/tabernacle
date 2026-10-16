@@ -753,6 +753,78 @@ test('new child tabs inherit their parent’s container', async () => {
   assert.equal(child.parentTabId, 2);
 });
 
+for (const failure of ['temporary-lookup', 'persistent-lookup', 'lookup-and-query']) {
+  test(`container reopen does not mistake ${failure} errors for a confirmed close`, async () => {
+    const { api, send } = fixture();
+    await send('snapshot');
+    const get = api.tabs.get;
+    const query = api.tabs.query;
+    const remove = api.tabs.remove;
+    let attempted = false;
+    let failed = false;
+    api.tabs.remove = async (id) => {
+      if (id === 1)
+        attempted = true; // Simulate a cancelled beforeunload prompt.
+      else return remove(id);
+    };
+    api.tabs.get = async (id) => {
+      if (id === 1 && attempted && (!failed || failure !== 'temporary-lookup')) {
+        failed = true;
+        throw new Error('Lookup unavailable');
+      }
+      return get(id);
+    };
+    api.tabs.query = async (...args) => {
+      if (attempted && failure === 'lookup-and-query') throw new Error('Query unavailable');
+      return query(...args);
+    };
+    await assert.rejects(
+      send('reopenInContainer', { id: 1, cookieStoreId: 'firefox-container-2' }),
+      /unavailable/,
+    );
+    api.tabs.get = get;
+    api.tabs.query = query;
+    const after = await send('snapshot');
+    assert.equal(after.tabs.find((tab) => tab.id === 1).treeId, 'parent');
+    assert.equal(after.tabs.find((tab) => tab.id === 2).parentTabId, 1);
+    assert.equal(after.tabs.length, failure === 'temporary-lookup' ? 3 : 4);
+    assert.equal(new Set(after.tabs.map((tab) => tab.treeId)).size, after.tabs.length);
+  });
+}
+
+test('container reopen keeps the replacement when closing succeeded but confirmation is unavailable', async () => {
+  const { api, send, restart } = fixture();
+  await send('snapshot');
+  const get = api.tabs.get;
+  const query = api.tabs.query;
+  const remove = api.tabs.remove;
+  let closed = false;
+  api.tabs.remove = async (id) => {
+    await remove(id);
+    if (id === 1) closed = true;
+  };
+  api.tabs.get = async (id) => {
+    if (id === 1 && closed) throw new Error('Lookup unavailable');
+    return get(id);
+  };
+  api.tabs.query = async (...args) => {
+    if (closed) throw new Error('Query unavailable');
+    return query(...args);
+  };
+  await assert.rejects(
+    send('reopenInContainer', { id: 1, cookieStoreId: 'firefox-container-2' }),
+    /unavailable/,
+  );
+  api.tabs.get = get;
+  api.tabs.query = query;
+  restart();
+  const after = await send('snapshot');
+  const replacement = after.tabs.find((tab) => tab.treeId === 'parent');
+  assert(replacement && replacement.id !== 1);
+  assert.equal(replacement.url, 'https://example.com/parent');
+  assert.equal(after.tabs.find((tab) => tab.id === 2).parentTabId, replacement.id);
+});
+
 test('new-tab pages omit the restricted about:newtab URL when reopening', async () => {
   const { api, send } = fixture();
   await api.tabs.update(1, { url: 'about:newtab' });

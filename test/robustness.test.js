@@ -5,7 +5,7 @@ import { MODEL_KEY } from '../extension/src/model.js';
 import { PENDING_MOVE_KEY } from '../extension/src/move-recovery.js';
 import { memoryBrowser } from '../preview/browser.js';
 
-function fixture() {
+function fixture(notify) {
   const api = memoryBrowser({
     events: true,
     groups: [
@@ -32,14 +32,15 @@ function fixture() {
       4: { groupId: null, treeId: 'home', ancestors: [], order: 0 },
     },
   });
-  let controller = createController(api);
+  let controller = createController(api, notify);
   return {
     api,
     send: (type, args = {}) => controller.request({ type, windowId: 1, ...args }),
+    created: (tab) => controller.created(tab),
 
     restart() {
       controller.dispose();
-      controller = createController(api);
+      controller = createController(api, notify);
     },
 
     dispose: () => controller.dispose(),
@@ -53,6 +54,145 @@ const organisation = (state) => ({
   tabs: state.tabs
     .map(({ treeId, groupId, ancestors, order }) => ({ treeId, groupId, ancestors, order }))
     .sort((a, b) => a.treeId.localeCompare(b.treeId)),
+});
+
+test('failed bulk folding notifies every view of the memberships already committed', async () => {
+  const notices = [];
+  const f = fixture((notice) => notices.push(notice));
+  await f.api.tabs.update(2, { pinned: false });
+  const before = await f.send('snapshot');
+  notices.length = 0;
+  const save = f.api.sessions.setTabValue;
+  f.api.sessions.setTabValue = async (id, ...args) => {
+    if (id === 2) throw new Error('Session unavailable');
+    return save(id, ...args);
+  };
+  try {
+    await assert.rejects(f.send('collapseTree', { collapsed: true }), /Session unavailable/);
+    assert.equal(f.api.testing.tabValues.get(1).collapsed, true);
+    assert(notices.some((notice) => notice.revision > before.revision));
+    f.api.sessions.setTabValue = save;
+    const state = await f.send('snapshot');
+    assert.equal(state.tabs.find((tab) => tab.id === 1).collapsed, true);
+    assert.equal(state.tabs.find((tab) => tab.id === 2).collapsed, false);
+    assert.equal(state.tabs.length, before.tabs.length);
+    assert.deepEqual(state.groups, before.groups);
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a failed activation still publishes saved navigation; read-only failures do not loop refreshes', async () => {
+  const notices = [];
+  const f = fixture((notice) => notices.push(notice));
+  await f.api.tabs.update(4, { active: true });
+  await f.send('snapshot');
+  notices.length = 0;
+  f.api.tabs.update = async () => {
+    throw new Error('Activation unavailable');
+  };
+  try {
+    await assert.rejects(f.send('enterGroup', { id: 'work' }), /Activation unavailable/);
+    assert.equal(notices.length, 1);
+    assert.equal((await f.send('snapshot')).view.scopeId, 'work');
+    notices.length = 0;
+    f.api.sessions.getWindowValue = async () => {
+      throw new Error('View unavailable');
+    };
+    await assert.rejects(f.send('snapshot'), /View unavailable/);
+    assert.deepEqual(notices, []);
+  } finally {
+    f.dispose();
+  }
+});
+
+test('mixed tab operations preserve identities and reachable trees across windows and restarts', async () => {
+  for (const seed of [7, 27, 71]) {
+    const f = fixture();
+    let random = seed;
+
+    const choose = (values) => {
+      random = (Math.imul(random, 1664525) + 1013904223) >>> 0;
+      return values[random % values.length];
+    };
+
+    const creations = [];
+    f.api.testing.setCreatedHandler((tab) => {
+      creations.push(f.created(tab));
+    });
+
+    const read = async () => {
+      const first = await f.send('snapshot');
+      const second = await f.send('snapshot', { windowId: 2 });
+      return { ...first, tabs: [...first.tabs, ...second.tabs] };
+    };
+
+    await f.api.testing.attach(4, 2);
+    try {
+      let before = await read();
+      for (let step = 0; step < 120; step++) {
+        const tab = choose(before.tabs);
+        const args = { id: tab.id, windowId: tab.windowId };
+        switch (choose(['move', 'child', 'duplicate', 'pin', 'fold', 'restore', 'window'])) {
+          case 'move':
+            await f.send('moveTab', { ...args, groupId: choose([null, 'work', 'child', 'later']) });
+            break;
+          case 'child':
+            await f.send('newChildTab', args);
+            break;
+          case 'duplicate':
+            await f.send('duplicateTab', args);
+            break;
+          case 'pin':
+            await f.send('pinTab', args);
+            break;
+          case 'fold':
+            await f.send('toggleTab', args);
+            break;
+          case 'restore': {
+            await f.send('closeTab', args);
+            const restored = await f.api.testing.restore();
+            assert.equal(f.api.testing.tabValues.get(restored.id).treeId, tab.treeId);
+            break;
+          }
+          case 'window':
+            await f.api.testing.attach(tab.id, tab.windowId === 1 ? 2 : 1);
+            break;
+        }
+        await Promise.all(creations.splice(0));
+        const after = await read();
+        const native = await f.api.tabs.query({});
+        assert.deepEqual(
+          after.tabs.map((tab) => tab.id).sort(),
+          native.map((tab) => tab.id).sort(),
+        );
+        assert.equal(new Set(after.tabs.map((tab) => tab.treeId)).size, after.tabs.length);
+        const prior = new Map(before.tabs.map((tab) => [tab.id, tab.treeId]));
+        const byId = new Map(after.tabs.map((tab) => [tab.id, tab]));
+        for (const tab of after.tabs) {
+          if (prior.has(tab.id)) assert.equal(tab.treeId, prior.get(tab.id));
+          const seen = new Set([tab.id]);
+          let parentId = tab.parentTabId;
+          while (parentId !== null) {
+            assert(!seen.has(parentId), `Cycle after seed ${seed}, step ${step}`);
+            seen.add(parentId);
+            const parent = byId.get(parentId);
+            assert(parent);
+            assert.equal(parent.groupId, tab.groupId);
+            assert.equal(parent.windowId, tab.windowId);
+            parentId = parent.parentTabId;
+          }
+        }
+        if (step % 12 === 0) {
+          f.restart();
+          assert.deepEqual(organisation(await read()), organisation(after));
+        }
+        before = after;
+      }
+    } finally {
+      f.dispose();
+    }
+  }
 });
 
 for (const operation of ['read', 'repair']) {
@@ -190,42 +330,92 @@ test('a failed native confirmation query never treats a live tab as closed', asy
   f.dispose();
 });
 
-test('snapshot failures settle migration writes before the next action', async () => {
-  const f = fixture();
-  delete f.api.testing.tabValues.get(1).order;
-  let release, started;
-  const held = new Promise((r) => {
-    release = r;
+for (const destination of [1, 2]) {
+  for (const lookup of ['Invalid tab ID: 1', 'Lookup unavailable']) {
+    test(`restored tabs in window ${destination} retain their identity when the previous owner lookup returns ${lookup}`, async () => {
+      const f = fixture();
+      await f.send('snapshot');
+      const original = await f.api.tabs.get(1);
+      const removed = f.api.tabs.onRemoved.emit;
+      // A restore in another window can be processed before the old removal event.
+      f.api.tabs.onRemoved.emit = () => {};
+      await f.api.tabs.remove(1);
+      f.api.tabs.onRemoved.emit = removed;
+      const restored = await f.api.testing.restore();
+      if (destination !== 1)
+        for (const id of [restored.id, 2, 3]) await f.api.testing.attach(id, destination);
+      const query = f.api.tabs.query;
+      const get = f.api.tabs.get;
+      f.api.tabs.query = async (args) => {
+        const tabs = await query(args);
+        return args.windowId === undefined || args.windowId === 1 ? [...tabs, original] : tabs;
+      };
+      f.api.tabs.get = async (id) => {
+        if (id === 1) throw new Error(lookup);
+        return get(id);
+      };
+      try {
+        if (lookup === 'Lookup unavailable') {
+          await assert.rejects(f.send('snapshot', { windowId: destination }), /Lookup unavailable/);
+          assert.equal(f.api.testing.tabValues.get(restored.id).treeId, 'p');
+          f.api.tabs.get = async (id) => {
+            if (id === 1) throw new Error('Invalid tab ID: 1');
+            return get(id);
+          };
+        }
+        const state = await f.send('snapshot', { windowId: destination });
+        assert(!state.tabs.some((tab) => tab.id === 1));
+        assert.equal(state.tabs.find((tab) => tab.id === restored.id).treeId, 'p');
+        assert.equal(state.tabs.find((tab) => tab.id === 2).parentTabId, restored.id);
+        assert.equal(state.tabs.find((tab) => tab.id === 3).parentTabId, 2);
+      } finally {
+        f.dispose();
+      }
+    });
+  }
+}
+
+for (const action of ['snapshot', 'closeTab', 'created']) {
+  test(`${action} failures settle migration writes before the next action`, async () => {
+    const f = fixture();
+    delete f.api.testing.tabValues.get(1).order;
+    if (action === 'created') f.api.testing.tabValues.delete(4);
+    let release, started;
+    const held = new Promise((r) => {
+      release = r;
+    });
+    const waiting = new Promise((r) => {
+      started = r;
+    });
+    const save = f.api.sessions.setTabValue;
+    f.api.sessions.setTabValue = async (...args) => {
+      if (args[0] === 1) {
+        started();
+        await held;
+      }
+      return save(...args);
+    };
+    const getView = f.api.sessions.getWindowValue;
+    f.api.sessions.getWindowValue = async () => {
+      throw new Error('View unavailable');
+    };
+    let settled = false;
+    const request =
+      action === 'created' ? f.created(await f.api.tabs.get(4)) : f.send(action, { id: 4 });
+    const first = assert.rejects(request, /View unavailable/).then(() => {
+      settled = true;
+    });
+    await waiting;
+    f.api.sessions.getWindowValue = getView;
+    const next = f.send('toggleTab', { id: 1 });
+    await new Promise(setImmediate);
+    assert.equal(settled, false);
+    release();
+    await first;
+    assert.equal((await next).tabs.find((t) => t.id === 1).collapsed, true);
+    f.dispose();
   });
-  const waiting = new Promise((r) => {
-    started = r;
-  });
-  const save = f.api.sessions.setTabValue;
-  f.api.sessions.setTabValue = async (...args) => {
-    if (args[0] === 1) {
-      started();
-      await held;
-    }
-    return save(...args);
-  };
-  const getView = f.api.sessions.getWindowValue;
-  f.api.sessions.getWindowValue = async () => {
-    throw new Error('View unavailable');
-  };
-  let settled = false;
-  const first = assert.rejects(f.send('snapshot'), /View unavailable/).then(() => {
-    settled = true;
-  });
-  await waiting;
-  f.api.sessions.getWindowValue = getView;
-  const next = f.send('toggleTab', { id: 1 });
-  await new Promise(setImmediate);
-  assert.equal(settled, false);
-  release();
-  await first;
-  assert.equal((await next).tabs.find((t) => t.id === 1).collapsed, true);
-  f.dispose();
-});
+}
 
 test('transient initialization failures retry, and invalid saved data is never reset', async () => {
   for (const key of [MODEL_KEY, PENDING_MOVE_KEY]) {
@@ -257,6 +447,42 @@ test('transient initialization failures retry, and invalid saved data is never r
   await assert.rejects(f.send('snapshot'), /newer version/);
   assert.deepEqual(f.api.testing.saved, before);
   f.dispose();
+});
+
+test('invalid saved folder hierarchies block writes and preserve every stored record', async () => {
+  const valid = { id: 'work', name: 'Work', parentId: null };
+  for (const groups of [
+    [valid, { ...valid, name: 'Duplicate' }],
+    [null],
+    [{ ...valid, parentId: 'work' }],
+    [{ ...valid, parentId: 'missing' }],
+    [{ ...valid, name: null }],
+    [
+      { ...valid, parentId: 'child' },
+      { id: 'child', name: 'Child', parentId: 'work' },
+    ],
+  ]) {
+    const f = fixture();
+    f.api.testing.saved[MODEL_KEY].groups = groups;
+    const saved = structuredClone(f.api.testing.saved);
+    const memberships = structuredClone(f.api.testing.tabValues);
+    const native = await f.api.tabs.query({});
+    try {
+      for (const type of ['renameGroup', 'createGroup', 'closeTab', 'snapshot'])
+        await assert.rejects(
+          f.send(type, { id: type === 'closeTab' ? 1 : 'work', name: 'Edit' }),
+          /saved folder structure/,
+        );
+      assert.deepEqual(f.api.testing.saved, saved);
+      assert.deepEqual(f.api.testing.tabValues, memberships);
+      assert.deepEqual(await f.api.tabs.query({}), native);
+      // A corrected store can be retried without reloading the extension.
+      f.api.testing.saved[MODEL_KEY].groups = [valid];
+      assert.equal((await f.send('snapshot')).groups.length, 1);
+    } finally {
+      f.dispose();
+    }
+  }
 });
 
 test('legacy saved fields stay opaque and removed actions cannot affect them', async () => {

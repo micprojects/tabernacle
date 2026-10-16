@@ -15,6 +15,7 @@ import {
   MODEL_KEY,
   VIEW_KEY,
   emptyModel,
+  validGroups,
   groupById,
   requireGroup,
   groupPath,
@@ -33,6 +34,15 @@ import {
   unpinnedTabTree,
 } from './model.js';
 
+async function readTogether(reads) {
+  // Reading tabs can repair persisted memberships. Keep those writes inside
+  // the request queue even when another concurrent read fails first.
+  const results = await Promise.allSettled(reads);
+  const failed = results.find((result) => result.status === 'rejected');
+  if (failed) throw failed.reason;
+  return results.map((result) => result.value);
+}
+
 /** All writes are serialized, including new-tab events, so sidebar windows cannot
  * overwrite one another. Durable state lives in storage/sessions, not tab IDs. */
 export function createController(api, notify = () => {}) {
@@ -46,6 +56,7 @@ export function createController(api, notify = () => {}) {
   let requestTabs = new Map();
   const resolvedTabs = new Map();
   let membershipVersion = 0;
+  let stateWrites = 0;
   let queue = Promise.resolve();
   let pendingCreations;
   const forgottenPins = new Map();
@@ -155,6 +166,7 @@ export function createController(api, notify = () => {}) {
       const next = { ...model, folderPins };
       await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
       model = next;
+      stateWrites++;
     }
     if (effects.layout) {
       const view = await viewFor(effects.windowId);
@@ -184,6 +196,10 @@ export function createController(api, notify = () => {}) {
       const next = deserializeModel(saved[MODEL_KEY]) ?? emptyModel();
       if (next.version !== 1 || !Array.isArray(next.groups))
         throw new Error('This Tabernacle data needs a newer version of the extension.');
+      if (!validGroups(next.groups))
+        throw new Error(
+          'The saved folder structure is invalid. Your stored data has not been changed.',
+        );
       next.look = normalizeLook(next.look);
       next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
       await moves.load();
@@ -219,6 +235,7 @@ export function createController(api, notify = () => {}) {
     next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
     await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
     model = next;
+    stateWrites++;
     if (
       JSON.stringify(previousPins.map((item) => item.id)) !==
       JSON.stringify(next.folderPins.map((item) => item.id))
@@ -246,13 +263,18 @@ export function createController(api, notify = () => {}) {
 
   const viewFor = async (windowId) =>
     normalizeView(model, await api.sessions.getWindowValue(windowId, VIEW_KEY));
-  const saveView = (windowId, view) =>
-    api.sessions.setWindowValue(windowId, VIEW_KEY, normalizeView(model, view));
+
+  const saveView = async (windowId, view) => {
+    await api.sessions.setWindowValue(windowId, VIEW_KEY, normalizeView(model, view));
+    stateWrites++;
+  };
+
   const membership = async (tabId) => (await cache.membership(tabId)) ?? null;
 
   async function saveMembership(tabId, value) {
     await cache.saveMembership(tabId, value);
     membershipVersion++;
+    stateWrites++;
     requestTabs.clear();
   }
 
@@ -267,7 +289,7 @@ export function createController(api, notify = () => {}) {
   }
 
   async function selectionState(windowId) {
-    const [tabs, view] = await Promise.all([listTabs(windowId), viewFor(windowId)]);
+    const [tabs, view] = await readTogether([listTabs(windowId), viewFor(windowId)]);
     return { groups: structuredClone(model.groups), tabs, view };
   }
 
@@ -365,20 +387,22 @@ export function createController(api, notify = () => {}) {
           Number(treeOwners.get(a.value.treeId) === a.tab.id) || a.tab.id - b.tab.id,
     );
     const owners = allWindows ? new Map() : new Map(treeOwners);
-    const liveIds = new Set(records.map(({ tab }) => tab.id));
     const groupIds = new Set(model.groups.map((group) => group.id));
     const result = [];
     const repairs = [];
+    const closed = new Set();
     for (const { tab, value } of records) {
       let needsSave = false;
       let owner = owners.get(value.treeId);
-      if (owner !== undefined && owner !== tab.id && !liveIds.has(owner)) {
+      if (owner !== undefined && owner !== tab.id) {
         // A close/restore may race its removal event. Never treat a dead owner
         // as a live duplicate and break the restored tab's saved descendants.
-        const alive = await api.tabs
-          .get(owner)
-          .catch(async () => (await api.tabs.query({})).some((tab) => tab.id === owner));
+        const alive = await findOpenTab(owner);
         if (!alive) {
+          closed.add(owner);
+          cache.forgetMembership(owner);
+          cache.invalidateTabs();
+          requestTabs.clear();
           owners.delete(value.treeId);
           owner = undefined;
         }
@@ -417,7 +441,6 @@ export function createController(api, notify = () => {}) {
         collapsed: Boolean(value.collapsed),
       });
     }
-    const closed = new Set();
     // Settle each bounded batch before deciding whether a failure was a close.
     for (let offset = 0; offset < repairs.length; offset += 32) {
       const batch = repairs.slice(offset, offset + 32);
@@ -449,7 +472,7 @@ export function createController(api, notify = () => {}) {
 
   async function snapshot(windowId, extra = {}) {
     const snapshotRevision = revision;
-    const results = await Promise.allSettled([
+    const [tabs, view, identities, history] = await readTogether([
       listTabs(windowId),
       viewFor(windowId),
       // Containers can be disabled in Firefox. Their absence must not hide tabs.
@@ -458,10 +481,6 @@ export function createController(api, notify = () => {}) {
         .then((tabs) => ({ tabs }))
         .catch((error) => ({ tabs: [], error: error.message })),
     ]);
-    // A failed view read must not release the queue while tab repairs still run.
-    const failed = results.find((result) => result.status === 'rejected');
-    if (failed) throw failed.reason;
-    const [tabs, view, identities, history] = results.map((result) => result.value);
     closeSelection.remember(windowId, { groups: structuredClone(model.groups), tabs, view });
     const pins = reconcilePins(view.pinLayout, model.folderPins, tabs, forgottenPins.get(windowId));
     // Tab-only installations need no additional session writes. Once a mixed
@@ -662,6 +681,18 @@ export function createController(api, notify = () => {}) {
       throw new Error('Firefox could not move that pinned tab. Try again.');
   }
 
+  async function findOpenTab(id) {
+    try {
+      return await api.tabs.get(id);
+    } catch (error) {
+      if (error.message === `Invalid tab ID: ${id}`) return null;
+      // A transient lookup failure is not evidence that the tab was closed.
+      // Only an absent ID in a successful query can confirm it instead.
+      if ((await api.tabs.query({})).some((tab) => tab.id === id)) throw error;
+      return null;
+    }
+  }
+
   async function reopenInContainer(tabId, cookieStoreId, windowId) {
     await checkedTab(tabId, windowId);
     const source = (await listTabs(windowId)).find((tab) => tab.id === tabId);
@@ -705,7 +736,7 @@ export function createController(api, notify = () => {}) {
         throw new Error('The original tab navigated to another page. Try again.');
       if (current.active) await writeTab(windowId, 'update', replacement.id, { active: true });
       await writeTab(windowId, 'remove', source.id);
-      const remaining = await api.tabs.get(source.id).catch(() => null);
+      const remaining = await findOpenTab(source.id);
       if (remaining) throw new Error('The original tab could not be closed. Try again.');
       treeOwners.set(source.treeId, replacement.id);
       tabTreeKeys.delete(source.id);
@@ -714,7 +745,9 @@ export function createController(api, notify = () => {}) {
     } catch (error) {
       // Every fallible preparation step precedes closing the original.
       // If Firefox refuses the close, discard the replacement and retain the source.
-      const original = await api.tabs.get(source.id).catch(() => null);
+      // If confirmation itself failed, retain the replacement: the original
+      // may already be gone, and cleanup must never delete its only successor.
+      const original = await findOpenTab(source.id).catch(() => null);
       if (original) {
         if (source.active)
           await writeTab(windowId, 'update', source.id, { active: true }).catch(() => {});
@@ -1444,7 +1477,7 @@ export function createController(api, notify = () => {}) {
     if (!context || context.revision !== revision) {
       requestTabs = new Map();
       const before = revision;
-      const [tabs, view] = await Promise.all([listTabs(tab.windowId), viewFor(tab.windowId)]);
+      const [tabs, view] = await readTogether([listTabs(tab.windowId), viewFor(tab.windowId)]);
       // This projection belongs only to this batch. Never edit cached snapshots.
       const projected = tabs.map((tab) => ({ ...tab }));
       const byId = new Map(projected.map((tab) => [tab.id, tab]));
@@ -1552,12 +1585,13 @@ export function createController(api, notify = () => {}) {
     request: (message) =>
       enqueue(async () => {
         requestTabs = new Map();
+        const beforeWrites = stateWrites;
         try {
           return await handle(message);
         } catch (error) {
           // Some operations span browser and session writes. Refresh all
           // sidebars from committed state even if a later write failed.
-          if (message.type === 'setGroupPin') publish();
+          if (stateWrites !== beforeWrites) publish();
           throw error;
         }
       }, !folderBackupActions.has(message.type)),
