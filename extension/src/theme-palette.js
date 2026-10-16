@@ -228,7 +228,7 @@ function externalThemeDark(details, preference) {
 }
 
 export function resolveTheme(look, snapshot, dark) {
-  if (look.themeSource === 'tabernacle') return { palette: null, status: 'Using Monochrome' };
+  if (look.themeSource !== 'firefox') return { palette: null, status: 'Using neutral colours' };
   const known = catalogue.get(snapshot.active?.id);
   if (known)
     return {
@@ -246,7 +246,7 @@ export function resolveTheme(look, snapshot, dark) {
     palette,
     status: palette
       ? `Using ${snapshot.active?.name || 'Firefox theme colours'}`
-      : 'Using Monochrome fallback colours',
+      : 'Firefox theme unavailable. Using neutral colours.',
   };
 }
 

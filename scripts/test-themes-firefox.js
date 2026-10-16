@@ -48,6 +48,21 @@ try {
       ...args,
     );
 
+  assert.equal(
+    await driver.executeScript(
+      'return document.documentElement.hasAttribute("data-firefox-theme");',
+    ),
+    false,
+  );
+  const settings = await browserCall(
+    'return (await browser.runtime.sendMessage({type:"tabernacle:getSettings",windowId:(await browser.windows.getCurrent()).id})).data;',
+  );
+  assert.equal(settings.look.themeSource, 'tabernacle');
+  // Theme matching is now explicitly opt-in.
+  await browserCall(
+    'return browser.runtime.sendMessage({type:"tabernacle:setLook",windowId:(await browser.windows.getCurrent()).id,partial:true,value:{themeSource:"firefox"}});',
+  );
+
   await browserCall(
     'await browser.tabs.create({ pinned: true, active: false, url: "about:blank" }); return true;',
   );
@@ -138,9 +153,11 @@ try {
       const newTab = await driver.executeScript(`
         const button = document.querySelector('.new-tab-action');
         button.focus();
-        return { text: getComputedStyle(button).color, themeText: getComputedStyle(document.documentElement).color };
+        const probe=document.createElement('span');probe.style.color='var(--neutral-marker)';document.body.append(probe);
+        const neutral=getComputedStyle(probe).color;probe.remove();
+        return { text: getComputedStyle(button).color, neutral };
       `);
-      assert.equal(newTab.text, newTab.themeText, `${theme.name}/${dark} New tab colour`);
+      assert.equal(newTab.text, newTab.neutral, `${theme.name}/${dark} New tab colour`);
       if (['Firefox Default', 'Sun', 'Pine', 'Lavender'].includes(theme.name))
         await writeFile(
           `test-results/firefox-theme-${theme.name.toLowerCase().replaceAll(' ', '-')}-${dark ? 'dark' : 'light'}.png`,

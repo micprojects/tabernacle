@@ -2,6 +2,19 @@ import { expect } from '@playwright/test';
 import { startUiTest } from './ui-test.js';
 
 const { page, base, close } = await startUiTest({ viewport: { width: 320, height: 820 } });
+
+// Resolve the readable presentation shade independently from stored identity data.
+const folderColor = (color) =>
+  page.evaluate(async (color) => {
+    const { appearanceColor } = await import('/extension/src/appearance-colors.js');
+    const probe = document.createElement('span');
+    probe.style.color = appearanceColor(color, true);
+    document.body.append(probe);
+    const result = getComputedStyle(probe).color;
+    probe.remove();
+    return result;
+  }, color);
+
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 const button = (name) => page.getByRole('button', { name, exact: true });
@@ -42,46 +55,46 @@ try {
   await expect(page.getByRole('dialog')).toBeVisible();
   await button('Save').click();
   await expect(glyph('work')).toHaveAttribute('data-icon', 'plane-16');
-  await expect(glyph('work')).toHaveCSS('color', 'rgb(161, 107, 212)');
+  await expect(glyph('work')).toHaveCSS('color', await folderColor('#a16bd4'));
   await expect(glyph('design')).toHaveAttribute('data-icon', 'folder-open-16');
-  await expect(glyph('design')).toHaveCSS('color', 'rgb(161, 107, 212)');
+  await expect(glyph('design')).toHaveCSS('color', await folderColor('#a16bd4'));
   const { createdGroupId: leaf } = await send('createGroup', {
     name: 'Nested folder',
     parentId: 'design',
   });
-  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(161, 107, 212)');
+  await expect(glyph(leaf)).toHaveCSS('color', await folderColor('#a16bd4'));
   await open('design');
   await expect(choice('Inherited colour')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('.appearance-sample .folder-glyph')).toHaveCSS(
     'color',
-    'rgb(161, 107, 212)',
+    await folderColor('#a16bd4'),
   );
   await expect(button('Reset icon and colour')).toBeDisabled();
   await page.screenshot({ path: 'test-results/folder-appearance-inherited.png' });
   await choice('Book').click();
   await choice('Teal').click();
   await button('Save').click();
-  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(36, 155, 135)');
+  await expect(glyph(leaf)).toHaveCSS('color', await folderColor('#249b87'));
   await send('setGroupAppearance', { id: 'work', appearance: { icon: 'plane', color: 'blue' } });
-  await expect(glyph('research')).toHaveCSS('color', 'rgb(76, 141, 224)');
-  await expect(glyph('design')).toHaveCSS('color', 'rgb(36, 155, 135)');
-  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(36, 155, 135)');
+  await expect(glyph('research')).toHaveCSS('color', await folderColor('#4c8de0'));
+  await expect(glyph('design')).toHaveCSS('color', await folderColor('#249b87'));
+  await expect(glyph(leaf)).toHaveCSS('color', await folderColor('#249b87'));
   await open('design');
   await choice('Inherited colour').click();
   await expect(page.locator('.appearance-sample .folder-glyph')).toHaveCSS(
     'color',
-    'rgb(76, 141, 224)',
+    await folderColor('#4c8de0'),
   );
   await button('Save').click();
   await expect(glyph('design')).toHaveAttribute('data-icon', 'book-16');
-  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(76, 141, 224)');
+  await expect(glyph(leaf)).toHaveCSS('color', await folderColor('#4c8de0'));
   await send('setGroupAppearance', { id: 'personal', appearance: { color: 'red' } });
   await send('moveGroup', { id: 'design', parentId: 'personal' });
   await button('Expand Personal').click();
-  await expect(glyph('design')).toHaveCSS('color', 'rgb(224, 82, 82)');
-  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(224, 82, 82)');
+  await expect(glyph('design')).toHaveCSS('color', await folderColor('#e05252'));
+  await expect(glyph(leaf)).toHaveCSS('color', await folderColor('#e05252'));
   await send('moveGroup', { id: 'design', parentId: 'work' });
-  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(76, 141, 224)');
+  await expect(glyph(leaf)).toHaveCSS('color', await folderColor('#4c8de0'));
   console.log(
     '✓ Cascading colours, independent icons, child overrides, clearing colours and moves',
   );
@@ -99,21 +112,21 @@ try {
     await expect(page.locator('#change-group-appearance .folder-glyph')).toHaveCSS('color', color);
   }
 
-  await destination('Design', 'rgb(76, 141, 224)');
-  await destination('Personal', 'rgb(224, 82, 82)');
-  await destination('Design', 'rgb(76, 141, 224)');
+  await destination('Design', await folderColor('#4c8de0'));
+  await destination('Personal', await folderColor('#e05252'));
+  await destination('Design', await folderColor('#4c8de0'));
   await button('Change folder appearance').click();
   await expect(choice('Inherited colour')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('.appearance-sample .folder-glyph')).toHaveCSS(
     'color',
-    'rgb(76, 141, 224)',
+    await folderColor('#4c8de0'),
   );
   await button('Save').click();
   await button('Create folder').click();
   const draftState = await send('snapshot');
   const inherited = draftState.groups.find((group) => group.name === 'Inherited colour draft');
   expect(inherited.appearance).toBeUndefined();
-  await expect(glyph(inherited.id)).toHaveCSS('color', 'rgb(76, 141, 224)');
+  await expect(glyph(inherited.id)).toHaveCSS('color', await folderColor('#4c8de0'));
   console.log('✓ Destination picker and new-folder previews inherit without saving an override');
 
   await row('work').click();
@@ -138,11 +151,11 @@ try {
   await row('work').click();
   await expect(glyph('design')).toHaveAttribute('data-icon', 'book-16');
   await expect(glyph(leaf)).toHaveAttribute('data-icon', 'folder-open-16');
-  await expect(glyph(leaf)).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(glyph(leaf)).toHaveCSS('color', await folderColor('#37adff'));
   await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-16');
   await button('Expand Research').click();
   await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-open-16');
-  await expect(glyph('research')).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(glyph('research')).toHaveCSS('color', await folderColor('#37adff'));
   await open('research');
   await expect(choice('Folder icon')).toHaveAttribute('aria-checked', 'true');
   await expect(choice('Container icon')).toHaveCount(0);
@@ -151,7 +164,7 @@ try {
   await choice('Music').click();
   await button('Save').click();
   await expect(glyph('research')).toHaveAttribute('data-icon', 'musical-note-16');
-  await expect(glyph('research')).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(glyph('research')).toHaveCSS('color', await folderColor('#37adff'));
   await open('research');
   await button('Reset icon and colour').click();
   await button('Save').click();
@@ -173,7 +186,7 @@ try {
   await send('setGroupContainer', { id: 'research', cookieStoreId: null });
   await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-open-16');
   await expect(pinnedGlyph).toHaveAttribute('data-icon', 'folder-16');
-  await expect(pinnedGlyph).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(pinnedGlyph).toHaveCSS('color', await folderColor('#37adff'));
   await send('setGroupPin', { id: 'research', action: null });
   await page.screenshot({ path: 'test-results/folder-container-icon-inheritance.png' });
   console.log(
@@ -187,24 +200,24 @@ try {
   await choice('Keyboard').click();
   await button('Save').click();
   await expect(glyph('work')).toHaveAttribute('data-icon', 'keyboard-16');
-  await expect(glyph('work')).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(glyph('work')).toHaveCSS('color', await folderColor('#37adff'));
   await send('updateContainer', {
     cookieStoreId: created.createdCookieStoreId,
     name: 'Team',
     icon: 'cart',
     color: 'green',
   });
-  await expect(glyph('work')).toHaveCSS('color', 'rgb(81, 205, 0)');
+  await expect(glyph('work')).toHaveCSS('color', await folderColor('#51cd00'));
   await open('work');
   await choice('Container icon').click();
   await choice('Pink').click();
   await button('Save').click();
   await expect(glyph('work')).toHaveClass(/group-container-icon/);
-  await expect(glyph('work')).toHaveCSS('color', 'rgb(212, 94, 170)');
+  await expect(glyph('work')).toHaveCSS('color', await folderColor('#d45eaa'));
   await open('work');
   await button('Use container icon and colour').click();
   await button('Save').click();
-  await expect(glyph('work')).toHaveCSS('color', 'rgb(81, 205, 0)');
+  await expect(glyph('work')).toHaveCSS('color', await folderColor('#51cd00'));
   expect(await glyph('work').evaluate((node) => node.style.maskImage)).toContain('cart.svg');
   console.log('✓ Container inheritance, independent overrides and reset to an updated container');
 

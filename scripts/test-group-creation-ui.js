@@ -90,7 +90,7 @@ try {
   await expect(page.locator('.group-container-details')).toHaveText('WorkInherited from Work');
   const appearanceGlyph = page.locator('#change-group-appearance .folder-glyph');
   await expect(appearanceGlyph).toHaveAttribute('data-icon', 'folder-16');
-  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(0, 103, 192)');
   await button('Change folder appearance').click();
   await expect(page.getByRole('radio', { name: 'Folder icon', exact: true })).toHaveAttribute(
     'aria-checked',
@@ -108,7 +108,7 @@ try {
   await expect(page.getByLabel('Create in', { exact: true })).toHaveText('Home / Work');
   await expect(change).toBeFocused();
   await expect(appearanceGlyph).toHaveClass(/group-container-icon/);
-  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(81, 205, 0)');
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(21, 129, 52)');
   await button('Change folder appearance').click();
   await expect(page.getByRole('radio', { name: 'Container icon', exact: true })).toHaveAttribute(
     'aria-checked',
@@ -125,7 +125,7 @@ try {
   await change.click();
   await button('Inherit (Work)').click();
   await expect(appearanceGlyph).toHaveAttribute('data-icon', 'folder-16');
-  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(55, 173, 255)');
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(0, 103, 192)');
   await change.click();
   await button('Personal').click();
   await button('Create folder').click();
@@ -156,7 +156,7 @@ try {
     'Research accountNew container · ready to create',
   );
   await expect(appearanceGlyph).toHaveClass(/group-container-icon/);
-  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(175, 81, 245)');
+  await expect(appearanceGlyph).toHaveCSS('color', 'rgb(154, 71, 215)');
   await button('Change folder appearance').click();
   await expect(page.locator('.appearance-sample .folder-glyph')).toHaveClass(
     /group-container-icon/,

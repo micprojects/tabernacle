@@ -2,6 +2,7 @@ import { icon, svgIcon } from './icons.js';
 import { containerIconUrl } from './containers.js';
 import { folderAppearance } from './folder-appearance.js';
 import { groupContainer } from './model.js';
+import { appearanceColor } from './appearance-colors.js';
 
 const sprite = new URL('../icons/ui/folder-icons.svg', import.meta.url).href;
 
@@ -23,6 +24,11 @@ export function folderContainerIconUrl(group, container) {
     : undefined;
 }
 
+// Share the rendered shade with folder labels, guides and new-tab controls.
+export function folderIconColor(color) {
+  return color && CSS.supports('color', color) ? appearanceColor(color, true) || color : null;
+}
+
 export function folderIcon(group, container, { expanded = false, className = '', state } = {}) {
   const appearance = folderAppearance(group, container, state);
   let glyph;
@@ -37,9 +43,10 @@ export function folderIcon(group, container, { expanded = false, className = '',
   } else glyph = icon(expanded ? 'groupOpen' : 'group');
   glyph.classList.add('folder-glyph');
   if (className) glyph.classList.add(className);
-  if (appearance.color && CSS.supports('color', appearance.color)) {
-    glyph.style.color = appearance.color;
-    glyph.style.setProperty('--folder-color', appearance.color);
+  const color = folderIconColor(appearance.color);
+  if (color) {
+    glyph.style.color = color;
+    glyph.style.setProperty('--folder-color', color);
   }
   return glyph;
 }

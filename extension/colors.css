@@ -20,6 +20,7 @@
   --action-text: var(--accent);
   --action-hover: color-mix(in srgb, var(--accent) 12%, var(--background));
   --folder-icon: light-dark(#858585, #adadad);
+  --neutral-marker: light-dark(#858585, #adadad);
   --panel: var(--background);
   --panel-text: var(--text);
   --panel-muted: var(--muted);

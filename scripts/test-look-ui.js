@@ -118,7 +118,7 @@ try {
   };
 
   const guides = () =>
-    child.evaluate((node) => getComputedStyle(node.parentElement, '::after').content);
+    child.evaluate((node) => getComputedStyle(node.parentElement, '::before').content);
 
   const activeTab = () =>
     page.evaluate(
@@ -299,7 +299,7 @@ try {
   const checkConnection = async (parentKey, childKey) => {
     const offsets = await page.locator(`[data-key="${childKey}"]`).evaluate((node, parentKey) => {
       const wrapper = node.parentElement;
-      const elbow = getComputedStyle(wrapper, '::after');
+      const mark = getComputedStyle(wrapper, '::before');
       const bounds = wrapper.getBoundingClientRect();
       const iconSelector = '.group, .tab-icon, .new-tab-action svg';
       const icon = node.querySelector(iconSelector).getBoundingClientRect();
@@ -309,19 +309,38 @@ try {
         .getBoundingClientRect();
       const branch = wrapper.parentElement;
       const stem = getComputedStyle(branch, '::before');
-      const start = bounds.left + parseFloat(elbow.insetInlineStart);
+      const start = bounds.left + parseFloat(mark.insetInlineStart);
+      const continuous = branch.matches(
+        ':has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))',
+      );
       return {
-        gap: icon.left - start - parseFloat(elbow.width),
-        centre: Math.abs(bounds.top + parseFloat(elbow.height) - icon.top - icon.height / 2),
-        parentCentre: Math.abs(start - parentIcon.left - parentIcon.width / 2),
-        parentBottomGap:
-          branch.getBoundingClientRect().top + parseFloat(stem.top) - parentIcon.bottom,
+        width: parseFloat(mark.width),
+        continuous,
+        height: parseFloat(mark.height),
+        centre: Math.abs(
+          bounds.top +
+            parseFloat(mark.top) +
+            parseFloat(mark.height) / 2 -
+            icon.top -
+            icon.height / 2,
+        ),
+        parentCentre: Math.abs(
+          start + parseFloat(mark.width) / 2 - parentIcon.left - parentIcon.width / 2,
+        ),
+        parentBottomGap: continuous
+          ? branch.getBoundingClientRect().top + parseFloat(stem.top) - parentIcon.bottom
+          : null,
+        elbow: getComputedStyle(wrapper, '::after').content,
       };
     }, parentKey);
-    expect(offsets.gap).toBe(2);
-    expect(offsets.centre).toBeLessThanOrEqual(1);
+    expect(offsets.width).toBe(2);
+    expect(offsets.elbow).toBe('none');
+    if (!offsets.continuous) {
+      expect(offsets.centre).toBeLessThanOrEqual(1);
+      expect(offsets.height).toBe(16);
+    }
     expect(offsets.parentCentre).toBeLessThanOrEqual(1);
-    expect(offsets.parentBottomGap).toBe(2);
+    if (offsets.continuous) expect(offsets.parentBottomGap).toBe(2);
   };
 
   const checkGuide = async () => {
@@ -409,7 +428,7 @@ try {
       const plus = await action.locator('svg').boundingBox();
       expect(plus.x - bounds.x).toBe(9);
       expect(
-        await action.evaluate((node) => getComputedStyle(node.parentElement, '::after').content),
+        await action.evaluate((node) => getComputedStyle(node.parentElement, '::before').content),
       ).toBe((await action.getAttribute('data-key')) === 'new-tab:null' ? 'none' : '""');
     }
     expect(
