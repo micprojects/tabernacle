@@ -5,7 +5,7 @@ const unfold = 'cubic-bezier(0.2, 0, 0, 1)';
 
 // Only an explicit, local fold action supplies a key. Ordinary reconciliation
 // never starts motion, including initial load, search and background updates.
-export function createTreeMotion(tree, enabled) {
+export function createTreeMotion(tree, enabled, onSettle = () => {}) {
   const running = new Map();
   const feedback = new Set();
   let pending;
@@ -26,6 +26,7 @@ export function createTreeMotion(tree, enabled) {
       branch.remove();
       branch.replaceChildren();
     }
+    onSettle();
   }
 
   function finishAll() {
@@ -37,6 +38,10 @@ export function createTreeMotion(tree, enabled) {
 
   return {
     finishAll,
+
+    get active() {
+      return running.size > 0;
+    },
 
     prepare(key) {
       pending = null;

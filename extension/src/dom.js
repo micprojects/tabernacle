@@ -20,13 +20,26 @@ export function setAttribute(node, name, value) {
 
 // Row listeners depend only on the stable tab/group ID. Keep that row and its
 // focus; replace its small content only when the displayed values change.
-export function createRowCache() {
+export function createRowCache({ retain = 0 } = {}) {
   const rows = new Map();
   const used = new Set();
+  let clock = 0;
+
+  function detach() {
+    // A retained row must not keep its former parent/subtree alive. Outgoing
+    // animations still own connected rows; detach those after motion finishes.
+    for (const [key, { row }] of rows) if (!used.has(key) && !row.isConnected) row.remove();
+  }
+
   return {
+    begin() {
+      used.clear();
+    },
+
     get(key, values, build) {
       used.add(key);
       let entry = rows.get(key);
+      if (entry) entry.usedAt = ++clock;
       if (
         entry &&
         values.length === entry.values.length &&
@@ -41,15 +54,25 @@ export function createRowCache() {
         entry.row.replaceChildren(...next.childNodes);
         entry.values = values;
       } else {
-        entry = { row: next, values };
+        entry = { row: next, values, usedAt: ++clock };
         rows.set(key, entry);
       }
       return entry.row;
     },
 
-    finish() {
-      for (const key of rows.keys()) if (!used.has(key)) rows.delete(key);
+    finish(isLive = () => false) {
+      const hidden = [];
+      for (const [key, entry] of rows) {
+        if (used.has(key)) continue;
+        if (retain && isLive(key)) hidden.push([key, entry.usedAt]);
+        else rows.delete(key);
+      }
+      hidden.sort((a, b) => b[1] - a[1]);
+      for (const [key] of hidden.slice(retain)) rows.delete(key);
+      detach();
       used.clear();
     },
+
+    detach,
   };
 }

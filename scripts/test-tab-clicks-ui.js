@@ -49,6 +49,13 @@ try {
 
         sendMessage: async (message) => {
           try {
+            if (message.type === 'tabernacle:toggleTab') {
+              if (window.tabClickTest?.holdToggle)
+                await new Promise((resolve) => {
+                  window.tabClickTest.releaseToggle = resolve;
+                });
+              if (window.tabClickTest?.failToggle) throw new Error('Test fold save failed');
+            }
             const data = await (
               await ready
             ).controller.request({
@@ -148,6 +155,56 @@ try {
   await expect(parent).toHaveAttribute('aria-selected', 'true');
   await expect(child).toBeVisible();
   console.log('✓ A favicon click in an unfocused window both activates and unfolds the parent');
+
+  await page.clock.resume();
+  await page.evaluate(async () => {
+    const state = await tabClickTest.send('snapshot');
+    if (state.tabs.find((tab) => tab.id === 1).collapsed)
+      await tabClickTest.send('toggleTab', { id: 1 });
+    tabClickTest.holdToggle = true;
+    tabClickTest.failToggle = true;
+  });
+  await expect(parent).toHaveAttribute('aria-expanded', 'true');
+  expect(
+    await parent.evaluate((node) => {
+      node.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      return node.getAttribute('aria-expanded');
+    }),
+  ).toBe('false');
+  await page.waitForFunction(() => Boolean(tabClickTest.releaseToggle));
+  await page.evaluate(() => {
+    tabClickTest.holdToggle = false;
+    tabClickTest.releaseToggle();
+  });
+  await expect(page.locator('#toast')).toHaveText('Test fold save failed');
+  await expect(parent).toHaveAttribute('aria-expanded', 'true');
+  await page.evaluate(() => {
+    tabClickTest.failToggle = false;
+    tabClickTest.holdToggle = true;
+    tabClickTest.releaseToggle = null;
+  });
+  await parent.evaluate((node) => {
+    for (let i = 0; i < 2; i++)
+      node.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+  });
+  await expect(parent).toHaveAttribute('aria-expanded', 'true');
+  await page.waitForFunction(() => Boolean(tabClickTest.releaseToggle));
+  await page.evaluate(() => {
+    tabClickTest.holdToggle = false;
+    tabClickTest.releaseToggle();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async () =>
+          (await tabClickTest.send('snapshot')).tabs.find((tab) => tab.id === 1).collapsed,
+      ),
+    )
+    .toBe(false);
+  await expect(parent).toHaveAttribute('aria-expanded', 'true');
+  console.log(
+    '✓ Tab folds appear immediately, roll back on failure, and preserve rapid toggle order',
+  );
   expect(errors).toEqual([]);
 } finally {
   await close();
