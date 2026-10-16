@@ -75,6 +75,53 @@ Run `node scripts/test-pinned-folders-ui.js` and
 `node scripts/test-pinned-folders-firefox.js` for the new interactions and native
 multi-window/session checks. Core behaviour is included in `npm test`.
 
+## Domain filtering
+
+`src/domain-filter.js` matches HTTP(S) hostnames, including subdomains. Hosts are case-insensitive,
+normalised through URL parsing, and ignore a leading `www.` and trailing dot.
+The menu uses the clicked host; other subdomains remain explicit (for example,
+`music.youtube.com` filters that host and its subdomains).
+
+The sidebar holds this temporary filter locally, renders all matching tabs in a flat
+list, and hides the pin shelf and normal navigation/search while filtering.
+`src/domain-header.js` shows the chosen tab's favicon and domain in a dedicated header.
+`src/domain-title.js` resolves a site name from an exact host's open homepage title,
+or a shared title suffix on at least two distinct pages with distinct titles. It excludes
+generic/loading titles and child hosts. The name appears above a muted domain; missing
+or ambiguous names retain the domain-only heading. Resolution uses existing tab data
+without page requests or additional permissions. A resolved name lasts until the domain
+view closes, even if its source tab closes.
+The background wash favours the dominant coloured pixels, excluding transparent and
+neutral pixels. For icons whose origin blocks canvas readback, samples are blended
+directly into a display-only canvas; no pixel data is extracted and no host permission
+or third-party favicon service is needed. Missing/broken icons use a globe and neutral
+background. Late image events cannot recolour another domain. The wash adapts to dark
+mode and is hidden in forced colours. The results toolbar shows a live count
+and offers newest opened (default), recently viewed, oldest opened, natural title and
+full tree order (pins first). Sorting changes only the projection; equal sort keys
+retain tree order. The choice lasts for the sidebar session.
+`openedAt` is captured at `onCreated` and persisted with tab membership. Existing tabs
+without a known date follow dated tabs in tree order. Restores preserve recorded dates;
+duplicates receive a new date. Viewing order uses Firefox's native `lastAccessed`.
+Result titles wrap to at most three lines, with actions aligned to the first line.
+The full title remains in the tooltip and accessible name. Ordinary tree/search rows
+stay single-line. Rows expose their original folder in a tooltip and through Show in folder. Activating
+a result passes `expandAncestors: false`; closing uses the single-tab action, even for
+a parent. Close selection asks the live sidebar for its domain and sort,
+including for native Firefox closes. It keeps Firefox's successor if still visible;
+otherwise it selects the nearest remaining match above, then below. An empty list
+keeps Firefox's choice. This temporary context is never stored. No fold or membership
+changes are needed for this view. Dragging and fold
+controls are disabled while filtering; explicit Move tab remains available.
+The header's close button or Escape restores the prior scroll and selection.
+Search remains a separate mode; Ctrl/Command K exits the domain view and opens ordinary
+search. Domain tokens are no longer parsed in the search field.
+
+Run `node scripts/test-domain-filter-ui.js` for live updates, safe closing, keyboard
+navigation, view restoration, favicon colours and narrow-panel/colour-mode checks, and
+`node scripts/test-domain-filter-firefox.js` for native Firefox and window isolation.
+Hostname, colour and ordering checks are included in `npm test`.
+
 ## Moving tabs and folders
 
 `src/move-plan.js` resolves drag and keyboard destinations to the same typed slot.

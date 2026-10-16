@@ -2,6 +2,8 @@ import { createRefreshScheduler } from './refresh-scheduler.js';
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
+import { domainFromUrl, domainResults } from './domain-filter.js';
+import { createDomainHeader } from './domain-header.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
 import { createFaviconTints } from './favicon-tint.js';
@@ -22,6 +24,7 @@ let treeTabs = [];
 let index;
 const rowCache = createRowCache({ retain: 2048 });
 const faviconTint = createFaviconTints();
+const renderDomainHeader = createDomainHeader($('domain-header'));
 const labelColors = createLabelColors(document.documentElement, document.querySelector('.sidebar'));
 const wrappers = new Map();
 const usedWrappers = new Set();
@@ -30,6 +33,12 @@ let breadcrumbKey;
 let breadcrumbItems = [];
 let folderMenuKey;
 let searchOpen = false;
+let domainFilter = null;
+let domainSort = 'newest';
+let domainOrigin;
+let domainSourceId;
+let searchOrigin;
+let searchScroll;
 let changingTree = false;
 let windowFocused = true;
 let windowFocusedAt = -Infinity;
@@ -227,7 +236,7 @@ const {
   onChange(next, key) {
     acceptState(next);
     if (key) selected = key;
-    if (key?.startsWith('tab:')) $('search').value = '';
+    if (key?.startsWith('tab:') && !domainFilter) $('search').value = '';
     render();
   },
 });
@@ -387,6 +396,7 @@ window.addEventListener('pagehide', refreshScheduler.dispose, { once: true });
 
 function enter(id, collapsed) {
   cancelGroupClick();
+  if (domainFilter) leaveDomain({ restoreFocus: false });
   if (searchOpen) showSearch(false, { restoreFocus: false });
   $('search').value = '';
   return action('enterGroup', { id, ...(typeof collapsed === 'boolean' ? { collapsed } : {}) });
@@ -394,6 +404,7 @@ function enter(id, collapsed) {
 
 async function revealFolder(id) {
   cancelGroupClick();
+  if (domainFilter) leaveDomain({ restoreFocus: false });
   if (searchOpen) showSearch(false, { restoreFocus: false });
   $('search').value = '';
   const next = await action('revealGroup', { id });
@@ -456,6 +467,7 @@ function playsAudio(tab) {
 }
 
 function childAudioCount(tab) {
+  if (domainFilter) return 0;
   return (audioInTabs.get(tab.id) || 0) - Number(playsAudio(tab));
 }
 
@@ -654,8 +666,34 @@ function describeContainer(node, { container }, label = 'Container') {
 }
 
 function closeTab(id) {
-  if (tabSubtree(state.tabs, id).length > 1) closeTabTreeDialog(id);
+  if (domainFilter) {
+    const domain = domainFilter;
+    const rows = [...tree.querySelectorAll('.tab-row')];
+    const position = rows.findIndex((row) => row.dataset.id === String(id));
+    const focused = document.activeElement;
+    const hadFocus = rows[position]?.contains(focused) || $('menu').contains(focused);
+    action('closeTab', { id }).then((next) => {
+      if (!next || domainFilter !== domain || !hadFocus) return;
+      // Do not steal focus if the user has already moved elsewhere while closing.
+      if (document.activeElement !== focused && document.activeElement !== document.body) return;
+      const remaining = [...tree.querySelectorAll('.tab-row')];
+      const activeId = next.tabs.find((tab) => tab.active)?.id;
+      const target =
+        remaining.find((row) => Number(row.dataset.id) === activeId) ||
+        remaining[Math.max(0, position - 1)];
+      if (target) selectRow(target);
+      else $('domain-close').focus();
+    });
+  } else if (tabSubtree(state.tabs, id).length > 1) closeTabTreeDialog(id);
   else action('closeTab', { id });
+}
+
+function activateTab(id) {
+  return action('activateTab', { id, ...(domainFilter ? { expandAncestors: false } : {}) });
+}
+
+function closeFilter() {
+  return domainFilter ? { domain: domainFilter, sort: domainSort } : null;
 }
 
 function closeOnMiddleClick(node, id) {
@@ -694,7 +732,7 @@ function pinnedMenu(node, kind, id) {
 
 function createPinnedTab(tab) {
   const label = `${tab.title || 'New tab'}, pinned`;
-  const node = button(label, null, () => action('activateTab', { id: tab.id }), 'pinned-tab');
+  const node = button(label, null, () => activateTab(tab.id), 'pinned-tab');
   node.dataset.key = `tab:${tab.id}`;
   node.removeAttribute('title');
   node.setAttribute('aria-pressed', String(Boolean(tab.active)));
@@ -781,6 +819,11 @@ function createTabRow(tab, expanded, stats) {
   row.classList.toggle('discarded', Boolean(tab.discarded));
   row.setAttribute('aria-selected', String(Boolean(tab.active)));
   row.setAttribute('aria-label', tab.title || 'New tab');
+  if (domainFilter) {
+    const location = tabFolderLabel(tab);
+    row.title = `${tab.title || 'New tab'}\n${tab.url}\n${location}`;
+    row.setAttribute('aria-description', location);
+  }
   describeContainer(row, tab);
   describeAudio(row, audioDescription(tab));
   if (stats.descendants) {
@@ -834,6 +877,11 @@ function createTabRow(tab, expanded, stats) {
   });
   row.addEventListener('click', (event) => {
     if (!event.target.closest('button')) {
+      if (domainFilter) {
+        toggleOnClick = undefined;
+        activateTab(tab.id);
+        return;
+      }
       const toggleChildren = (toggleOnClick ?? true) && canToggleTabChildren();
       toggleOnClick = undefined;
       windowFocusedAt = -Infinity;
@@ -851,12 +899,24 @@ function tabRow(tab, expanded, stats) {
   const row = markSelected(
     rowCache.get(
       `tab:${tab.id}`,
-      [...rowValues(tab), state.look.domains, expanded, stats.descendants, stats.active],
+      [
+        ...rowValues(tab),
+        state.look.domains,
+        expanded,
+        stats.descendants,
+        stats.active,
+        domainFilter ? tabFolderLabel(tab) : null,
+      ],
       () => createTabRow(tab, expanded, stats),
     ),
   );
   labelColors.apply(row, tab.container?.colorCode);
   return row;
+}
+
+function tabFolderLabel(tab) {
+  const path = ['Home', ...index.folders.path(tab.groupId).map((group) => group.name)].join(' / ');
+  return `${tab.pinned ? 'Pinned · ' : ''}Folder: ${path}`;
 }
 
 function tabNode(tab, query, ancestorMatch = false) {
@@ -952,14 +1012,16 @@ function updateTreeToggle(query) {
   const label = hasBranches
     ? `${branches.expanded ? 'Collapse' : 'Expand'} all in ${scope}`
     : 'Expand or collapse folders and tabs';
-  toggle.disabled = changingTree || Boolean(query) || !hasBranches;
+  toggle.disabled = changingTree || Boolean(query || domainFilter) || !hasBranches;
   setAttribute(toggle, 'aria-label', label);
   setAttribute(toggle, 'aria-busy', String(changingTree));
-  toggle.title = query
-    ? 'Clear search to expand or collapse folders and tabs'
-    : hasBranches
-      ? `${label} — folders and nested tabs`
-      : 'Nothing to expand or collapse here';
+  toggle.title = domainFilter
+    ? 'Return to folders to expand or collapse tabs'
+    : query
+      ? 'Clear search to expand or collapse folders and tabs'
+      : hasBranches
+        ? `${label} — folders and nested tabs`
+        : 'Nothing to expand or collapse here';
   const iconName = branches.expanded ? 'collapse' : 'expand';
   if (toggle.dataset.icon !== iconName) {
     toggle.dataset.icon = iconName;
@@ -984,7 +1046,7 @@ function layoutBreadcrumbs() {
   path.classList.remove('measure-path');
   path.scrollLeft = 0;
 
-  if (!searchOpen && (pathHadFocus || pathMenuOpen)) {
+  if (!searchOpen && !domainFilter && (pathHadFocus || pathMenuOpen)) {
     const target = path.contains(focused)
       ? focused
       : collapsed
@@ -1165,14 +1227,16 @@ function render(motionKey = null) {
   tree.classList.toggle('show-connecting-lines', state.look.connectingLines);
   tree.classList.toggle('show-domains', state.look.domains);
   tree.classList.toggle('show-folder-counts', state.look.folderCounts);
+  tree.classList.toggle('domain-results', Boolean(domainFilter));
   const focusedKey = document.activeElement?.closest('[data-key]')?.dataset.key;
   const scroll = tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
-  const query = $('search').value.trim().toLowerCase();
+  const query = domainFilter ? '' : $('search').value.trim().toLowerCase();
+  const filtering = Boolean(query || domainFilter);
   const context = renderContext();
   rowCache.begin();
   if (
-    !query &&
+    !filtering &&
     !motionKey &&
     !drag &&
     !changingTree &&
@@ -1182,11 +1246,17 @@ function render(motionKey = null) {
     restoreRowFocus(focusedKey);
     return;
   }
-  tree.classList.toggle('searching', Boolean(query));
-  const nextMotionContext = JSON.stringify([state.generation, state.view.scopeId, query]);
+  tree.classList.toggle('searching', filtering);
+  tree.setAttribute('aria-label', domainFilter ? `Tabs from ${domainFilter}` : 'Tabs and folders');
+  const nextMotionContext = JSON.stringify([
+    state.generation,
+    state.view.scopeId,
+    query,
+    domainFilter,
+  ]);
   if (nextMotionContext !== motionContext) treeMotion.finishAll();
   motionContext = nextMotionContext;
-  treeMotion.prepare(!query && !drag && !changingTree ? motionKey : null);
+  treeMotion.prepare(!filtering && !drag && !changingTree ? motionKey : null);
   index = createTreeIndex(state, query);
   // Folder menus must not retain destinations renamed, moved or removed elsewhere.
   if (folderMenuKey && folderMenuKey !== folderHierarchyKey()) closeMenu(true);
@@ -1199,11 +1269,11 @@ function render(motionKey = null) {
   const folderPins = new Map(state.folderPins.map((pin) => [pin.id, pin]));
   reconcileChildren(
     $('pinned-tabs'),
-    pins.map((pin) =>
+    (domainFilter ? [] : pins).map((pin) =>
       pin.kind === 'tab' ? pinnedTab(tabPins.get(pin.id)) : pinnedFolder(folderPins.get(pin.id)),
     ),
   );
-  $('pinned-tabs').hidden = !pins.length && !drag;
+  $('pinned-tabs').hidden = Boolean(domainFilter) || (!pins.length && !drag);
   $('pinned-tabs').classList.toggle('empty-pins', !pins.length && Boolean(drag));
   if (scope) {
     $('home').removeAttribute('aria-current');
@@ -1238,20 +1308,48 @@ function render(motionKey = null) {
     layoutBreadcrumbs();
   }
   const active = state.tabs.find((tab) => tab.active);
-  fillChildren(tree, state.view.scopeId, query);
+  $('navigation-capsule').hidden = Boolean(domainFilter);
+  $('sidebar-header').classList.toggle('domain-mode', Boolean(domainFilter));
+  $('domain-tools').hidden = !domainFilter;
+  if (domainFilter) {
+    const results = domainResults(index, domainFilter, query, domainSort);
+    renderDomainHeader(domainFilter, results, domainSourceId);
+    reconcileChildren(
+      tree,
+      results.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
+    );
+    const count = `${results.length} ${results.length === 1 ? 'tab' : 'tabs'}`;
+    $('domain-count').textContent = count;
+    $('domain-status').textContent = `${count} from ${domainFilter} in this window`;
+    $('domain-sort').title =
+      ['newest', 'oldest'].includes(domainSort) &&
+      results.some((tab) => !(Number.isFinite(tab.openedAt) && tab.openedAt > 0))
+        ? 'Tabs without a recorded opening time follow dated tabs in tree order.'
+        : 'Sort filtered tabs';
+  } else {
+    renderDomainHeader(null);
+    fillChildren(tree, state.view.scopeId, query);
+    $('domain-status').textContent = '';
+  }
   treeMotion.finish();
   $('reveal').hidden =
-    Boolean(query) ||
+    filtering ||
     !active ||
     active.pinned ||
     Boolean(tree.querySelector(`[data-key="tab:${active.id}"]:not([inert] *)`));
-  if (query && !tree.querySelector('.row')) {
+  if (filtering && !tree.querySelector('.row')) {
     const empty = el('div', 'empty-state');
     empty.setAttribute('role', 'none');
     empty.append(
       icon('searchLarge'),
-      el('h2', '', 'Nothing found'),
-      el('p', '', 'Try another name or website address.'),
+      el('h2', '', domainFilter ? `No tabs from ${domainFilter}` : 'Nothing found'),
+      el(
+        'p',
+        '',
+        domainFilter
+          ? 'Close this view to return to your folders.'
+          : 'Try another name or website address.',
+      ),
     );
     tree.prepend(empty);
   }
@@ -1269,15 +1367,18 @@ function render(motionKey = null) {
   for (const key of wrappers.keys()) if (!usedWrappers.has(key)) wrappers.delete(key);
   usedWrappers.clear();
   $('new-tab').title = scope ? `New tab in ${scope.name}` : 'New tab';
-  tree.scrollTop = scroll;
+  tree.scrollTop = searchScroll ?? scroll;
+  searchScroll = undefined;
   restoreRowFocus(focusedKey);
-  rememberRender(query, context);
+  rememberRender(filtering, context);
   pointerMoves?.refresh();
 }
 
 function showSearch(show = true, { restoreFocus = true } = {}) {
+  if (show && domainFilter) leaveDomain({ restoreFocus: false });
   if (show || restoreFocus) cancelGroupClick();
   if (show) closeMenu();
+  if (show && !searchOpen) searchOrigin = { scroll: tree.scrollTop, selected };
   searchOpen = show;
   $('navigation-capsule').classList.toggle('search-open', show);
   $('breadcrumbs').inert = show;
@@ -1293,6 +1394,51 @@ function showSearch(show = true, { restoreFocus = true } = {}) {
     $('search').value = '';
     render();
     if (restoreFocus) $('search-toggle').focus();
+  }
+}
+
+function filterByDomain(domain, sourceId) {
+  if (!domain) return;
+  cancelGroupClick();
+  closeMenu();
+  if (!domainFilter) {
+    domainOrigin = searchOpen ? searchOrigin : { scroll: tree.scrollTop, selected };
+    if (searchOpen) showSearch(false, { restoreFocus: false });
+  }
+  domainFilter = domain;
+  domainSourceId = sourceId;
+  searchScroll = 0;
+  render();
+  $('domain-close').focus({ preventScroll: true });
+}
+
+function leaveDomain({ restoreFocus = true } = {}) {
+  if (!domainFilter) return;
+  cancelGroupClick();
+  closeMenu();
+  domainFilter = null;
+  domainSourceId = null;
+  selected = domainOrigin?.selected;
+  searchScroll = domainOrigin?.scroll ?? 0;
+  domainOrigin = null;
+  render();
+  layoutBreadcrumbs();
+  if (restoreFocus) {
+    const row = selected && tree.querySelector(`[data-key="${CSS.escape(selected)}"]`);
+    (row || $('scope-heading') || $('home')).focus({ preventScroll: true });
+  }
+}
+
+async function showTabInFolder(id) {
+  const tab = state.tabs.find((tab) => tab.id === id);
+  if (!tab) return;
+  await enter(tab.groupId);
+  const next = await action('activateTab', { id, reveal: true });
+  if (!next) return;
+  const row = document.querySelector(`[data-key="tab:${id}"]`);
+  if (row) {
+    selectRow(row);
+    row.scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -1316,13 +1462,14 @@ function rowKey(event, row, kind, id) {
   if (event.target !== row || moveTreeFocus(event, row)) return;
   const rows = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')];
   const index = rows.indexOf(row);
-  const tab = kind === 'tab' ? treeTabs.find((tab) => tab.id === id) : null;
-  const hasChildren = kind === 'group' || tabChildren(treeTabs, id).length > 0;
+  const tab =
+    kind === 'tab' ? (domainFilter ? state.tabs : treeTabs).find((tab) => tab.id === id) : null;
+  const hasChildren = !domainFilter && (kind === 'group' || tabChildren(treeTabs, id).length > 0);
   const collapsed = kind === 'group' ? state.view.collapsed.includes(id) : tab?.collapsed;
   const toggle = () => action(kind === 'group' ? 'toggleGroup' : 'toggleTab', { id });
   if (event.key === 'Enter') {
     event.preventDefault();
-    kind === 'group' ? enter(id) : action('activateTab', { id });
+    kind === 'group' ? enter(id) : activateTab(id);
   } else if (event.key === ' ' && hasChildren) {
     event.preventDefault();
     toggle();
@@ -1332,6 +1479,7 @@ function rowKey(event, row, kind, id) {
     else if (rows[index + 1]) selectRow(rows[index + 1]);
   } else if (event.key === 'ArrowLeft' && !event.altKey) {
     event.preventDefault();
+    if (domainFilter) return;
     if (hasChildren && !collapsed) toggle();
     else {
       const parentKey =
@@ -1637,13 +1785,24 @@ function contextMenu(kind, id, x, y) {
   else {
     const tab = state.tabs.find((tab) => tab.id === id);
     if (!tab) return;
+    const domain = domainFromUrl(tab.url);
     menu(
       [
+        {
+          label: 'Filter by domain',
+          icon: 'search',
+          run: () => filterByDomain(domain, id),
+          disabled: !domain,
+        },
+        ...(domainFilter
+          ? [{ label: 'Show in folder', icon: 'group', run: () => showTabInFolder(id) }]
+          : []),
+        null,
         { label: 'New child tab', icon: 'plus', run: () => action('newChildTab', { id }) },
         ...(tab.parentTabId !== null
           ? [{ label: 'Detach from parent', icon: 'back', run: () => action('detachTab', { id }) }]
           : []),
-        ...(!tab.pinned && tabChildren(treeTabs, id).length
+        ...(!domainFilter && !tab.pinned && tabChildren(treeTabs, id).length
           ? [
               {
                 label: tab.collapsed ? 'Expand child tabs' : 'Collapse child tabs',
@@ -1681,7 +1840,10 @@ function contextMenu(kind, id, x, y) {
         },
         null,
         {
-          label: tabSubtree(state.tabs, id).length > 1 ? 'Close tab and nested tabs…' : 'Close tab',
+          label:
+            !domainFilter && tabSubtree(state.tabs, id).length > 1
+              ? 'Close tab and nested tabs…'
+              : 'Close tab',
           icon: 'close',
           run: () => closeTab(id),
         },
@@ -1762,7 +1924,8 @@ pointerMoves = createPointerMove({
   tree,
   shelf: $('pinned-tabs'),
   getState: () => confirmedState,
-  canStart: () => Boolean(state) && !movingItem && !activeActions && !$('dialog').open,
+  canStart: () =>
+    Boolean(state) && !domainFilter && !movingItem && !activeActions && !$('dialog').open,
   announce,
   commit: commitMove,
 
@@ -1791,6 +1954,7 @@ $('home').append(icon('home'));
 $('search-toggle').append(icon('search'));
 $('settings').append(icon('settings'));
 $('search-close').append(icon('close'));
+$('domain-close').append(icon('close'));
 $('reveal').querySelector('span').append(icon('enter'));
 $('dialog-icon').append(icon('groupPlus'));
 $('new-tab').append(icon('plus'));
@@ -1817,6 +1981,12 @@ recentlyClosed = createRecentActivity({
 $('home').addEventListener('click', () => enter(null));
 $('search-toggle').addEventListener('click', () => showSearch());
 $('search-close').addEventListener('click', () => showSearch(false));
+$('domain-close').addEventListener('click', () => leaveDomain());
+$('domain-sort').addEventListener('change', () => {
+  domainSort = $('domain-sort').value;
+  searchScroll = 0;
+  render();
+});
 $('navigation-capsule').addEventListener('click', (event) => {
   if (searchOpen || event.defaultPrevented || event.target.closest('button, input, svg')) return;
   showSearch();
@@ -1844,7 +2014,7 @@ $('new-tab').addEventListener('contextmenu', (event) => newTabMenu(event, state?
 $('new-tab').addEventListener('keydown', (event) => newTabMenu(event, state?.view.scopeId));
 $('new-group').addEventListener('click', () => createDialog());
 $('tree-toggle').addEventListener('click', async () => {
-  if (!state || changingTree || $('search').value.trim()) return;
+  if (!state || changingTree || domainFilter || $('search').value.trim()) return;
   const branches = scopeBranches(index, state.view);
   if (!branches.groupIds.size && !branches.tabs.length) return;
   const restoreFocus = document.activeElement === $('tree-toggle');
@@ -1867,10 +2037,16 @@ $('tree-toggle').addEventListener('click', async () => {
 });
 $('settings').addEventListener('click', openSettings);
 document.addEventListener('pointerdown', (event) => {
-  const dismissSearch = searchOpen && !$('navigation-capsule').contains(event.target);
+  const dismissSearch = shouldDismissSearch(event.target);
+  const dismissDomain = domainFilter && event.target.closest('footer');
   // Clearing the filter must not move or replace a target before its click.
-  if (event.target.closest('.row, .pinned-tab, .recently-closed-row') || dismissSearch)
+  if (
+    event.target.closest('.row, .pinned-tab, .recently-closed-row') ||
+    dismissSearch ||
+    dismissDomain
+  )
     pointerHeld = true;
+  if (dismissDomain) leaveDomain({ restoreFocus: false });
   if (dismissSearch) {
     showSearch(false, { restoreFocus: false });
     if (state) updateTreeToggle('');
@@ -1887,15 +2063,21 @@ document.addEventListener('pointerdown', (event) => {
 document.addEventListener(
   'click',
   (event) => {
-    if (!searchOpen || $('navigation-capsule').contains(event.target)) return;
+    if (domainFilter && event.target.closest('footer')) leaveDomain({ restoreFocus: false });
+    if (!shouldDismissSearch(event.target)) return;
     // Keyboard and assistive clicks have no pointerdown. Let the control act
     // before rendering the unfiltered tree, including buttons that stop bubbling.
     setTimeout(() => {
-      if (searchOpen) showSearch(false, { restoreFocus: false });
+      if (shouldDismissSearch(event.target)) showSearch(false, { restoreFocus: false });
     }, 0);
   },
   true,
 );
+
+function shouldDismissSearch(target) {
+  return searchOpen && !$('navigation-capsule').contains(target);
+}
+
 for (const type of ['pointerup', 'pointercancel']) {
   document.addEventListener(type, () => {
     pointerHeld = false;
@@ -1933,7 +2115,10 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     showSearch();
   }
-  if (event.key === 'Escape' && searchOpen) {
+  if (event.key === 'Escape' && domainFilter) {
+    event.preventDefault();
+    leaveDomain();
+  } else if (event.key === 'Escape' && searchOpen) {
     event.preventDefault();
     showSearch(false);
   }
@@ -1947,7 +2132,7 @@ dropTarget($('home'), 'inside', null);
 async function start() {
   if (demo) {
     const { connectDemo } = await import('../../preview/session.js');
-    const controller = await connectDemo(scheduleRefresh);
+    const controller = await connectDemo(scheduleRefresh, closeFilter);
     windowId = 1;
     request = (type, args = {}) => controller.request({ type, windowId, ...args });
   } else if (globalThis.browser?.runtime?.id) {
@@ -1979,6 +2164,8 @@ async function start() {
     request = (type, args) => (type === 'snapshot' ? readSnapshot() : send(type, args));
     browser.runtime.onMessage.addListener((message) => {
       if (message.type === 'tabernacle:changed') scheduleRefresh(message);
+      if (message.type === 'tabernacle:getCloseFilter' && message.windowId === windowId)
+        return Promise.resolve(closeFilter());
     });
   } else
     throw new Error('Load Tabernacle as a Firefox extension, or open the interactive preview.');

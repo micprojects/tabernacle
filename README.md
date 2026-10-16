@@ -30,6 +30,19 @@ Open a folder to see just its tabs. Use the folder path to move back up.
 
 Search tab titles, URLs and folder names, including in collapsed folders.
 
+Right-click a tab and choose **Filter by domain** to see that site's tabs from every folder
+in the current window as a flat list, including pinned tabs. A dedicated header shows
+the site's favicon on a softly tinted background. When a site name can be resolved
+from open tab titles, it appears above the smaller domain; otherwise the domain is the heading.
+The result count and sort menu sit above the list. Newest opened comes first by default;
+you can also choose Recently viewed, Oldest opened, Title A–Z or Tree order.
+Result titles wrap automatically to a maximum of three lines.
+Tabs without a recorded opening time follow dated tabs in tree order.
+The filter stays open as you visit or close tabs; closing a result preserves its nested tabs.
+If Firefox selects a tab outside the filtered list after a close, Tabernacle activates
+the nearest result above, or below when there isn't one above.
+Use the large close button or press Escape to return to your previous folder view.
+
 <img src="assets/screenshots/03-search-ui.png" width="550" alt="Search results for grid, showing matching tabs within their folders.">
 
 ## Keep sign-ins separate

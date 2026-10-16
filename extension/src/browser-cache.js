@@ -95,7 +95,11 @@ export function createBrowserCache(api, changed = () => {}) {
   ]);
   watch(api.tabs.onUpdated, (id, properties, tab) => {
     if (!updateMetadata(id, properties, tab.windowId)) invalidateTabs(tab.windowId);
-    if (Object.keys(properties).some((key) => visibleProperties.has(key)))
+    // Domain headings can resolve a site name once its page title has settled.
+    if (
+      properties.status === 'complete' ||
+      Object.keys(properties).some((key) => visibleProperties.has(key))
+    )
       changed({ windowId: tab.windowId });
   });
   watch(api.tabs.onCreated, (tab) => tabChanged(tab.windowId));
