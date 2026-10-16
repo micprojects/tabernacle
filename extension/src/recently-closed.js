@@ -256,5 +256,5 @@ export function createRecentActivity({
   });
   window.addEventListener('blur', () => close());
   window.addEventListener('pagehide', () => close(), { once: true });
-  return { open, close, render, isOpen: () => !popup.hidden };
+  return { open, close, render };
 }

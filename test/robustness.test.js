@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
-import { MODEL_KEY, TAB_KEY } from '../extension/src/model.js';
+import { MODEL_KEY } from '../extension/src/model.js';
 import { PENDING_MOVE_KEY } from '../extension/src/move-recovery.js';
 import { memoryBrowser } from '../preview/browser.js';
 

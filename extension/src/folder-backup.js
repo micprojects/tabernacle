@@ -116,7 +116,7 @@ export function exportFolderBackup(groups, identities, now = new Date()) {
   });
 }
 
-export function folderImportDestination(groups, value = {}) {
+function folderImportDestination(groups, value = {}) {
   if (!object(value)) throw new Error('Choose where to import the folders.');
   const parentId = value.parentId ?? null;
   if (parentId !== null && !groups.some((group) => group.id === parentId))

@@ -435,60 +435,13 @@ svg.folder-icon,
   color: var(--muted);
   font-size: 12px;
 }
-.move-field {
-  display: grid;
-  gap: 5px;
-  margin-block: 10px;
-  min-width: 0;
-}
-.move-field select {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-}
-.move-summary {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
 .toast-action {
   text-decoration: underline;
   color: inherit;
   padding: 2px 5px;
 }
-.row.drop-before::before,
-.row.drop-after::after {
-  content: '';
-  position: absolute;
-  height: 2px;
-  background: var(--focus);
-  left: 4px;
-  right: 4px;
-  z-index: 2;
-  border-radius: 1px;
-}
-.row.drop-before::before {
-  top: -1px;
-}
-.row.drop-after::after {
-  bottom: -1px;
-}
 .dragging {
   opacity: 0.45;
-}
-.root-drop {
-  border: 1px dashed var(--focus);
-  color: var(--text);
-  padding: 10px;
-  border-radius: 5px;
-  text-align: center;
-  font-size: 11px;
-  margin: 15px 6px;
-}
-.root-drop.drop-inside {
-  color: var(--selected-text);
-  background: var(--selected);
 }
 @media (max-width: 270px) {
   .tree {

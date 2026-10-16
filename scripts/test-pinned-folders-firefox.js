@@ -58,6 +58,36 @@ try {
       args,
     );
   const signature = (state) => state.pins.map((item) => `${item.kind}:${item.id}`);
+
+  const movePin = async (item, before) => {
+    // Plan inside Firefox like the sidebar: WebDriver reorders object keys,
+    // which would change the serialized placement used for stale-state checks.
+    const { state, operationId } = await call(
+      `const [item,before]=arguments;
+      const {moveSource,resolveMove}=await import(browser.runtime.getURL('src/move-plan.js'));
+      const windowId=(await browser.windows.getCurrent()).id;
+      const request=async(type,args={})=>{
+        const result=await browser.runtime.sendMessage({type:'tabernacle:'+type,windowId,...args});
+        if(!result.ok)throw new Error(result.error);
+        return result.data;
+      };
+      const current=await request('snapshot');
+      const source=moveSource(current,item.kind==='group'?'pin-group':'tab',
+        item.kind==='group'?item.id:current.tabs.find(tab=>tab.treeId===item.id).id);
+      const destination={kind:'pins',before};
+      const operationId=crypto.randomUUID();
+      const state=await request('moveItem',{
+        source,destination,operationId,expected:resolveMove(current,source,destination).expected,
+      });
+      return {state,operationId};`,
+      item,
+      before,
+    );
+    assert.equal(state.moveResult.committed, true);
+    assert.equal(state.moveResult.operationId, operationId);
+    return state;
+  };
+
   const folder = (id) => ({ kind: 'group', id });
   const tabRef = (state, id) => ({
     kind: 'tab',
@@ -93,9 +123,9 @@ try {
   let first = await send('snapshot');
   const a = tabRef(first, firstPins[0].id),
     b = tabRef(first, firstPins[1].id);
-  await send('movePinnedItem', { item: folder(work), before: b });
+  await movePin(folder(work), b);
   const secondBefore = await send('snapshot', { windowId: secondWindow.id });
-  await send('movePinnedItem', { item: folder(other), before: a });
+  await movePin(folder(other), a);
   first = await send('snapshot');
   assert.deepEqual(first.pins, [folder(other), a, folder(work), b]);
   const second = await send('snapshot', { windowId: secondWindow.id });
@@ -104,7 +134,7 @@ try {
     folder(other),
     folder(work),
   ]);
-  await send('movePinnedItem', { item: b, before: a });
+  await movePin(b, a);
   assert.deepEqual(
     (
       await call('return browser.tabs.query({windowId:arguments[0],pinned:true});', firstWindow)

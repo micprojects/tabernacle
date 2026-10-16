@@ -59,10 +59,6 @@ export function appearanceColor(color, text = false) {
   return cache.get(key);
 }
 
-export function setItemColor(node, color) {
-  node.style.setProperty('--item-colour', appearanceColor(color) || 'var(--neutral-marker)');
-}
-
 // Keep the identity hue as strong as possible while meeting text contrast on
 // every supplied surface. Surfaces that cannot share a readable identity shade
 // use the neutral text colour instead.

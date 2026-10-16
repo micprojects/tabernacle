@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { memoryBrowser } from '../preview/browser.js';
+import { pinMoveMessage } from './helpers/pin-move.js';
 
 function fixture() {
   const api = memoryBrowser({
@@ -23,9 +24,19 @@ function fixture() {
     },
   });
   const controller = createController(api);
+  const send = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
+
+  const message = async (id, beforeId = null) => {
+    const state = await send('snapshot');
+    const ref = (id) => ({ kind: 'tab', id: state.tabs.find((tab) => tab.id === id).treeId });
+    return pinMoveMessage(state, ref(id), beforeId === null ? null : ref(beforeId));
+  };
+
   return {
     api,
-    send: (type, args = {}) => controller.request({ type, windowId: 1, ...args }),
+    send,
+    message,
+    movePin: async (id, beforeId) => send('moveItem', await message(id, beforeId)),
   };
 }
 
@@ -36,13 +47,15 @@ const order = (state) =>
     .map((tab) => tab.id);
 
 test('pins move in both directions and to the end using native order, retaining their trees and selection', async () => {
-  const { api, send } = fixture();
+  const { api, send, movePin } = fixture();
   const before = await send('snapshot');
   const saved = structuredClone(api.testing.tabValues);
   const otherWindow = await api.tabs.query({ windowId: 2 });
-  assert.deepEqual(order(await send('movePinnedTab', { id: 3, beforeId: 1 })), [3, 1, 2]);
-  assert.deepEqual(order(await send('movePinnedTab', { id: 3, beforeId: 2 })), [1, 3, 2]);
-  const moved = await send('movePinnedTab', { id: 1, beforeId: null });
+  assert.deepEqual(order(await movePin(3, 1)), [3, 1, 2]);
+  assert.deepEqual(order(await movePin(3, 2)), [1, 3, 2]);
+  const moved = await movePin(1);
+  assert.equal(moved.moveResult.committed, true);
+  assert.equal(moved.moveResult.revealError, undefined);
   assert.deepEqual(order(moved), [3, 2, 1]);
   assert.equal(moved.tabs.find((tab) => tab.active).id, 2);
   assert.deepEqual(
@@ -57,47 +70,62 @@ test('pins move in both directions and to the end using native order, retaining 
 });
 
 test('self drops and drops into the current position do not issue browser moves', async () => {
-  const { api, send } = fixture();
+  const { api, send, movePin } = fixture();
   await send('snapshot');
   api.tabs.move = async () => assert.fail('The order is already correct');
-  for (const args of [
-    { id: 1, beforeId: 1 },
-    { id: 1, beforeId: 2 },
-    { id: 3, beforeId: null },
-  ])
-    assert.deepEqual(order(await send('movePinnedTab', args)), [1, 2, 3]);
+  for (const [id, beforeId] of [
+    [1, 1],
+    [1, 2],
+    [3, null],
+  ]) {
+    const state = await movePin(id, beforeId);
+    assert.deepEqual(order(state), [1, 2, 3]);
+    assert.equal(state.moveResult.committed, true);
+    assert.equal(state.moveResult.label, 'Already in this position.');
+  }
 });
 
-test('stale, unpinned and other-window sources or destinations cannot alter pinned order', async () => {
-  const { api, send } = fixture();
+test('invalid and other-window pin moves are rejected by the controller, and unpinning invalidates prepared moves', async () => {
+  const { api, send, message } = fixture();
   const before = await send('snapshot');
-  for (const args of [
-    { id: 4, beforeId: 1 },
-    { id: 5, beforeId: 1 },
-    { id: 1, beforeId: 4 },
-    { id: 1, beforeId: 5 },
-    { id: 1, beforeId: 999 },
-    { id: 999, beforeId: 1 },
+  const planned = await message(3, 1);
+  // Send invalid messages to the controller itself, rather than only testing
+  // the client-side planner's validation.
+  for (const invalid of [
+    { source: { kind: 'tab', id: 5, treeId: 'other-window' } },
+    { source: { kind: 'tab', id: 999, treeId: 'missing' } },
+    { source: { ...planned.source, treeId: 'replaced' } },
+    ...['child', 'other-window', 'missing'].map((id) => ({
+      destination: { kind: 'pins', before: { kind: 'tab', id } },
+    })),
   ]) {
-    await assert.rejects(send('movePinnedTab', args));
+    await assert.rejects(send('moveItem', { ...planned, ...invalid }));
     assert.deepEqual((await send('snapshot')).tabs, before.tabs);
   }
+  const destination = await message(1, 3);
   await api.tabs.update(3, { pinned: false });
-  await assert.rejects(send('movePinnedTab', { id: 1, beforeId: 3 }), /destination/);
-  await assert.rejects(send('movePinnedTab', { id: 3, beforeId: 1 }), /no longer pinned/);
+  const unpinned = await send('snapshot');
+  await assert.rejects(send('moveItem', destination), /destination/);
+  await assert.rejects(send('moveItem', planned), /source or destination has moved/);
+  assert.deepEqual((await send('snapshot')).tabs, unpinned.tabs);
 });
 
 test('native move errors and silent failures are reported without changing saved tab organisation', async () => {
-  const { api, send } = fixture();
+  const { api, send, message } = fixture();
   const before = await send('snapshot');
+  const planned = await message(3, 1);
   const move = api.tabs.move;
   api.tabs.move = async () => {
     throw new Error('Move refused');
   };
-  await assert.rejects(send('movePinnedTab', { id: 3, beforeId: 1 }), /Move refused/);
+  await assert.rejects(send('moveItem', planned), /Move refused/);
   api.tabs.move = async () => [];
-  await assert.rejects(send('movePinnedTab', { id: 3, beforeId: 1 }), /could not move/);
+  await assert.rejects(send('moveItem', planned), /could not move/);
   assert.deepEqual((await send('snapshot')).tabs, before.tabs);
   api.tabs.move = move;
-  assert.deepEqual(order(await send('movePinnedTab', { id: 3, beforeId: 1 })), [3, 1, 2]);
+  const moved = await send('moveItem', planned);
+  assert.deepEqual(order(moved), [3, 1, 2]);
+  assert.equal(moved.moveResult.operationId, planned.operationId);
+  api.tabs.move = async () => assert.fail('A committed operation must not move twice');
+  assert.deepEqual(order(await send('moveItem', planned)), [3, 1, 2]);
 });

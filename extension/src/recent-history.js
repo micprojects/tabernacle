@@ -92,22 +92,6 @@ export function recentItems(state, filter = 'all', query = '') {
   });
 }
 
-export function recentDay(timestamp, now = Date.now()) {
-  if (!timestamp) return 'Earlier';
-  const date = new Date(timestamp);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (date >= today) return 'Today';
-  if (date >= yesterday) return 'Yesterday';
-  return date.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    ...(date.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}),
-  });
-}
-
 export function recentTime(timestamp, now = Date.now()) {
   if (!timestamp) return '';
   const elapsed = Math.max(0, now - timestamp);

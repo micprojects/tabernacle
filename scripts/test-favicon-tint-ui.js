@@ -170,6 +170,8 @@ try {
   await settings.locator('#appearance-reset').click();
   await settings.locator('[name="domains"]').check();
   await settings.locator('#appearance-save').click();
+  // Domain changes rebuild label nodes; wait for the sidebar to accept the save.
+  await expect(page.locator('#tree')).toHaveClass(/show-domains/);
   await expect(redLabel).not.toHaveCSS('color', originalLabel);
   const redColor = await textColor(redLabel);
   expect(await textColor(blueLabel)).not.toBe(redColor);

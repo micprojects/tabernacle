@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { normalizeView } from '../extension/src/model.js';
-import { recentItems, recentDay, recentTime } from '../extension/src/recent-history.js';
+import { recentItems, recentTime } from '../extension/src/recent-history.js';
 import { memoryBrowser } from '../preview/browser.js';
 
 function fixture() {
@@ -207,12 +207,9 @@ test('folder activity uses the latest opening or expansion once per folder in bo
   );
 });
 
-test('day groups use local calendar dates and relative times handle unknown and future times', () => {
+test('relative times handle unknown and future times', () => {
   const now = new Date(2026, 9, 10, 0, 10).getTime();
-  assert.equal(recentDay(now - 5 * 60_000, now), 'Today');
-  assert.equal(recentDay(now - 20 * 60_000, now), 'Yesterday');
-  assert.notEqual(recentDay(new Date(2026, 9, 8).getTime(), now), 'Yesterday');
-  assert.equal(recentDay(0, now), 'Earlier');
+  assert.equal(recentTime(0, now), '');
   assert.equal(recentTime(now + 1000, now), 'Just now');
   assert.equal(recentTime(now - 120_000, now), '2m');
   assert.equal(recentTime(now - 3_600_000, now), '1h');
