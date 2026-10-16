@@ -1,7 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 16 16" fill="none">
-  <!-- Only violet meets the transparent outer edge, avoiding a pale fringe. -->
-  <rect width="16" height="16" rx="3.5" fill="#75669f" />
-  <g fill="#f4f1fa">
+  <!-- Match the toolbar's neutral palette; PNG exports use the light variant. -->
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .frame {
+        fill: #fbfbfb;
+      }
+      .panes {
+        fill: #5e5e5e;
+      }
+    }
+  </style>
+  <rect class="frame" width="16" height="16" rx="3.5" fill="#5e5e5e" />
+  <g class="panes" fill="#fbfbfb">
     <path d="M3.5 1.5h9a2 2 0 0 1 2 2v1h-13v-1a2 2 0 0 1 2-2Z" />
     <path d="M1.5 6h4v8.5h-2a2 2 0 0 1-2-2Z" />
     <path d="M7 6h7.5v6.5a2 2 0 0 1-2 2H7Z" />
