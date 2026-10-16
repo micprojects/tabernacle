@@ -11,7 +11,7 @@ const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 
 let openLook, settings, mode;
-const background = (scheme) => (scheme === 'dark' ? 'rgb(32, 32, 32)' : 'rgb(247, 247, 247)');
+const background = (scheme) => (scheme === 'dark' ? 'rgb(32, 32, 32)' : 'rgb(255, 255, 255)');
 
 const checkPalette = async (scheme) => {
   await expect(page.locator('html')).toHaveCSS('background-color', background(scheme));

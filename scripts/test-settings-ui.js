@@ -153,6 +153,7 @@ try {
   expect((await send('getSettings')).look).toEqual({
     connectingLines: false,
     domains: true,
+    folderCounts: false,
     themeSource: 'tabernacle',
     colorScheme: 'dark',
   });

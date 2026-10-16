@@ -24,7 +24,7 @@ export function folderContainerIconUrl(group, container) {
     : undefined;
 }
 
-// Share the rendered shade with folder labels, guides and new-tab controls.
+// Share the rendered shade with folder guides and new-tab controls.
 export function folderIconColor(color) {
   return color && CSS.supports('color', color) ? appearanceColor(color, true) || color : null;
 }

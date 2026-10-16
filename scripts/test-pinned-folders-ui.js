@@ -89,7 +89,7 @@ try {
   await expect(pin('design')).toHaveAttribute('title', /Work \/ Ideas\nOpen folder/);
   await expect(pin('design').locator('use')).toHaveAttribute('href', /#book-16$/);
   const folderColour = await row('design')
-    .locator('.label')
+    .locator('.folder-glyph')
     .evaluate((node) => getComputedStyle(node).color);
   await expect(pin('design').locator('.folder-glyph')).toHaveCSS('color', folderColour);
   expect(await pin('design').textContent()).toBe('');

@@ -97,6 +97,28 @@ try {
     exact: true,
   });
 
+  const counts = settings.getByRole('checkbox', { name: 'Show folder tab counts', exact: true });
+  const folderCount = group.locator('.group-count');
+  await expect(counts).not.toBeChecked();
+  await expect(folderCount).toBeHidden();
+  await expect(group).toHaveAccessibleName(/4 tabs/);
+  await expect(page.locator('[data-key="group:work"]')).toHaveCSS('min-height', '32px');
+  await expect(page.locator('#tree > .group-node').nth(1)).toHaveCSS('border-top-width', '0px');
+  await counts.check();
+  await settings.locator('#appearance-reset').click();
+  await expect(counts).not.toBeChecked();
+  await expect(folderCount).toBeHidden();
+  await counts.check();
+  await settings.locator('#appearance-save').click();
+  await expect(folderCount).toBeVisible();
+  await expect(folderCount).toHaveText('4');
+  await settings.reload();
+  await expect(counts).toBeChecked();
+  await counts.uncheck();
+  await settings.locator('#appearance-save').click();
+  await expect(folderCount).toBeHidden();
+  await expect(page.locator('#tree')).not.toHaveClass(/show-folder-counts/);
+
   const saveLook = async (showLines, showDomains) => {
     await openLook();
     await lines.setChecked(showLines);
@@ -269,7 +291,7 @@ try {
   expect(await footer()).toEqual(baselineFooter);
   await page.screenshot({ path: 'test-results/look-lines.png' });
 
-  // Domains apply to parent tabs as well as leaves, without adding group counts.
+  // Domains apply to parent tabs as well as leaves; folder totals remain separate.
   await saveLook(false, true);
   await expect.poll(guides).toBe('none');
   await expect(parent.locator('.row-detail')).toHaveText('figma.com');
@@ -310,12 +332,8 @@ try {
       const branch = wrapper.parentElement;
       const stem = getComputedStyle(branch, '::before');
       const start = bounds.left + parseFloat(mark.insetInlineStart);
-      const continuous = branch.matches(
-        ':has(> :is(.group-node, .tab-node) > :is(.branch, .tab-branch))',
-      );
       return {
         width: parseFloat(mark.width),
-        continuous,
         height: parseFloat(mark.height),
         centre: Math.abs(
           bounds.top +
@@ -327,20 +345,19 @@ try {
         parentCentre: Math.abs(
           start + parseFloat(mark.width) / 2 - parentIcon.left - parentIcon.width / 2,
         ),
-        parentBottomGap: continuous
-          ? branch.getBoundingClientRect().top + parseFloat(stem.top) - parentIcon.bottom
-          : null,
+        parentBottomGap:
+          branch.getBoundingClientRect().top + parseFloat(stem.top) - parentIcon.bottom,
+        railEnd: bounds.top + parseFloat(mark.top) + parseFloat(mark.height),
+        expectedEnd:
+          wrapper === branch.lastElementChild ? icon.top + icon.height / 2 : bounds.bottom,
         elbow: getComputedStyle(wrapper, '::after').content,
       };
     }, parentKey);
     expect(offsets.width).toBe(2);
     expect(offsets.elbow).toBe('none');
-    if (!offsets.continuous) {
-      expect(offsets.centre).toBeLessThanOrEqual(1);
-      expect(offsets.height).toBe(16);
-    }
     expect(offsets.parentCentre).toBeLessThanOrEqual(1);
-    if (offsets.continuous) expect(offsets.parentBottomGap).toBe(2);
+    expect(offsets.parentBottomGap).toBe(4);
+    expect(Math.abs(offsets.railEnd - offsets.expectedEnd)).toBeLessThanOrEqual(1);
   };
 
   const checkGuide = async () => {
@@ -371,7 +388,7 @@ try {
   await expect(page.getByRole('menuitem', { name: /^(Compact|Comfortable) rows$/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(parent).toHaveCSS('min-height', '38px');
-  await expect(group).toHaveCSS('min-height', '26px');
+  await expect(group).toHaveCSS('min-height', '32px');
 
   // Background preference changes refresh the open sidebar and settings page.
   await page.evaluate(() =>
@@ -469,7 +486,7 @@ try {
   await expect(formerParent).toHaveClass(/active/);
   expect(errors).toEqual([]);
   console.log(
-    '✓ Fixed compact layout with independent Appearance preferences; default guides, background updates, domains, unchanged footer, save retry, folding, search and dark/narrow/forced-colour views work',
+    '✓ Open shelves with independent Appearance preferences; default guides, background updates, domains, unchanged footer, save retry, folding, search and dark/narrow/forced-colour views work',
   );
 } finally {
   await close();

@@ -21,10 +21,9 @@
 :root[data-firefox-theme] :is(header, footer) button:active:not(:disabled) {
   background: var(--toolbar-active);
 }
-:root[data-firefox-theme] .pinned-tab,
 :root[data-firefox-theme] .pinned-tab.active {
   color: var(--selected-text);
-  background: var(--pin-active-background, var(--selected));
+  background: var(--selected);
   border-color: var(--selected-border);
 }
 :root[data-firefox-theme] .navigation-capsule {
@@ -89,8 +88,8 @@
   }
 
   :root[data-firefox-theme] .pinned-tab:not(.active) {
-    background: var(--control);
-    border-color: var(--line);
+    background: transparent;
+    border-color: transparent;
   }
 
   :root[data-firefox-theme] .pinned-tab:not(.active):hover {
@@ -99,19 +98,11 @@
 
   :root[data-firefox-theme] .pinned-tab.active,
   :root[data-firefox-theme] .pinned-tab.active:hover {
-    background: var(--pin-active-background, var(--selected));
+    background: var(--selected);
     border-color: var(--selected-border);
-  }
-
-  :root[data-firefox-theme] .pinned-tab.has-container,
-  :root[data-firefox-theme] .pinned-tab.has-container.active:hover {
-    border-color: var(--item-colour);
   }
 
   :root[data-firefox-theme='default'] .tab-row.selected:not(.active) {
     background: var(--selected);
-    box-shadow:
-      inset 0 0 0 1px var(--selected-border),
-      var(--hover-indicator, inset 0 0 transparent);
   }
 }

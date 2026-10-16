@@ -106,6 +106,7 @@ try {
     const mode = document.getElementById('look-color-scheme');
     mode.value = 'dark'; mode.dispatchEvent(new Event('change', {bubbles:true}));
     document.querySelector('[name="domains"]').click();
+    document.querySelector('[name="folderCounts"]').click();
   `);
   const settingsId = (await browserCall('return browser.tabs.getCurrent();')).id;
   await driver.findElement(By.css('a[href="#containers"]')).click();
@@ -134,7 +135,7 @@ try {
   await driver.wait(
     async () =>
       driver.executeScript(
-        'return document.querySelector("[name=domains]")?.checked && document.getElementById("look-color-scheme").value === "dark";',
+        'return document.querySelector("[name=domains]")?.checked && document.querySelector("[name=folderCounts]")?.checked && document.getElementById("look-color-scheme").value === "dark";',
       ),
     5000,
   );
@@ -143,7 +144,7 @@ try {
   await driver.wait(
     async () =>
       driver.executeScript(
-        'return document.getElementById("tree").classList.contains("show-domains");',
+        'return document.getElementById("tree").classList.contains("show-domains") && document.getElementById("tree").classList.contains("show-folder-counts");',
       ),
     5000,
   );
@@ -506,6 +507,7 @@ try {
   await reloadAddon();
   state = await send('snapshot');
   assert.deepEqual(state.look, {
+    folderCounts: false,
     connectingLines: true,
     domains: true,
     colorScheme: 'dark',
@@ -541,7 +543,7 @@ try {
       const dark = colorScheme === 'dark' || (colorScheme === 'default' && palette.prefersDark);
       return (
         palette.mode === colorScheme &&
-        palette.background === (dark ? 'rgb(32, 32, 32)' : 'rgb(247, 247, 247)')
+        palette.background === (dark ? 'rgb(32, 32, 32)' : 'rgb(255, 255, 255)')
       );
     }, 5000);
   }

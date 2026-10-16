@@ -2,7 +2,7 @@
    Firefox palettes override these on the root through theme-palette.js. */
 :root {
   color-scheme: light dark;
-  --background: light-dark(#f7f7f7, #202020);
+  --background: light-dark(#ffffff, #202020);
   --text: light-dark(#242424, #f2f2f2);
   --icon: var(--text);
   --toolbar-icon: light-dark(#5e5e5e, #fbfbfb);
@@ -11,7 +11,7 @@
   --subtle: color-mix(in srgb, var(--text) 7%, var(--background));
   --hover: color-mix(in srgb, var(--text) 6%, var(--background));
   --control: light-dark(#ffffff, #2d2d2d);
-  --selected: light-dark(#ffffff, #343434);
+  --selected: light-dark(#ebebef, #343434);
   --selected-border: light-dark(#bdbdbd, #606060);
   --selected-text: var(--text);
   --accent: light-dark(#505050, #c7c7c7);
