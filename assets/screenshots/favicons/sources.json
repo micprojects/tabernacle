@@ -8,10 +8,12 @@
   },
   {
     "key": "github",
-    "url": "Firefox-provided data URL for https://github.com/",
+    "url": "https://github.githubassets.com/favicons/favicon.svg",
     "file": "favicons/github.svg",
     "mime": "image/svg+xml",
-    "bytes": 959
+    "bytes": 1036,
+    "darkUrl": "https://github.githubassets.com/favicons/favicon-dark.svg",
+    "adaptation": "Original path with a prefers-color-scheme media query selecting the official dark-mode white fill."
   },
   {
     "key": "youtube",
