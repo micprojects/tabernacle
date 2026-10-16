@@ -49,8 +49,10 @@ try {
   const group = page.locator('[data-key="group:design"]');
   await expect(parent).toBeVisible();
 
-  const geometry = () =>
-    page
+  const geometry = async () => {
+    // Compare settled layout rather than a frame partway through a fold.
+    await expect(page.locator('[data-tree-motion]')).toHaveCount(0);
+    return page
       .locator('#tree .row, #tree .new-tab-action, footer, .footer-actions > button')
       .evaluateAll((nodes) =>
         nodes.map((node) => {
@@ -58,6 +60,8 @@ try {
           return { x, y, width, height };
         }),
       );
+  };
+
   const styles = (selector) =>
     page.locator(selector).evaluateAll((nodes) =>
       nodes.map((node) => {

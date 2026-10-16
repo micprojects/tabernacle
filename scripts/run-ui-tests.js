@@ -11,6 +11,7 @@ for (const name of [
   'test-folder-clicks-ui',
   'test-group-actions-ui',
   'test-tree-expansion-ui',
+  'test-tree-motion-ui',
   'test-tab-clicks-ui',
   'test-pinned-tabs-ui',
   'test-pinned-folders-ui',
