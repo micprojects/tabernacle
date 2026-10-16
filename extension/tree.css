@@ -617,8 +617,8 @@ svg.folder-icon,
   background: transparent;
   z-index: 1;
 }
-/* Search omits the add rows. Connect each result to its parent, and stop the
-   final sibling's rail where its rounded elbow begins. */
+/* Search omits the add rows. Round the rail into the final visible child,
+   leaving earlier siblings alongside the straight rail. */
 .searching.show-connecting-lines :is(.branch, .tab-branch)::before,
 .searching.show-connecting-lines :is(.branch, .tab-branch) > :is(.group-node, .tab-node)::before {
   mask-image: linear-gradient(#000, #000);
@@ -638,7 +638,9 @@ svg.folder-icon,
   height: calc(var(--node-icon-centre) + var(--branch-gap) - 5.25px);
   border-radius: 0;
 }
-.searching.show-connecting-lines :is(.branch, .tab-branch) > :is(.group-node, .tab-node)::after {
+.searching.show-connecting-lines
+  :is(.branch, .tab-branch)
+  > :is(.group-node, .tab-node):last-child::after {
   content: '';
   position: absolute;
   pointer-events: none;
@@ -653,7 +655,7 @@ svg.folder-icon,
 }
 .searching.show-connecting-lines:dir(rtl)
   :is(.branch, .tab-branch)
-  > :is(.group-node, .tab-node)::after {
+  > :is(.group-node, .tab-node):last-child::after {
   transform: scaleX(-1);
 }
 @media (forced-colors: active) {
