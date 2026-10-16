@@ -40,7 +40,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     !message.type.startsWith('tabernacle:')
   )
     return undefined;
-  if (message.type === 'tabernacle:changed') return undefined;
+  if (['tabernacle:changed', 'tabernacle:getCloseFilter'].includes(message.type)) return undefined;
   return controller.request({ ...message, type: message.type.slice('tabernacle:'.length) }).then(
     (data) => ({
       ok: true,

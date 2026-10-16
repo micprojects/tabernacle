@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
-import { visibleTabOrder } from '../extension/src/close-selection.js';
+import { closeFallback, visibleTabOrder } from '../extension/src/close-selection.js';
 import { VIEW_KEY } from '../extension/src/model.js';
 import { memoryBrowser } from '../preview/browser.js';
 
-async function fixture({ events = true, windowId = 1 } = {}) {
+async function fixture({ events = true, windowId = 1, readCloseFilter } = {}) {
   const api = memoryBrowser({
     events,
     groups: [
@@ -33,13 +33,178 @@ async function fixture({ events = true, windowId = 1 } = {}) {
     ),
   });
   await api.sessions.setWindowValue(windowId, VIEW_KEY, { scopeId: 'work', collapsed: ['nested'] });
-  const controller = createController(api);
+  const controller = createController(api, undefined, { readCloseFilter });
   const send = (type, args = {}) => controller.request({ type, windowId, ...args });
   await send('snapshot');
   return { api, controller, send, windowId };
 }
 
 const activeId = (state) => state.tabs.find((tab) => tab.active)?.id;
+
+test('filtered close follows the selected sort, preserving pre-close viewed order', () => {
+  const before = {
+    groups: [],
+    view: { scopeId: null, collapsed: [] },
+    tabs: [
+      { id: 1, title: 'Z', openedAt: 100, lastAccessed: 100 },
+      { id: 2, title: 'A', openedAt: 400, lastAccessed: 200 },
+      { id: 3, title: 'B', openedAt: 200, lastAccessed: 400, active: true },
+      { id: 4, title: 'C', openedAt: 300, lastAccessed: 300 },
+      { id: 5, url: 'https://outside.test' },
+    ].map((tab, index) => ({
+      url: 'https://youtube.com',
+      index,
+      groupId: null,
+      parentTabId: null,
+      ...tab,
+    })),
+  };
+  const after = {
+    ...before,
+    tabs: before.tabs
+      .filter((tab) => tab.id !== 3)
+      .map((tab) => ({
+        ...tab,
+        active: tab.id === 5,
+        lastAccessed: tab.id === 5 ? 500 : tab.lastAccessed,
+      })),
+  };
+  for (const [sort, expected] of [
+    ['newest', 4],
+    ['oldest', 1],
+    ['viewed', 4],
+    ['title', 2],
+    ['tree', 2],
+  ]) {
+    assert.equal(closeFallback(before, after, 3, { domain: 'youtube.com', sort }), expected, sort);
+  }
+});
+
+async function filteredFixture(options = {}) {
+  const f = await fixture({
+    readCloseFilter: () => ({ domain: 'youtube.com', query: '' }),
+    ...options,
+  });
+  for (const id of [2, 3, 4, 5, 6])
+    await f.api.tabs.update(id, { url: `https://youtube.com/watch?v=${id}` });
+  await f.send('snapshot');
+  return f;
+}
+
+for (const events of [false, true]) {
+  test(`filtered close prefers above, then below, including pins and collapsed folders (events: ${events})`, async () => {
+    const f = await filteredFixture({ events });
+    const state = await f.send('closeTab', { id: 3 });
+    assert.equal(activeId(state), 2);
+    assert.deepEqual(state.view.collapsed, ['nested']);
+    assert.equal(state.view.scopeId, 'work');
+    await f.send('activateTab', { id: 6, expandAncestors: false });
+    assert.equal(
+      activeId(await f.send('closeTab', { id: 6 })),
+      5,
+      'First result falls forward into a collapsed folder',
+    );
+  });
+}
+
+test('filtered close keeps a visible native successor and ignores background closes', async () => {
+  const f = await filteredFixture();
+  await f.api.tabs.update(3, { successorTabId: 4 });
+  assert.equal(activeId(await f.send('closeTab', { id: 3 })), 4);
+  await f.send('activateTab', { id: 1 });
+  assert.equal(activeId(await f.send('closeTab', { id: 2 })), 1);
+});
+
+test('filtered close respects extra search text and leaves the native choice when no matches remain', async () => {
+  const f = await filteredFixture({
+    readCloseFilter: () => ({ domain: 'youtube.com', query: 'keep' }),
+  });
+  await f.api.tabs.update(3, { title: 'Keep this', successorTabId: 2 });
+  await f.api.tabs.update(4, { title: 'Keep next', successorTabId: 2 });
+  assert.equal(activeId(await f.send('closeTab', { id: 3 })), 4);
+  assert.equal(activeId(await f.send('closeTab', { id: 4 })), 2);
+});
+
+test('filtered native closes use above-first fallback in either event order', async () => {
+  for (const activationFirst of [false, true]) {
+    const f = await filteredFixture();
+    if (activationFirst) {
+      const removed = f.api.tabs.onRemoved.emit;
+      const activated = f.api.tabs.onActivated.emit;
+      let pending;
+      f.api.tabs.onRemoved.emit = (...args) => {
+        pending = args;
+      };
+      f.api.tabs.onActivated.emit = (...args) => {
+        activated(...args);
+        if (pending) {
+          const saved = pending;
+          pending = null;
+          removed(...saved);
+        }
+      };
+    }
+    await f.api.tabs.remove(3);
+    assert.equal(activeId(await f.send('snapshot')), 2);
+  }
+});
+
+test('filtered fallback rechecks fresh tabs and does not interrupt a deliberate activation during lookup', async () => {
+  let release;
+  let queried;
+  const started = new Promise((resolve) => {
+    queried = resolve;
+  });
+  const f = await filteredFixture({
+    readCloseFilter: () =>
+      new Promise((resolve) => {
+        release = () => resolve({ domain: 'youtube.com', query: '' });
+        queried();
+      }),
+  });
+  const close = f.send('closeTab', { id: 3 });
+  await started;
+  await f.api.tabs.update(6, { active: true });
+  release();
+  assert.equal(activeId(await close), 6);
+});
+
+test('missing sidebars and cleared domain filters use the existing folder fallback', async () => {
+  for (const readCloseFilter of [
+    () => null,
+    () => {
+      throw new Error('No receiver');
+    },
+  ]) {
+    const f = await filteredFixture({ readCloseFilter });
+    assert.equal(activeId(await f.send('closeTab', { id: 3 })), 4);
+  }
+});
+
+test('a result navigating away during sidebar lookup is excluded from the fallback', async () => {
+  const f = await filteredFixture({
+    readCloseFilter: async () => {
+      await f.api.tabs.update(2, { url: 'https://example.com' });
+      return { domain: 'youtube.com', query: '' };
+    },
+  });
+  assert.equal(activeId(await f.send('closeTab', { id: 3 })), 5);
+});
+
+test('native lookup uses only the closing window and ignores stale tabs no longer matching', async () => {
+  const f = await filteredFixture({ windowId: 2, readCloseFilter: undefined });
+  f.api.runtime = {
+    sendMessage: async (message) => {
+      assert.deepEqual(message, { type: 'tabernacle:getCloseFilter', windowId: 2 });
+      return { domain: 'youtube.com', query: '' };
+    },
+  };
+  await f.api.tabs.update(2, { url: 'https://example.com' });
+  await f.send('snapshot');
+  await f.api.tabs.remove(3);
+  assert.equal(activeId(await f.send('snapshot')), 5);
+  assert.equal((await f.api.windows.get(1)).focused, true);
+});
 
 test('visible order follows folders and tab trees, excluding collapsed branches and pins', () => {
   const state = {

@@ -47,6 +47,56 @@ function fixture() {
 
 const get = (state, id) => state.tabs.find((tab) => tab.id === id);
 
+test('opening dates are recorded at creation, survive moves/restarts/restores, and reset on duplication', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 10_000 });
+  const { api, send, restart } = fixture();
+  const initial = await send('snapshot');
+  assert.equal(get(initial, 1).openedAt, undefined, 'Do not invent dates for existing tabs');
+  const tab = await api.tabs.create({ windowId: 1, title: 'New', active: false });
+  t.mock.timers.tick(1000);
+  assert.equal(
+    get(await send('snapshot'), tab.id).openedAt,
+    10_000,
+    'Use event time, not queue time',
+  );
+  await send('moveTab', { id: tab.id, groupId: 'later' });
+  await send('activateTab', { id: tab.id });
+  restart();
+  assert.equal(get(await send('snapshot'), tab.id).openedAt, 10_000);
+  const nativeCopy = await api.tabs.duplicate(tab.id);
+  assert.equal(get(await send('snapshot'), nativeCopy.id).openedAt, 11_000);
+  t.mock.timers.tick(1000);
+  const copied = await send('duplicateTab', { id: tab.id });
+  const copy = copied.tabs.find(
+    (item) =>
+      !initial.tabs.some(({ id }) => id === item.id) && ![tab.id, nativeCopy.id].includes(item.id),
+  );
+  assert.equal(copy.openedAt, 12_000);
+  await send('closeTab', { id: tab.id });
+  t.mock.timers.tick(1000);
+  const restored = await api.testing.restore();
+  assert.equal(get(await send('snapshot'), restored.id).openedAt, 10_000);
+});
+
+test('filtered activation preserves collapsed ancestors and the folder view', async () => {
+  const { send, tree } = fixture();
+  await tree();
+  await send('toggleTab', { id: 1 });
+  await send('toggleTab', { id: 2 });
+  await send('enterGroup', { id: 'later' });
+  const before = await send('snapshot');
+  const after = await send('activateTab', { id: 3, expandAncestors: false });
+  assert.equal(get(after, 3).active, true);
+  assert.deepEqual(after.view, before.view);
+  assert.deepEqual(
+    after.tabs.map((tab) => tab.collapsed),
+    before.tabs.map((tab) => tab.collapsed),
+  );
+  const revealed = await send('activateTab', { id: 3 });
+  assert.equal(get(revealed, 1).collapsed, false);
+  assert.equal(get(revealed, 2).collapsed, false);
+});
+
 test('row clicks activate inactive parents without changing children, then toggle only that branch', async () => {
   for (const collapsed of [false, true]) {
     const { send, tree } = fixture();
