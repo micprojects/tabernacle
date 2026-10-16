@@ -28,9 +28,10 @@ const expectFolderColours = async (id, rawColor) => {
     return {
       label: getComputedStyle(row.querySelector('.label')).color,
       text: getComputedStyle(row).color,
-      rails: [...branch.children].map(
-        (child) => getComputedStyle(child, '::before').backgroundColor,
-      ),
+      rails: [...branch.children].map((child) => {
+        const rail = getComputedStyle(child, '::before');
+        return child.matches('.new-tab-item') ? rail.borderInlineStartColor : rail.backgroundColor;
+      }),
       plus: getComputedStyle(branch.querySelector(':scope > .new-tab-item > button')).color,
     };
   });

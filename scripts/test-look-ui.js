@@ -332,8 +332,11 @@ try {
       const branch = wrapper.parentElement;
       const stem = getComputedStyle(branch, '::before');
       const start = bounds.left + parseFloat(mark.insetInlineStart);
+      const stroke = wrapper.matches('.new-tab-item')
+        ? parseFloat(mark.borderInlineStartWidth)
+        : parseFloat(mark.width);
       return {
-        width: parseFloat(mark.width),
+        width: stroke,
         height: parseFloat(mark.height),
         centre: Math.abs(
           bounds.top +
@@ -342,12 +345,14 @@ try {
             icon.top -
             icon.height / 2,
         ),
-        parentCentre: Math.abs(
-          start + parseFloat(mark.width) / 2 - parentIcon.left - parentIcon.width / 2,
-        ),
+        parentCentre: Math.abs(start + stroke / 2 - parentIcon.left - parentIcon.width / 2),
         parentBottomGap:
           branch.getBoundingClientRect().top + parseFloat(stem.top) - parentIcon.bottom,
-        railEnd: bounds.top + parseFloat(mark.top) + parseFloat(mark.height),
+        railEnd:
+          bounds.top +
+          parseFloat(mark.top) +
+          parseFloat(mark.height) -
+          parseFloat(mark.borderBlockEndWidth) / 2,
         expectedEnd:
           wrapper === branch.lastElementChild ? icon.top + icon.height / 2 : bounds.bottom,
         elbow: getComputedStyle(wrapper, '::after').content,

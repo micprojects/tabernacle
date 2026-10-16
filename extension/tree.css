@@ -614,6 +614,19 @@ svg.folder-icon,
   border-end-start-radius: 2px;
   border-end-end-radius: 2px;
 }
+/* Turn towards the add icon, leaving a small gap before its visible stroke.
+   The icon's artwork sits 2px inside its 16px box. */
+.show-connecting-lines :is(.branch, .tab-branch) > .new-tab-item:last-child::before {
+  box-sizing: border-box;
+  width: calc(var(--tree-indent) - var(--node-icon-size) / 2 - var(--guide-gap) + 3px);
+  height: calc(var(--node-icon-centre) + var(--branch-gap) + 1px);
+  border-inline-start: 2px solid var(--parent-guide);
+  border-block-end: 2px solid var(--parent-guide);
+  border-end-start-radius: 5px;
+  border-end-end-radius: 1px;
+  background: transparent;
+  z-index: 1;
+}
 @media (forced-colors: active) {
   .tree :is(.group-node, .tab-node, .new-tab-item),
   .pinned-tab {
