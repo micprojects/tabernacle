@@ -43,6 +43,19 @@ If Firefox selects a tab outside the filtered list after a close, Tabernacle act
 the nearest result above, or below when there isn't one above.
 Use the large close button or press Escape to return to your previous folder view.
 
+On YouTube, **YouTube Mode** replaces the count with a remembered toggle. It starts on
+and shows thumbnails, channels, folders, duplicate indicators and video progress where
+available. Switch it off to use the standard domain list. The All, In progress and
+Duplicates filters keep each tab separate.
+
+Choose **Allow access** once to enable YouTube channel lookups and read duration and
+playback position from loaded tabs. Only visible videos are checked, every five seconds;
+sleeping tabs stay asleep. Saved positions are labelled Last seen, and missing positions
+remain Progress unknown. This is observed tab progress, not your account's watch history.
+Thumbnails and public metadata contact YouTube directly. Metadata requests omit credentials
+and referrers; thumbnails omit referrers. Playback positions stay in Firefox's tab session
+data. No API key is needed.
+
 <img src="assets/screenshots/03-search-ui.png" width="550" alt="Search results for grid, showing matching tabs within their folders.">
 
 ## Keep sign-ins separate

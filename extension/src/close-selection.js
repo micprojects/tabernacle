@@ -33,9 +33,14 @@ export function closeFallback(before, after, closedId, filter = null) {
     return null;
   const domain = normaliseDomain(filter?.domain);
   const query = typeof filter?.query === 'string' ? filter.query : '';
+  // A native close may refresh the sidebar before we ask for its projection.
+  // Keep the removed row's former place when finding the surviving neighbour.
+  const included = Array.isArray(filter?.tabIds) ? new Set([...filter.tabIds, closedId]) : null;
   const orderFor = (state) =>
     domain
-      ? domainResults(createTreeIndex(state), domain, query, filter.sort).map((tab) => tab.id)
+      ? domainResults(createTreeIndex(state), domain, query, filter.sort)
+          .filter((tab) => !included || included.has(tab.id))
+          .map((tab) => tab.id)
       : visibleTabOrder(state);
   const order = orderFor(before);
   const position = order.indexOf(closedId);
