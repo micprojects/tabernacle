@@ -25,6 +25,7 @@ for (const name of [
   'test-container-style-ui',
   'test-color-mode-ui',
   'test-look-ui',
+  'test-favicon-tint-ui',
   'test-settings-ui',
   'test-backup-ui',
   'test-themes-ui',

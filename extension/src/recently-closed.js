@@ -125,6 +125,7 @@ export function createRecentActivity({
       items,
       state.groups,
       state.containers,
+      state.look.tintFavicons,
       error,
       filter,
       Math.floor(now / 60_000),

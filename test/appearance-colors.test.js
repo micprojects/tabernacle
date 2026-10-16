@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appearanceColor } from '../extension/src/appearance-colors.js';
+import { appearanceColor, labelColor } from '../extension/src/appearance-colors.js';
 import { folderColors } from '../extension/src/folder-appearance.js';
 
 function luminance(hex) {
@@ -40,4 +40,43 @@ test('invalid colours fall back without accepting CSS expressions', () => {
   for (const color of [null, undefined, '', 'red', 'var(--text)', '#12', '#abcdef; color:red'])
     assert.equal(appearanceColor(color), null);
   assert.equal(appearanceColor('#37ADFF'), appearanceColor('#37adff'));
+});
+
+test('identity captions keep readable contrast across neutral, hover and selected surfaces', () => {
+  const hex = (rgb) => `#${rgb.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+  for (const color of [
+    ...folderColors.map(({ color }) => color),
+    '#00a7e0',
+    '#f89c24',
+    '#00a465',
+    '#ffffff',
+    '#000000',
+  ]) {
+    for (const background of [
+      [255, 255, 255],
+      [242, 242, 242],
+      [235, 235, 239],
+      [32, 32, 32],
+      [52, 52, 52],
+      [128, 128, 128],
+    ]) {
+      for (const target of [7, 4.6]) {
+        const shade = labelColor(color, [background], target);
+        assert.ok(shade);
+        const values = [luminance(shade), luminance(hex(background))].sort((a, b) => a - b);
+        assert.ok(
+          (values[1] + 0.05) / (values[0] + 0.05) >= 4.5,
+          `${color}/${background}/${target}`,
+        );
+      }
+    }
+  }
+  assert.equal(labelColor('var(--text)', [[255, 255, 255]]), null);
+  assert.equal(
+    labelColor('#ff0000', [
+      [0, 0, 0],
+      [255, 255, 255],
+    ]),
+    null,
+  );
 });

@@ -155,6 +155,7 @@ try {
     domains: true,
     animations: true,
     folderCounts: false,
+    tintFavicons: false,
     themeSource: 'tabernacle',
     colorScheme: 'dark',
   });

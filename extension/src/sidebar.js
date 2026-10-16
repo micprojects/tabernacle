@@ -4,6 +4,8 @@ import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
+import { createFaviconTints } from './favicon-tint.js';
+import { createLabelColors } from './label-colors.js';
 import { createDialogs } from './dialogs.js';
 import { folderIcon, folderIconColor } from './folder-icons.js';
 import { folderAppearance } from './folder-appearance.js';
@@ -19,6 +21,8 @@ const tree = $('tree');
 let treeTabs = [];
 let index;
 const rowCache = createRowCache();
+const faviconTint = createFaviconTints();
+const labelColors = createLabelColors(document.documentElement, document.querySelector('.sidebar'));
 const wrappers = new Map();
 const usedWrappers = new Set();
 let breadcrumbKey;
@@ -78,8 +82,14 @@ function renderAppearance() {
   if (!state) return;
   const result = themeResult();
   paintPalette(forcedColors.matches ? null : result.palette, state.look.colorScheme);
+  labelColors.configure(
+    forcedColors.matches ? null : result.palette,
+    themeObserver?.dark,
+    forcedColors.matches,
+  );
   const motionOff = state.look.animations === false || reducedMotion.matches;
   document.documentElement.classList.toggle('motion-off', motionOff);
+  document.documentElement.classList.toggle('tint-favicons', state.look.tintFavicons);
   if (motionOff) treeMotion.finishAll();
 }
 
@@ -559,6 +569,7 @@ function groupNode(group, query, ancestorMatch = false) {
     ),
   );
   const expanded = Boolean(query) || !state.view.collapsed.includes(group.id);
+  labelColors.apply(row, appearance.color);
   setAttribute(row, 'aria-expanded', expanded);
   const disclosure = row.querySelector('.disclosure');
   const label = `${expanded ? 'Collapse' : 'Expand'} ${group.name}`;
@@ -584,6 +595,11 @@ function groupNode(group, query, ancestorMatch = false) {
 
 function tabFavicon(tab) {
   const favicon = el('span', 'tab-icon');
+  const tint = state.look.tintFavicons && faviconTint(tab.container?.colorCode);
+  if (tint) {
+    favicon.style.setProperty('--favicon-filter', tint.filter);
+    favicon.style.setProperty('--favicon-colour', tint.color);
+  }
   // Never fetch a third-party favicon service. Use only Firefox's supplied icon.
   if (
     typeof tab.favIconUrl === 'string' &&
@@ -743,6 +759,7 @@ function rowValues(tab) {
     tab.mutedInfo?.muted,
     tab.container?.name,
     tab.container?.colorCode,
+    state.look.tintFavicons,
     audioInTabs.get(tab.id) || 0,
   ];
 }
@@ -841,6 +858,7 @@ function tabNode(tab, query, ancestorMatch = false) {
       () => createTabRow(tab, expanded, stats),
     ),
   );
+  labelColors.apply(row, tab.container?.colorCode);
   treeMotion.reconcile(node, row, branch, Boolean(stats.descendants && expanded), () => {
     const nodes = (index.children.get(tab.id) || [])
       .map((child) => tabNode(child, query, matchAll))
