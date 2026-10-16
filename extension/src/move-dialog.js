@@ -41,17 +41,17 @@ export function createMovePicker(getState, kind, id, { favicon } = {}) {
       : folderIcon(group, folderContainer(initial, group), { state: initial }),
     sourceText,
   );
-  const field = el('div', 'move-search-field');
+  const field = el('div', 'picker-search-field');
   const label = el('label', '', 'Destination');
   label.htmlFor = 'move-search';
-  const searchWrap = el('div', 'move-search');
+  const searchWrap = el('div', 'picker-search');
   const search = el('input');
   search.id = 'move-search';
   search.type = 'search';
   search.placeholder = 'Search folders';
   search.autocomplete = 'off';
   search.setAttribute('aria-controls', 'move-tree');
-  const clear = el('button', 'move-search-clear');
+  const clear = el('button', 'picker-search-clear');
   clear.type = 'button';
   clear.setAttribute('aria-label', 'Clear folder search');
   clear.append(icon('closeSmall'));

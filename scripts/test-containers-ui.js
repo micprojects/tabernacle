@@ -197,6 +197,44 @@ try {
   await expect(page.getByRole('radio', { name: 'No container Current' })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Reopen tab', exact: true })).toBeDisabled();
   await expectIconsLoaded(page.locator('#dialog-options .container-list-icon-mask'));
+  const search = page.getByRole('searchbox', { name: 'Container', exact: true });
+  const reopen = page.getByRole('button', { name: 'Reopen tab', exact: true });
+  const clearSearch = page.getByRole('button', { name: 'Clear container search' });
+  await expect(search).toBeFocused();
+  await expect(page.getByRole('dialog')).toHaveAccessibleDescription(
+    'Page history and unsaved changes won’t carry over.',
+  );
+  await search.fill('  PeRsOnAl  ');
+  await expect(page.getByRole('radio')).toHaveCount(1);
+  await expect(reopen).toBeDisabled();
+  await search.press('Enter');
+  await expect(page.getByRole('radio', { name: 'Personal', exact: true })).toBeChecked();
+  await expect(reopen).toBeEnabled();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  expect(await page.evaluate(() => window.containerTest.reopenCount)).toBe(0);
+  await search.fill('No such container');
+  await expect(page.getByRole('radio')).toHaveCount(0);
+  await expect(page.locator('#dialog-options .container-empty:visible')).toHaveText(
+    'No containers found.',
+  );
+  await search.press('Enter');
+  await expect(reopen).toBeDisabled();
+  expect(await page.evaluate(() => window.containerTest.reopenCount)).toBe(0);
+  await clearSearch.click();
+  await expect(search).toBeFocused();
+  await expect(page.getByRole('radio', { name: 'Personal', exact: true })).toBeChecked();
+  await expect(reopen).toBeEnabled();
+  await search.fill('No container');
+  await search.press('Enter');
+  await expect(page.getByRole('radio', { name: 'No container Current' })).toBeChecked();
+  await expect(reopen).toBeDisabled();
+  await clearSearch.click();
+  check(
+    'Search filters names, retains selection, blocks hidden targets and never reopens on Enter',
+  );
+
+  // From search, enter the radio group before using native arrow-key selection.
+  await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
   const personalChoice = page.getByRole('radio', { name: 'Personal', exact: true });
   await expect(personalChoice).toBeChecked();
@@ -215,6 +253,7 @@ try {
     0,
   );
   await page.getByRole('radio', { name: 'Work', exact: true }).check();
+  await search.fill('wOrK');
   await page.screenshot({ path: 'test-results/container-picker.png' });
   check(
     'Dialog lists every container and No container, marks the current choice and scrolls long lists',
@@ -233,7 +272,9 @@ try {
   await page.screenshot({ path: 'test-results/container-editor-light.png' });
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(search).toHaveValue('wOrK');
   await expect(page.getByRole('radio', { name: 'Work', exact: true })).toBeChecked();
+  await clearSearch.click();
   check('Container lists sort alphabetically with natural numbers; every visual icon loads');
 
   await page.getByRole('button', { name: 'Reopen tab', exact: true }).click();
@@ -698,7 +739,7 @@ try {
   expect(
     await page.getByRole('dialog').evaluate((node) => node.scrollWidth <= node.clientWidth),
   ).toBe(true);
-  const pickerRow = await longChoice.locator('..').boundingBox();
+  expect((await longChoice.locator('..').boundingBox()).height).toBe(32);
   await page.getByRole('button', { name: 'Manage containers…', exact: true }).click();
   const longRow = page.locator('.container-management-row').filter({ hasText: longName });
   await expect(
@@ -708,15 +749,43 @@ try {
     longRow.getByRole('button', { name: `Remove ${longName}`, exact: true }),
   ).toBeVisible();
   await expect(longRow.locator('.container-name')).toHaveAttribute('title', longName);
-  expect((await longRow.boundingBox()).height).toBe(pickerRow.height);
+  expect((await longRow.boundingBox()).height).toBe(30);
   expect(
     await page.getByRole('dialog').evaluate((node) => node.scrollWidth <= node.clientWidth),
   ).toBe(true);
   await page.screenshot({ path: 'test-results/manage-containers-long-name.png' });
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('radio', { name: longName, exact: true })).toBeChecked();
+  for (const viewport of [
+    { width: 360, height: 720 },
+    { width: 220, height: 360 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await search.fill('Research and reference');
+    await search.press('Enter');
+    const dialog = page.getByRole('dialog');
+    const bounds = await dialog.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
+    expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await expect(reopen).toBeInViewport();
+    await expect(search).toBeInViewport();
+    await dialog.screenshot({ path: `test-results/container-picker-${viewport.width}.png` });
+  }
+  await page.emulateMedia({ forcedColors: 'active' });
+  await expect(longChoice.locator('..').locator('.container-check')).toBeVisible();
+  await expect(longChoice.locator('..')).toHaveCSS('forced-color-adjust', 'none');
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(pin).toBeFocused();
+  await page.emulateMedia({ forcedColors: 'none' });
+  await page.setViewportSize({ width: 320, height: 820 });
+  await page.locator('#new-group').click();
+  await expect(page.getByRole('dialog')).not.toHaveClass(/picker-dialog/);
+  await expect(search).toBeHidden();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  check('Long names retain accessible labels and tooltips while both lists stay compact and fit');
+  check('Long names, short/narrow sidebars, high contrast and Close keep the picker usable');
   console.log(`${checks} container UI checks passed.`);
 } catch (error) {
   await page.screenshot({ path: 'test-results/container-picker-failure.png' });

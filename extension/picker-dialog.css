@@ -1,0 +1,107 @@
+/* Compact shell and search controls shared by the folder and container pickers. */
+.picker-dialog {
+  width: calc(100vw - 16px);
+  max-width: 360px;
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow:
+    0 3px 12px #0002,
+    0 0.375px 1.5px #0001;
+}
+.picker-dialog::backdrop {
+  background: #0003;
+  backdrop-filter: none;
+}
+.picker-dialog #dialog-form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 18px);
+}
+.picker-dialog .dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--panel-line);
+  flex-shrink: 0;
+}
+.picker-dialog .dialog-icon {
+  display: none;
+}
+.picker-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: normal;
+  min-width: 0;
+}
+.picker-dialog #dialog-close {
+  flex-shrink: 0;
+}
+.picker-search-field {
+  padding: 14px 16px 8px;
+  flex-shrink: 0;
+}
+.picker-dialog .picker-search-field label {
+  color: var(--panel-text);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.picker-search {
+  position: relative;
+}
+.picker-search > svg {
+  position: absolute;
+  inset: 9px auto auto 10px;
+  color: var(--panel-muted);
+  pointer-events: none;
+}
+.picker-search input {
+  height: 34px;
+  padding: 7px 32px 7px 33px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.picker-search input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.picker-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+.picker-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  inset: 3px 3px 3px auto;
+  width: 28px;
+  padding: 0;
+  border-radius: 4px;
+}
+.picker-dialog .dialog-actions {
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--panel-line);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.picker-dialog .dialog-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.picker-dialog .dialog-error {
+  margin: 8px 16px 12px;
+  max-height: 64px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+@media (forced-colors: active) {
+  .picker-dialog {
+    box-shadow: none;
+  }
+}

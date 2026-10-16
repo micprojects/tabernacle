@@ -1,0 +1,67 @@
+.container-picker-dialog #dialog-description {
+  margin: 12px 16px 0;
+  max-height: 96px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+#container-picker-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.container-picker-dialog .dialog-options {
+  min-height: 64px;
+  max-height: 320px;
+  margin: 0 12px;
+  padding: 4px;
+  border: 0;
+  border-radius: 0;
+}
+.container-picker-dialog .container-option {
+  min-height: 32px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+.container-picker-dialog .container-option:has(input:checked) {
+  color: var(--selected-text);
+  background: var(--selected);
+  border-color: var(--selected-border);
+}
+.container-picker-dialog .container-check {
+  color: currentColor;
+}
+.container-picker-dialog .container-tools {
+  margin: 8px 16px 0;
+  padding: 10px 0;
+  gap: 6px;
+  border-top: 1px solid var(--panel-line);
+  flex-shrink: 0;
+}
+.container-picker-dialog .container-tools button {
+  padding: 6px 8px;
+  border: 1px solid var(--panel-line);
+  border-radius: 4px;
+  font-size: 11px;
+}
+.container-picker-dialog .container-tools button:hover {
+  background: var(--panel-hover);
+  color: var(--panel-hover-text);
+  text-decoration: none;
+}
+.container-picker-dialog #container-picker-note {
+  margin: 0 16px 12px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+@media (forced-colors: active) {
+  .container-picker-dialog .container-option:has(input:checked) {
+    forced-color-adjust: none;
+  }
+  .container-picker-dialog .container-option:is(:hover, :has(input:checked)) .container-list-icon {
+    color: HighlightText !important;
+  }
+}
