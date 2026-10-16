@@ -398,6 +398,10 @@ try {
   await page.keyboard.press('Escape');
   await page.locator('#search-toggle').click();
   await page.locator('#search').fill('Typography');
+  // The matching rows were already visible before filtering. Wait for the
+  // scheduled search render before inspecting its end-of-branch decoration.
+  await expect(page.locator('#tree')).toHaveClass(/searching/);
+  await expect(page.locator('.tab-row')).toHaveCount(2);
   await expect(child).toBeVisible();
   await expect(parent).toBeVisible();
   await checkConnection('tab:1', 'tab:2', true);

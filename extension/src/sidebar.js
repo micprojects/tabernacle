@@ -19,11 +19,12 @@ const $ = (id) => document.getElementById(id);
 const tree = $('tree');
 let treeTabs = [];
 let index;
-const rowCache = createRowCache();
+const rowCache = createRowCache({ retain: 2048 });
 const faviconTint = createFaviconTints();
 const labelColors = createLabelColors(document.documentElement, document.querySelector('.sidebar'));
 const wrappers = new Map();
 const usedWrappers = new Set();
+const guideColorsApplied = new WeakMap();
 let breadcrumbKey;
 let breadcrumbItems = [];
 let folderMenuKey;
@@ -65,12 +66,14 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const treeMotion = createTreeMotion(
   tree,
   () => state?.look.animations !== false && !reducedMotion.matches,
+  () => rowCache.detach(),
 );
 let motionContext;
 
 function renderAppearance() {
   if (!state) return;
-  document.documentElement.dataset.colorScheme = state.look.colorScheme;
+  if (document.documentElement.dataset.colorScheme !== state.look.colorScheme)
+    document.documentElement.dataset.colorScheme = state.look.colorScheme;
   labelColors.configure(darkMode.matches, forcedColors.matches);
   const motionOff = state.look.animations === false || reducedMotion.matches;
   document.documentElement.classList.toggle('motion-off', motionOff);
@@ -93,12 +96,22 @@ function acceptState(next) {
   confirmedState = next;
   const collapsed = new Set(next.view.collapsed);
   let scopeId = next.view.scopeId;
+  let tabs = next.tabs;
   // Replay local view changes in order so older replies cannot undo a newer
   // navigation, including the first click's toggle before a double-click.
   for (const { type, args } of pendingViewActions) {
     if (type === 'toggleGroup') {
       if (collapsed.has(args.id)) collapsed.delete(args.id);
       else collapsed.add(args.id);
+    } else if (type === 'toggleTab') {
+      if (tabs.some((tab) => tab.id === args.id))
+        tabs = tabs.map((tab) =>
+          tab.id === args.id
+            ? { ...tab, collapsed: !tab.collapsed, ...(args.activate ? { active: true } : {}) }
+            : args.activate && tab.active
+              ? { ...tab, active: false }
+              : tab,
+        );
     } else {
       scopeId = args.id;
       if (scopeId !== null && typeof args.collapsed === 'boolean') {
@@ -107,7 +120,7 @@ function acceptState(next) {
       }
     }
   }
-  state = { ...next, view: { ...next.view, scopeId, collapsed: [...collapsed] } };
+  state = { ...next, tabs, view: { ...next.view, scopeId, collapsed: [...collapsed] } };
 }
 
 let pointerHeld = false,
@@ -228,7 +241,19 @@ function action(type, args = {}) {
         ? `tab:${args.id}`
         : null;
   if (!motionKey) treeMotion.finishAll();
-  const viewAction = ['toggleGroup', 'enterGroup'].includes(type) ? { type, args } : null;
+  const tab = type === 'clickTab' && state.tabs.find((tab) => tab.id === args.id);
+  const clickToggles =
+    tab?.active &&
+    !tab.pinned &&
+    windowFocused &&
+    !activeActions &&
+    args.toggleChildren !== false &&
+    index.children.get(tab.id)?.length;
+  const viewAction = ['toggleGroup', 'enterGroup', 'toggleTab'].includes(type)
+    ? { type, args }
+    : clickToggles
+      ? { type: 'toggleTab', args: { id: args.id } }
+      : null;
   if (viewAction) {
     pendingViewActions.push(viewAction);
     acceptState(confirmedState);
@@ -499,11 +524,14 @@ function createGroupRow(group, container) {
 }
 
 function paintGuide(branch, color) {
+  const key = color || '';
+  if (guideColorsApplied.get(branch) === key) return;
   for (const [i, shade] of guideColors(color).entries()) {
     const property = `--guide-${i + 1}`;
     if (branch.style.getPropertyValue(property) !== shade)
       branch.style.setProperty(property, shade);
   }
+  guideColorsApplied.set(branch, key);
 }
 
 function groupNode(group, query, ancestorMatch = false) {
@@ -802,6 +830,18 @@ function createTabRow(tab, expanded, stats) {
   return row;
 }
 
+function tabRow(tab, expanded, stats) {
+  const row = markSelected(
+    rowCache.get(
+      `tab:${tab.id}`,
+      [...rowValues(tab), state.look.domains, expanded, stats.descendants, stats.active],
+      () => createTabRow(tab, expanded, stats),
+    ),
+  );
+  labelColors.apply(row, tab.container?.colorCode);
+  return row;
+}
+
 function tabNode(tab, query, ancestorMatch = false) {
   const stats = index.tabStats.get(tab.id);
   const matchAll = ancestorMatch || stats.match;
@@ -811,14 +851,7 @@ function tabNode(tab, query, ancestorMatch = false) {
   // A tab owns its child rail, even when a child uses a different container.
   paintGuide(branch, tab.container?.colorCode);
   node.classList.toggle('tab-parent', stats.descendants > 0);
-  const row = markSelected(
-    rowCache.get(
-      `tab:${tab.id}`,
-      [...rowValues(tab), state.look.domains, expanded, stats.descendants, stats.active],
-      () => createTabRow(tab, expanded, stats),
-    ),
-  );
-  labelColors.apply(row, tab.container?.colorCode);
+  const row = tabRow(tab, expanded, stats);
   treeMotion.reconcile(node, row, branch, Boolean(stats.descendants && expanded), () => {
     const nodes = (index.children.get(tab.id) || [])
       .map((child) => tabNode(child, query, matchAll))
@@ -997,6 +1030,101 @@ function toggleFolderMenu(trigger, parentId) {
   folderMenuKey = folderHierarchyKey();
 }
 
+let previousRender;
+
+const sameValues = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
+const layoutValues = (tab) => [
+  tab.id,
+  tab.index,
+  tab.order,
+  tab.treeId,
+  tab.groupId,
+  tab.parentTabId,
+  Boolean(tab.pinned),
+  Boolean(tab.collapsed),
+  Boolean(tab.active),
+  Boolean(tab.audible),
+  Boolean(tab.mutedInfo?.muted),
+];
+const metadataValues = (tab) => [
+  tab.title,
+  tab.url,
+  tab.favIconUrl,
+  tab.discarded,
+  tab.cookieStoreId,
+  tab.container?.name,
+  tab.container?.colorCode,
+];
+
+function renderContext() {
+  return JSON.stringify([
+    state.generation,
+    state.groups,
+    state.containers,
+    state.folderPins,
+    state.pins,
+    state.look,
+    state.view.scopeId,
+    state.view.collapsed,
+    selected,
+    changingTree,
+  ]);
+}
+
+function rememberRender(query, context) {
+  previousRender = query
+    ? null
+    : {
+        context,
+        tabs: state.tabs.map((tab) => ({
+          layout: layoutValues(tab),
+          metadata: metadataValues(tab),
+        })),
+        visible: new Map(index.tabs.map((tab) => [tab.id, tab])),
+      };
+}
+
+function patchMetadata(context) {
+  if (
+    !previousRender ||
+    previousRender.context !== context ||
+    previousRender.tabs.length !== state.tabs.length
+  )
+    return false;
+  const changed = [];
+  for (const [i, tab] of state.tabs.entries()) {
+    const saved = previousRender.tabs[i];
+    if (!sameValues(saved.layout, layoutValues(tab))) return false;
+    const metadata = metadataValues(tab);
+    if (!sameValues(saved.metadata, metadata)) changed.push({ tab, saved, metadata });
+  }
+  // Placement, active/audio summaries, appearance, search and view are unchanged.
+  // Update metadata only; live-page title/favicon bursts never walk the DOM tree.
+  for (const tab of state.tabs) index.byId.set(tab.id, tab);
+  for (const { tab, saved, metadata } of changed) {
+    saved.metadata = metadata;
+    const visible = previousRender.visible.get(tab.id);
+    if (visible) Object.assign(visible, tab, { parentTabId: visible.parentTabId });
+    if (tab.pinned) pinnedTab(tab);
+    else {
+      const wrapper = wrappers.get(`tab:${tab.id}`);
+      if (!wrapper?.node.isConnected) continue;
+      const stats = index.tabStats.get(tab.id);
+      tabRow(tab, !tab.collapsed, stats);
+      paintGuide(wrapper.branch, tab.container?.colorCode);
+      if (stats.descendants && !tab.collapsed) newTabItem(tab.groupId, tab);
+    }
+  }
+  return true;
+}
+
+function restoreRowFocus(key) {
+  if (key)
+    document
+      .querySelector(`[data-key="${CSS.escape(key)}"]:not([inert] *)`)
+      ?.focus({ preventScroll: true });
+}
+
 function render(motionKey = null) {
   if (!state) return;
   renderAppearance();
@@ -1020,6 +1148,19 @@ function render(motionKey = null) {
   const scroll = tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
   const query = $('search').value.trim().toLowerCase();
+  const context = renderContext();
+  rowCache.begin();
+  if (
+    !query &&
+    !motionKey &&
+    !drag &&
+    !changingTree &&
+    !treeMotion.active &&
+    patchMetadata(context)
+  ) {
+    restoreRowFocus(focusedKey);
+    return;
+  }
   tree.classList.toggle('searching', Boolean(query));
   const nextMotionContext = JSON.stringify([state.generation, state.view.scopeId, query]);
   if (nextMotionContext !== motionContext) treeMotion.finishAll();
@@ -1093,17 +1234,23 @@ function render(motionKey = null) {
     );
     tree.prepend(empty);
   }
-  rowCache.finish();
+  rowCache.finish((key) => {
+    if (key.startsWith('pin:group:')) return index.groups.has(key.slice('pin:group:'.length));
+    const separator = key.indexOf(':');
+    const kind = key.slice(0, separator);
+    const id = key.slice(separator + 1);
+    if (kind === 'tab' || kind === 'pin' || kind === 'new-child-tab')
+      return index.byId.has(Number(id));
+    return (kind === 'new-tab' && id === 'null') || index.groups.has(id);
+  });
   // Native closes or another sidebar can remove the row owning an open menu.
   if (!$('menu').hidden && menuReturnFocus && !menuReturnFocus.isConnected) closeMenu();
   for (const key of wrappers.keys()) if (!usedWrappers.has(key)) wrappers.delete(key);
   usedWrappers.clear();
   $('new-tab').title = scope ? `New tab in ${scope.name}` : 'New tab';
   tree.scrollTop = scroll;
-  if (focusedKey)
-    [...document.querySelectorAll('[data-key]')]
-      .find((row) => row.dataset.key === focusedKey && !row.closest('[inert]'))
-      ?.focus({ preventScroll: true });
+  restoreRowFocus(focusedKey);
+  rememberRender(query, context);
   pointerMoves?.refresh();
 }
 

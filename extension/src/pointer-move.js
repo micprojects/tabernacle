@@ -221,22 +221,32 @@ export function createPointerMove({
     let target;
     try {
       const state = getState();
-      if (sourcePlacement(state, session.source) !== session.sourceState)
-        throw new Error('The source has changed. Cancel and try again.');
+      if (session.checkedState !== state) {
+        if (sourcePlacement(state, session.source) !== session.sourceState)
+          throw new Error('The source has changed. Cancel and try again.');
+        session.checkedState = state;
+        session.planKey = null;
+      }
       target = targetAt(session.x, session.y);
-      const plan = resolveMove(state, session.source, target.intent);
+      const key = JSON.stringify(target.intent);
+      const plan =
+        session.planKey === key && session.plan
+          ? session.plan
+          : resolveMove(state, session.source, target.intent);
+      session.planKey = key;
       session.plan = plan;
       session.intent = target.intent;
       session.targetNode = target.node;
       session.position = target.position;
-      preview.textContent = `${plan.title}${plan.count > 1 ? ` · ${plan.count} tabs` : ''}\n${plan.noOp ? 'Already in this position' : plan.label}`;
+      const text = `${plan.title}${plan.count > 1 ? ` · ${plan.count} tabs` : ''}\n${plan.noOp ? 'Already in this position' : plan.label}`;
+      if (preview.textContent !== text) preview.textContent = text;
       root.classList.remove('move-invalid');
       if (plan.destination.kind === 'pins') paintPins();
       else paintTree(plan, target);
       scheduleHover(target);
     } catch (error) {
       session.plan = null;
-      preview.textContent = error.message;
+      if (preview.textContent !== error.message) preview.textContent = error.message;
       root.classList.add('move-invalid');
       if (target?.node) mark(target.node, 'drop-invalid');
       scheduleHover(null);
@@ -275,7 +285,7 @@ export function createPointerMove({
             ? 1 - (rect.bottom - session.y) / 32
             : 0;
       const before = node.scrollTop;
-      node.scrollTop += speed * 600 * elapsed;
+      if (speed) node.scrollTop += speed * 600 * elapsed;
       scrolled ||= before !== node.scrollTop;
     }
     if (session.dirty || scrolled) {
@@ -386,7 +396,6 @@ export function createPointerMove({
       }
       event.preventDefault();
       session.dirty = true;
-      update();
     },
     true,
   );
@@ -437,7 +446,10 @@ export function createPointerMove({
     project,
 
     refresh() {
-      if (session) session.dirty = true;
+      if (session) {
+        session.dirty = true;
+        session.checkedState = null;
+      }
     },
 
     get active() {

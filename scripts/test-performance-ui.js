@@ -12,8 +12,12 @@ try {
     route.fulfill({
       contentType: 'application/javascript',
       body:
-        source +
-        '\nwindow.measureSidebarUpdate = (next) => { acceptState(next); const start = performance.now(); render(); return performance.now() - start; };',
+        source.replace(
+          'index = createTreeIndex(state, query);',
+          'window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1; index = createTreeIndex(state, query);',
+        ) +
+        '\nwindow.measureSidebarUpdate = (next) => { acceptState(next); const start = performance.now(); render(); return performance.now() - start; };' +
+        '\nwindow.forceFullSidebarRender = () => { previousRender = null; render(); };',
     }),
   );
   await page.addInitScript(() => {
@@ -109,6 +113,7 @@ try {
     window.retainedRow = document.querySelector('[data-key="tab:500"]');
     window.retainedLabel = retainedRow.querySelector('.label');
     window.perfTest.calls = {};
+    window.perfIndexBuilds = 0;
     return perfTest.api.tabs.update(2, { title: 'Updated title' });
   });
   await expect(page.locator('[data-key="tab:2"] .label')).toHaveText('Updated title');
@@ -120,7 +125,50 @@ try {
     ),
   ).toBe(true);
   expect(await page.evaluate(() => perfTest.calls.snapshot)).toBe(1);
+  expect(await page.evaluate(() => perfIndexBuilds)).toBe(0);
   console.log('✓ A title update keeps unrelated rows and their contents in place');
+
+  await page.locator('#search-toggle').click();
+  await page.locator('#search').fill('Updated title');
+  await expect(page.locator('.tab-row')).toHaveCount(1);
+  await page.locator('#search').fill('');
+  await expect(page.locator('.tab-row')).toHaveCount(1000);
+  expect(
+    await page.evaluate(
+      () =>
+        retainedRow === document.querySelector('[data-key="tab:500"]') &&
+        retainedLabel === retainedRow.querySelector('.label'),
+    ),
+  ).toBe(true);
+  await page.locator('#search-close').click();
+  console.log('✓ Clearing search reuses filtered rows and their contents');
+
+  await page.evaluate(async () => {
+    const { createRowCache } = await import('/extension/src/dom.js');
+    const cache = createRowCache({ retain: 2 });
+    const make = (key) => cache.get(key, [key], () => document.createElement('span'));
+    const root = document.createElement('div');
+    document.body.append(root);
+    const a = make('a'),
+      b = make('b'),
+      c = make('c');
+    root.append(a, b, c);
+    cache.finish(() => true);
+    root.replaceChildren();
+    cache.begin();
+    const d = make('d');
+    root.append(d);
+    cache.finish(() => true);
+    if (make('a') === a || make('b') !== b || make('c') !== c)
+      throw new Error('Hidden row retention must be bounded and keep recent entries');
+    if (b.parentNode || c.parentNode)
+      throw new Error('Hidden rows must release their old parent tree');
+    cache.begin();
+    cache.finish((key) => key !== 'b');
+    if (make('b') === b) throw new Error('Closed items must be evicted');
+    root.remove();
+  });
+  console.log('✓ Hidden row retention is bounded, detached, and prunes closed items');
 
   await page.evaluate(() => {
     perfTest.calls = {};
@@ -332,9 +380,56 @@ try {
     );
     console.log(JSON.stringify(result));
   }
+  await page.evaluate(() => {
+    const state = {
+      generation: 'metadata-regression',
+      groups: [{ id: 'g', name: 'Group', parentId: null }],
+      tabs: Array.from({ length: 6 }, (_, i) => ({
+        id: i + 1,
+        treeId: `t${i}`,
+        windowId: 1,
+        index: i,
+        order: i,
+        groupId: 'g',
+        title: `Tab ${i}`,
+        url: `https://example.com/${i}`,
+        parentTabId: i === 1 ? 1 : i === 3 ? 3 : null,
+        pinned: i === 2,
+        active: i === 0,
+      })),
+      containers: [],
+      folderPins: [],
+      pins: [{ kind: 'tab', id: 't2' }],
+      look: { connectingLines: true, domains: true, tintFavicons: true, animations: false },
+      view: { scopeId: null, collapsed: [] },
+    };
+    const markup = () => ['tree', 'pinned-tabs'].map((id) => document.getElementById(id).innerHTML);
+    measureSidebarUpdate(state);
+    for (const collapsed of [false, true, false]) {
+      state.tabs[0].collapsed = collapsed;
+      measureSidebarUpdate(structuredClone(state));
+      const builds = perfIndexBuilds;
+      for (const tab of state.tabs) {
+        tab.title += ' updated';
+        tab.url = 'https://updated.example.org/page';
+        tab.discarded = !tab.discarded;
+        tab.container = tab.container ? null : { name: 'Work', colorCode: '#37adff' };
+        tab.favIconUrl = tab.favIconUrl
+          ? null
+          : 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
+      }
+      measureSidebarUpdate(structuredClone(state));
+      if (perfIndexBuilds !== builds) throw new Error('Metadata rebuilt the tree index');
+      const patched = markup();
+      forceFullSidebarRender();
+      if (JSON.stringify(patched) !== JSON.stringify(markup()))
+        throw new Error('Metadata patch differs from full rendering');
+    }
+  });
+  console.log('✓ Patched metadata matches full rendering for pins, nested and hidden tabs');
   expect(errors).toEqual([]);
   console.log(
-    '8 performance UI checks passed; timings are diagnostic, not machine-dependent pass thresholds.',
+    'Performance UI checks passed; timings are diagnostic, not machine-dependent pass thresholds.',
   );
 } finally {
   await close();

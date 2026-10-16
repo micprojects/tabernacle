@@ -4,6 +4,7 @@ import { labelColor } from './appearance-colors.js';
 // CSS variables update existing labels without replacing focused/clicked rows.
 export function createLabelColors(root, surface) {
   const colors = new Map();
+  const applied = new WeakMap();
   let appearanceKey, backgrounds;
 
   function paint(entry) {
@@ -52,9 +53,13 @@ export function createLabelColors(root, surface) {
     },
 
     apply(row, color) {
+      const key = /^#[\da-f]{6}$/i.test(color || '') ? color.toLowerCase() : null;
+      const previous = applied.get(row);
+      // Row reconciliation keeps the row but replaces its contents and style
+      // attributes. A new first child invalidates this cache after that rebuild.
+      if (previous?.color === key && previous.content === row.firstChild) return;
       let entry;
-      if (/^#[\da-f]{6}$/i.test(color || '')) {
-        const key = color.toLowerCase();
+      if (key) {
         if (!colors.has(key)) {
           const next = { color: key, id: colors.size };
           colors.set(key, next);
@@ -67,6 +72,7 @@ export function createLabelColors(root, surface) {
         const value = entry ? `var(--caption-${entry.id}-${name}, currentColor)` : 'currentColor';
         if (row.style.getPropertyValue(property) !== value) row.style.setProperty(property, value);
       }
+      applied.set(row, { color: key, content: row.firstChild });
     },
   };
 }
