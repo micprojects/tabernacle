@@ -102,6 +102,111 @@ test('adding a tab to a large group uses a bounded number of membership writes',
   assert((f.calls()['sessions.getTabValue'] || 0) <= 2);
 });
 
+test('creation bursts share a view read and preserve native event order', async () => {
+  const f = fixture();
+  await f.send('enterGroup', { id: 'g' });
+  f.reset();
+  const added = await Promise.all(
+    Array.from({ length: 100 }, () => f.api.tabs.create({ windowId: 1, active: false })),
+  );
+  const state = await f.send('snapshot');
+  assert.deepEqual(
+    sortTabs(state.tabs)
+      .slice(-100)
+      .map((tab) => tab.id),
+    added.map((tab) => tab.id),
+  );
+  assert(added.every(({ id }) => state.tabs.find((tab) => tab.id === id)?.groupId === 'g'));
+  assert(f.calls()['sessions.getWindowValue'] <= 3);
+  assert(f.calls()['tabs.query'] <= 2);
+  f.controller.dispose();
+});
+
+test('requests between creation bursts keep their position in the write queue', async () => {
+  const f = fixture(10);
+  await f.send('snapshot');
+  const before = await Promise.all(
+    Array.from({ length: 5 }, () => f.api.tabs.create({ windowId: 1, active: false })),
+  );
+  const navigation = f.send('enterGroup', { id: 'g' });
+  const after = await Promise.all(
+    Array.from({ length: 5 }, () => f.api.tabs.create({ windowId: 1, active: false })),
+  );
+  await navigation;
+  const state = await f.send('snapshot');
+  assert(before.every(({ id }) => state.tabs.find((tab) => tab.id === id)?.groupId === null));
+  assert(after.every(({ id }) => state.tabs.find((tab) => tab.id === id)?.groupId === 'g'));
+  f.controller.dispose();
+});
+
+test('failed creation placement does not abandon the remaining batch', async () => {
+  const f = fixture(10);
+  await f.send('enterGroup', { id: 'g' });
+  const outcomes = [];
+  f.api.testing.setCreatedHandler((tab) => {
+    outcomes.push(
+      f.controller.created(tab).then(
+        () => null,
+        (error) => error.message,
+      ),
+    );
+  });
+  const save = f.api.sessions.setTabValue;
+  let failed = false;
+  f.api.sessions.setTabValue = async (id, key, value) => {
+    if (!failed && id > 10 && value.groupId === 'g') {
+      failed = true;
+      throw new Error('Placement failed');
+    }
+    return save(id, key, value);
+  };
+  const added = await Promise.all(
+    Array.from({ length: 5 }, () => f.api.tabs.create({ windowId: 1, active: false })),
+  );
+  assert.deepEqual(await Promise.all(outcomes), ['Placement failed', null, null, null, null]);
+  const state = await f.send('snapshot');
+  assert.equal(state.tabs.find((tab) => tab.id === added[0].id).groupId, null);
+  assert(
+    added.slice(1).every(({ id }) => state.tabs.find((tab) => tab.id === id)?.groupId === 'g'),
+  );
+  f.controller.dispose();
+});
+
+test('native creation still reveals collapsed ancestors and orders after pinned children', async () => {
+  const f = fixture(10);
+  await f.send('nestTab', { id: 2, parentTabId: 1 });
+  await f.send('toggleTab', { id: 1 });
+  await f.send('toggleTab', { id: 2 });
+  const child = await f.api.tabs.create({ windowId: 1, openerTabId: 2, active: false });
+  let state = await f.send('snapshot');
+  assert.equal(state.tabs.find((tab) => tab.id === child.id).parentTabId, 2);
+  assert.equal(state.tabs.find((tab) => tab.id === 1).collapsed, false);
+  assert.equal(state.tabs.find((tab) => tab.id === 2).collapsed, false);
+  await f.api.tabs.update(child.id, { pinned: true });
+  const sibling = await f.api.tabs.create({ windowId: 1, openerTabId: 2, active: false });
+  state = await f.send('snapshot');
+  assert.deepEqual(
+    sortTabs(state.tabs.filter((tab) => tab.parentTabId === 2)).map((tab) => tab.id),
+    [child.id, sibling.id],
+  );
+  f.controller.dispose();
+});
+
+test('cached resolved trees do not share mutable ancestry or mute state with callers', async () => {
+  const f = fixture(10);
+  await f.send('nestTab', { id: 2, parentTabId: 1 });
+  await f.send('muteTab', { id: 2 });
+  const first = await f.send('snapshot');
+  const child = first.tabs.find((tab) => tab.id === 2);
+  child.ancestors.length = 0;
+  child.mutedInfo.muted = false;
+  const second = (await f.send('snapshot')).tabs.find((tab) => tab.id === 2);
+  assert.equal(second.parentTabId, 1);
+  assert.equal(second.ancestors.length, 1);
+  assert.equal(second.mutedInfo.muted, true);
+  f.controller.dispose();
+});
+
 test('cached memberships survive native duplication, restore and cross-window moves', async () => {
   const f = fixture(10);
   await f.send('nestTab', { id: 2, parentTabId: 1 });
