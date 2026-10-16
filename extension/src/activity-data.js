@@ -1,4 +1,4 @@
-import { groupPath, isWithin } from './model.js';
+import { createFolderIndex } from './folder-index.js';
 import { activityEntries } from './recent-history.js';
 
 export const activityKinds = {
@@ -9,23 +9,42 @@ export const activityKinds = {
 
 export function activityItems(state, { folderEvent = 'all', pageUrl = '' } = {}) {
   const isPage = (url) => pageUrl && url?.split(/[?#]/)[0] === pageUrl;
+  const folders = createFolderIndex(state);
+  const counts = new Map();
+  for (const tab of state.tabs ?? [])
+    if (!tab.incognito && !isPage(tab.url))
+      counts.set(tab.groupId, (counts.get(tab.groupId) || 0) + 1);
+  for (const group of folders.order.slice().reverse()) {
+    const parent = folders.parents.get(group.id);
+    counts.set(parent, (counts.get(parent) || 0) + (counts.get(group.id) || 0));
+  }
+  const paths = new Map();
+
+  const path = (id) => {
+    if (!paths.has(id))
+      paths.set(
+        id,
+        folders
+          .path(id)
+          .map((group) => group.name)
+          .join(' / '),
+      );
+    return paths.get(id);
+  };
+
   return activityEntries(state, { folderEvent, pageUrl }).map((item) => {
     if (item.kind === 'folder')
       return {
         ...item,
         detail: item.detail || 'Top level',
-        tabCount: (state.tabs ?? []).filter(
-          (tab) => !tab.incognito && !isPage(tab.url) && isWithin(state, tab.groupId, item.id),
-        ).length,
+        tabCount: counts.get(item.id) || 0,
       };
     return {
       ...item,
       detail: item.detail.replace(/^www\./, ''),
       ...(item.kind === 'viewed'
         ? {
-            path: groupPath(state, item.groupId)
-              .map((group) => group.name)
-              .join(' / '),
+            path: path(item.groupId),
           }
         : {}),
     };
