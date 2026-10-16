@@ -6,13 +6,7 @@ import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normalizeLook, requireLook } from './look.js';
 import { recordExpansions } from './folder-activity.js';
-import {
-  normalizeFolderPins,
-  reconcilePins,
-  movePin,
-  pinActionLabels,
-  pinKey,
-} from './pinned-items.js';
+import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
 import { internalPage, openInternalPage } from './internal-pages.js';
 import { createFolderBackupController, folderBackupActions } from './folder-backup-controller.js';
@@ -1123,39 +1117,6 @@ export function createController(api, notify = () => {}) {
         });
         break;
       }
-      case 'movePinnedItem': {
-        const tabs = await listTabs(windowId);
-        const view = await viewFor(windowId);
-        const { items } = reconcilePins(
-          view.pinLayout,
-          model.folderPins,
-          tabs,
-          forgottenPins.get(windowId),
-        );
-        const next = movePin(items, message.item, message.before ?? null);
-        if (JSON.stringify(next) === JSON.stringify(items)) break;
-        if (message.item.kind === 'tab') {
-          const ordered = next.filter((item) => item.kind === 'tab');
-          const position = ordered.findIndex((item) => item.id === message.item.id);
-          const tab = tabs.find((tab) => tab.treeId === message.item.id);
-          const before = tabs.find((tab) => tab.treeId === ordered[position + 1]?.id);
-          await moveNativePin(windowId, tab.id, before?.id ?? null);
-        } else {
-          const byId = new Map(model.folderPins.map((item) => [item.id, item]));
-          const folders = next
-            .filter((item) => item.kind === 'group')
-            .map((item) => byId.get(item.id));
-          if (JSON.stringify(folders) !== JSON.stringify(model.folderPins))
-            await changeModel((model) => {
-              model.folderPins = folders;
-            });
-        }
-        if (model.folderPins.length || view.pinLayout) {
-          view.pinLayout = next;
-          await saveView(windowId, view);
-        }
-        break;
-      }
       case 'toggleGroup': {
         requireGroup(model, message.id);
         const view = await viewFor(windowId);
@@ -1355,10 +1316,6 @@ export function createController(api, notify = () => {}) {
         await writeTab(windowId, 'update', tab.id, { pinned: !tab.pinned });
         break;
       }
-      case 'movePinnedTab': {
-        await moveNativePin(windowId, message.id, message.beforeId ?? null);
-        break;
-      }
       case 'muteTab': {
         const tab = await checkedTab(message.id, windowId);
         await writeTab(windowId, 'update', tab.id, { muted: !tab.mutedInfo?.muted });
@@ -1406,7 +1363,6 @@ export function createController(api, notify = () => {}) {
         'moveGroupContents',
         'removeGroup',
         'setGroupPin',
-        'movePinnedItem',
         'setLook',
       ].includes(type) ||
         (type === 'moveItem' && message.source?.kind !== 'tab')
@@ -1426,7 +1382,7 @@ export function createController(api, notify = () => {}) {
         } catch (error) {
           // Some operations span browser and session writes. Refresh all
           // sidebars from committed state even if a later write failed.
-          if (['setGroupPin', 'movePinnedItem'].includes(message.type)) publish();
+          if (message.type === 'setGroupPin') publish();
           throw error;
         }
       }, !folderBackupActions.has(message.type)),

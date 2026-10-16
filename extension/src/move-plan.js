@@ -21,7 +21,7 @@ export function moveSource(state, kind, id) {
   return { kind, id };
 }
 
-export function folderDestinationName(state, id) {
+function folderDestinationName(state, id) {
   return ['Home', ...groupPath(state, id).map((group) => group.name)].join(' / ');
 }
 

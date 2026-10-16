@@ -52,7 +52,11 @@ try {
     window.moveDialogTest.childId = child.tabs.find(
       (tab) => tab.parentTabId === source.createdTabId,
     ).id;
-    await waitFor(() => document.querySelector(`[data-key="tab:${source.createdTabId}"]`));
+    // The source row can predate the child; open the picker only after the
+    // sidebar has rendered the complete branch from the latest snapshot.
+    await waitFor(() =>
+      document.querySelector(`[data-key="tab:${window.moveDialogTest.childId}"]`),
+    );
     const row = document.querySelector(`[data-key="tab:${source.createdTabId}"]`);
     const rect = row.getBoundingClientRect();
     row.dispatchEvent(

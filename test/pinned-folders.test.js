@@ -9,6 +9,7 @@ import {
 } from '../extension/src/pinned-items.js';
 import { exportFolderBackup } from '../extension/src/folder-backup.js';
 import { memoryBrowser } from '../preview/browser.js';
+import { pinMoveMessage } from './helpers/pin-move.js';
 
 const group = (id) => ({ kind: 'group', id });
 const tab = (id) => ({ kind: 'tab', id });
@@ -39,9 +40,15 @@ function fixture() {
     },
   });
   let controller = createController(api);
+  const send = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
   return {
     api,
-    send: (type, args = {}) => controller.request({ type, windowId: 1, ...args }),
+    send,
+
+    async movePin({ item, before, windowId = 1 }) {
+      const state = await send('snapshot', { windowId });
+      return send('moveItem', { ...pinMoveMessage(state, item, before), windowId });
+    },
 
     restart() {
       controller.dispose();
@@ -51,7 +58,7 @@ function fixture() {
 }
 
 test('folder pins share preferences and order while windows keep independent mixed positions', async () => {
-  const { send, restart } = fixture();
+  const { movePin, send, restart } = fixture();
   assert.deepEqual((await send('snapshot')).folderPins, []);
   await send('setGroupPin', { id: 'work', action: 'open' });
   await send('setGroupPin', { id: 'other', action: 'reveal' });
@@ -61,7 +68,7 @@ test('folder pins share preferences and order while windows keep independent mix
     'group:work',
     'group:other',
   ]);
-  await send('movePinnedItem', { item: group('work'), before: tab('b') });
+  await movePin({ item: group('work'), before: tab('b') });
   assert.deepEqual(order(await send('snapshot')), ['tab:a', 'group:work', 'tab:b', 'group:other']);
   assert.deepEqual(order(await send('snapshot', { windowId: 2 })), [
     'tab:d',
@@ -69,7 +76,7 @@ test('folder pins share preferences and order while windows keep independent mix
     'group:work',
     'group:other',
   ]);
-  await send('movePinnedItem', { item: group('other'), before: tab('a') });
+  await movePin({ item: group('other'), before: tab('a') });
   assert.deepEqual(order(await send('snapshot')), ['group:other', 'tab:a', 'group:work', 'tab:b']);
   assert.deepEqual(order(await send('snapshot', { windowId: 2 })), [
     'tab:d',
@@ -87,13 +94,13 @@ test('folder pins share preferences and order while windows keep independent mix
 });
 
 test('mixed tab moves use Firefox ordering; native moves refill tab slots without moving folders', async () => {
-  const { send, api } = fixture();
+  const { movePin, send, api } = fixture();
   await send('setGroupPin', { id: 'work', action: 'open' });
-  await send('movePinnedItem', { item: group('work'), before: tab('b') });
+  await movePin({ item: group('work'), before: tab('b') });
   const membership = structuredClone(api.testing.tabValues);
-  await send('movePinnedItem', { item: tab('b'), before: tab('a') });
+  await movePin({ item: tab('b'), before: tab('a') });
   assert.deepEqual(order(await send('snapshot')), ['tab:b', 'tab:a', 'group:work']);
-  await send('movePinnedItem', { item: group('work'), before: tab('a') });
+  await movePin({ item: group('work'), before: tab('a') });
   await api.tabs.move(1, { index: 0 });
   const state = await send('snapshot');
   assert.deepEqual(order(state), ['tab:a', 'group:work', 'tab:b']);
@@ -107,11 +114,11 @@ test('mixed tab moves use Firefox ordering; native moves refill tab slots withou
 });
 
 test('reorder followed by removal preserves slots even when another sidebar never refreshes', async () => {
-  const { send, api } = fixture();
+  const { movePin, send, api } = fixture();
   await send('setGroupPin', { id: 'work', action: 'open' });
   await send('setGroupPin', { id: 'other', action: 'open' });
-  await send('movePinnedItem', { windowId: 2, item: group('work'), before: tab('d') });
-  await send('movePinnedItem', { item: group('other'), before: group('work') });
+  await movePin({ windowId: 2, item: group('work'), before: tab('d') });
+  await movePin({ item: group('other'), before: group('work') });
   // No snapshot in window 2 between changing shared order and removing a pin.
   await send('setGroupPin', { id: 'other', action: null });
   assert.deepEqual(order(await send('snapshot', { windowId: 2 })), [
@@ -147,11 +154,11 @@ test('reveal expands only the path, keeps the active tab, and records only delib
 });
 
 test('renames, moves and appearance preserve shortcuts; unpin/repin appends in every window', async () => {
-  const { send, api } = fixture();
+  const { movePin, send, api } = fixture();
   await send('setGroupPin', { id: 'design', action: 'reveal' });
   await send('setGroupPin', { id: 'other', action: 'open' });
   await send('snapshot', { windowId: 2 });
-  await send('movePinnedItem', { item: group('design'), before: tab('a') });
+  await movePin({ item: group('design'), before: tab('a') });
   await send('renameGroup', { id: 'design', name: 'Ideas' });
   await send('moveGroup', { id: 'design', parentId: 'other' });
   await send('setGroupAppearance', { id: 'design', appearance: { icon: 'book', color: 'purple' } });
@@ -171,9 +178,9 @@ test('renames, moves and appearance preserve shortcuts; unpin/repin appends in e
 });
 
 test('restored tabs with new native IDs keep saved mixed slots, including incremental restoration', async () => {
-  const { send, api, restart } = fixture();
+  const { movePin, send, api, restart } = fixture();
   await send('setGroupPin', { id: 'work', action: 'open' });
-  await send('movePinnedItem', { item: group('work'), before: tab('b') });
+  await movePin({ item: group('work'), before: tab('b') });
   const savedView = structuredClone(api.testing.windowValues.get(1));
   const savedTab = structuredClone(api.testing.tabValues.get(2));
   await api.tabs.remove(2);
@@ -187,9 +194,9 @@ test('restored tabs with new native IDs keep saved mixed slots, including increm
 });
 
 test('closed/unpinned/duplicated/transferred tabs reconcile without duplicate pins', async () => {
-  const { send, api } = fixture();
+  const { movePin, send, api } = fixture();
   await send('setGroupPin', { id: 'work', action: 'open' });
-  await send('movePinnedItem', { item: group('work'), before: tab('b') });
+  await movePin({ item: group('work'), before: tab('b') });
   const duplicate = await api.tabs.duplicate(2);
   let state = await send('snapshot');
   assert.equal(new Set(state.pins.map((item) => item.id)).size, state.pins.length);
@@ -205,25 +212,27 @@ test('closed/unpinned/duplicated/transferred tabs reconcile without duplicate pi
 });
 
 test('stale requests and failed native/storage writes do not invent a successful reorder', async () => {
-  const { send, api } = fixture();
+  const { movePin, send, api, restart } = fixture();
   await send('setGroupPin', { id: 'work', action: 'open' });
-  const before = order(await send('snapshot'));
-  for (const args of [
-    { item: group('missing') },
-    { item: tab('d') },
-    { item: tab('a'), before: group('other') },
-    { item: tab('a'), before: tab('missing') },
-  ])
-    await assert.rejects(send('movePinnedItem', args));
+  const initial = await send('snapshot');
+  const before = order(initial);
+  const planned = pinMoveMessage(initial, group('work'), tab('a'));
+  for (const invalid of [
+    { source: { kind: 'pin-group', id: 'missing' } },
+    { source: { kind: 'pin-group', id: 'other' } },
+    { source: { kind: 'tab', id: 4, treeId: 'd' } },
+    { destination: { kind: 'pins', before: group('other') } },
+    { destination: { kind: 'pins', before: tab('missing') } },
+  ]) {
+    await assert.rejects(send('moveItem', { ...planned, ...invalid }));
+    assert.deepEqual(order(await send('snapshot')), before);
+  }
   await assert.rejects(send('setGroupPin', { id: 'missing', action: 'open' }));
   await assert.rejects(send('setGroupPin', { id: 'work', action: 'bad' }));
   await assert.rejects(send('revealGroup', { id: 'missing' }));
   const move = api.tabs.move;
   api.tabs.move = async () => [];
-  await assert.rejects(
-    send('movePinnedItem', { item: tab('b'), before: tab('a') }),
-    /could not move/,
-  );
+  await assert.rejects(movePin({ item: tab('b'), before: tab('a') }), /could not move/);
   assert.deepEqual(order(await send('snapshot')), before);
   api.tabs.move = move;
   const save = api.storage.local.set;
@@ -237,12 +246,15 @@ test('stale requests and failed native/storage writes do not invent a successful
   api.sessions.setWindowValue = async () => {
     throw new Error('Cannot save layout');
   };
-  await assert.rejects(
-    send('movePinnedItem', { item: group('work'), before: tab('a') }),
-    /Cannot save/,
-  );
+  await assert.rejects(send('moveItem', planned), /could not finish recovery/);
   api.sessions.setWindowValue = viewSave;
+  // The current move path journals failed compensation; a fresh controller
+  // must finish it without leaving the folder in its attempted new slot.
+  restart();
   assert.deepEqual(order(await send('snapshot')), before);
+  const retried = await send('moveItem', planned);
+  assert.deepEqual(order(retried), ['group:work', 'tab:a', 'tab:b']);
+  assert.equal(retried.moveResult.operationId, planned.operationId);
 });
 
 test('legacy/malformed data normalizes and folder exports omit pin preferences', async () => {

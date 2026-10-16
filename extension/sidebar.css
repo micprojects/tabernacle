@@ -41,32 +41,6 @@ button:hover:not(:disabled) {
 [hidden] {
   display: none !important;
 }
-.look-options {
-  display: grid;
-  gap: 14px;
-  margin: 18px 0;
-}
-dialog .look-help {
-  margin: 7px 0 0;
-  font-size: 11px;
-}
-.look-option {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 12px;
-  line-height: 1.5;
-  cursor: pointer;
-  margin: 0;
-}
-.look-option input {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  padding: 0;
-  accent-color: var(--focus);
-}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -892,28 +866,6 @@ dialog .appearance-results {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
-}
-.about-details {
-  margin: 0;
-  line-height: 1.5;
-}
-.about-details dt {
-  margin-top: 14px;
-  color: var(--panel-muted);
-  font-size: 11px;
-}
-.about-details dd {
-  margin: 3px 0 0;
-  overflow-wrap: anywhere;
-}
-.about-details a {
-  color: var(--accent);
-  text-underline-offset: 3px;
-}
-.about-details a:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 3px;
-  border-radius: 2px;
 }
 .folder-field {
   margin-top: 17px;

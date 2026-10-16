@@ -1,11 +1,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
-import { toolbarIconSVG } from '../extension/src/toolbar-icon.js';
+import { toolbarIconSVG } from './toolbar-icon.js';
 
 // Store artwork stays fixed; the transparent toolbar symbol uses neutral light/dark colours.
 const source = await readFile('extension/icons/tabernacle.svg');
 await writeFile('extension/icons/tabernacle-toolbar.svg', toolbarIconSVG());
-const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 1024];
+const sizes = [16, 32, 48, 64, 96, 128, 256, 1024];
 for (const size of sizes) {
   const path =
     size === 1024 ? 'assets/tabernacle-1024.png' : `extension/icons/tabernacle-${size}.png`;

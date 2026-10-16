@@ -1,6 +1,6 @@
 import { sortTabs, unpinnedTabTree } from './model.js';
 
-export function indexTabs(tabs) {
+function indexTabs(tabs) {
   const byId = new Map(tabs.map((tab) => [tab.id, tab]));
   const children = new Map();
   for (const tab of sortTabs(tabs)) {
