@@ -1,3 +1,5 @@
+![Tabernacle icon](extension/icons/tabernacle-128.png)
+
 # Tabernacle
 
 Tabernacle is a Firefox extension I made to help me navigate and organise my tabs. It adds a sidebar with folders, nested tab trees and search.
