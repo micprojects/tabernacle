@@ -39,6 +39,19 @@ test('dialog crops round outwards without clipping fractional borders', () => {
   });
 });
 
+test('inset dialog crops exclude backdrop pixels at fractional edges', () => {
+  const measured = {
+    viewport: { width: 388, height: 711 },
+    element: { left: 14, top: 105.5, right: 374, bottom: 605.5 },
+  };
+  assert.deepEqual(resolveScreenshotCrop({ inset: 1 }, measured, { left: 41, top: 134 }), {
+    left: 56,
+    top: 241,
+    width: 358,
+    height: 497,
+  });
+});
+
 test('offscreen content and crops beyond the capture are rejected', () => {
   const measured = {
     viewport: { width: 388, height: 711 },
