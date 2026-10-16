@@ -15,7 +15,7 @@ export function createBrowserCache(api, changed = () => {}) {
     listeners.push(() => event.removeListener?.(listener));
   };
 
-  async function read(cache, key, fetch) {
+  async function read(cache, key, fetch, accept = (value) => value) {
     for (;;) {
       if (!cache.has(key)) cache.set(key, Promise.resolve().then(fetch));
       const pending = cache.get(key);
@@ -27,7 +27,7 @@ export function createBrowserCache(api, changed = () => {}) {
         throw error;
       }
       // An event during the read invalidates its result too.
-      if (cache.get(key) === pending) return value;
+      if (cache.get(key) === pending) return accept(value);
     }
   }
 
@@ -90,19 +90,25 @@ export function createBrowserCache(api, changed = () => {}) {
     async tabs(windowId = null) {
       // Adapters without lifecycle events can still use the controller safely.
       if (!api.tabs.onUpdated) return api.tabs.query(windowId == null ? {} : { windowId });
-      const tabs = await read(tabLists, windowId, () =>
-        api.tabs.query(windowId == null ? {} : { windowId }),
+      return read(
+        tabLists,
+        windowId,
+        () => api.tabs.query(windowId == null ? {} : { windowId }),
+        (tabs) => {
+          // Seed windows while the global result is still known to be current.
+          // Another await here could let an event invalidate it before seeding.
+          if (windowId === null) {
+            const windows = new Map();
+            for (const tab of tabs) {
+              if (!windows.has(tab.windowId)) windows.set(tab.windowId, []);
+              windows.get(tab.windowId).push(tab);
+            }
+            for (const [id, values] of windows)
+              if (!tabLists.has(id)) tabLists.set(id, Promise.resolve(values));
+          }
+          return tabs;
+        },
       );
-      if (windowId === null) {
-        const windows = new Map();
-        for (const tab of tabs) {
-          if (!windows.has(tab.windowId)) windows.set(tab.windowId, []);
-          windows.get(tab.windowId).push(tab);
-        }
-        for (const [id, values] of windows)
-          if (!tabLists.has(id)) tabLists.set(id, Promise.resolve(values));
-      }
-      return tabs;
     },
 
     async membership(id) {

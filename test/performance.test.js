@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { createBrowserCache } from '../extension/src/browser-cache.js';
 import { createTreeIndex } from '../extension/src/tree-index.js';
-import { insertionOrder, sortTabs, resolveTabTree, tabSubtree } from '../extension/src/model.js';
+import {
+  insertionOrder,
+  sortTabs,
+  resolveTabTree,
+  tabSubtree,
+  validGroups,
+} from '../extension/src/model.js';
 import { memoryBrowser } from '../preview/browser.js';
 
 function fixture(count = 1000) {
@@ -280,6 +286,47 @@ test('failed membership writes leave the cached and persisted tree unchanged', a
   await assert.rejects(f.send('toggleTab', { id: 1 }), /Cannot save/);
   const after = await f.send('snapshot');
   assert.deepEqual(after.tabs, before.tabs);
+});
+
+for (const event of ['update', 'remove', 'attach']) {
+  test(`${event} between a global read and window cache seeding cannot retain stale tabs`, async () => {
+    const api = memoryBrowser({ events: true, tabs: [{ id: 1, windowId: 1, title: 'Before' }] });
+    const cache = createBrowserCache(api);
+    try {
+      await cache.tabs();
+      const reading = cache.tabs();
+      let updated;
+      // The cached read resolves first; the event arrives before tabs() resumes
+      // and tries to populate its per-window caches from that global result.
+      queueMicrotask(() => {
+        updated =
+          event === 'update'
+            ? api.tabs.update(1, { title: 'After' })
+            : event === 'remove'
+              ? api.tabs.remove(1)
+              : api.testing.attach(1, 2);
+      });
+      await reading;
+      await updated;
+      const current = await cache.tabs(1);
+      if (event === 'update') assert.equal(current[0].title, 'After');
+      else assert.deepEqual(current, []);
+      if (event === 'attach') assert.equal((await cache.tabs(2))[0].id, 1);
+    } finally {
+      cache.dispose();
+    }
+  });
+}
+
+test('saved folder validation handles deep unordered hierarchies without recursion', () => {
+  const groups = Array.from({ length: 25000 }, (_, i) => ({
+    id: `g${i}`,
+    name: 'Folder',
+    parentId: i ? `g${i - 1}` : null,
+  })).reverse();
+  assert.equal(validGroups(groups), true);
+  groups.at(-1).parentId = groups[0].id;
+  assert.equal(validGroups(groups), false);
 });
 
 test('membership reads and writes keep caller-owned records out of the cache', async () => {

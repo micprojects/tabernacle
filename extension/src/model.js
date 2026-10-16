@@ -19,6 +19,36 @@ export function groupById(model, id) {
   return model.groups.find((group) => group.id === id);
 }
 
+export function validGroups(groups) {
+  if (!Array.isArray(groups)) return false;
+  const byId = new Map();
+  for (const group of groups) {
+    if (
+      !group ||
+      typeof group.id !== 'string' ||
+      !group.id ||
+      byId.has(group.id) ||
+      typeof group.name !== 'string' ||
+      (group.parentId !== null && typeof group.parentId !== 'string')
+    )
+      return false;
+    byId.set(group.id, group);
+  }
+  // Each folder is visited once, including arbitrarily deep imported trees.
+  const complete = new Set([null]);
+  for (const group of groups) {
+    const path = new Set();
+    let id = group.id;
+    while (!complete.has(id)) {
+      if (path.has(id) || !byId.has(id)) return false;
+      path.add(id);
+      id = byId.get(id).parentId;
+    }
+    for (const id of path) complete.add(id);
+  }
+  return true;
+}
+
 export function requireGroup(model, id) {
   if (id !== null && !groupById(model, id)) throw new Error('That folder no longer exists.');
   return id;

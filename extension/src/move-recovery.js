@@ -1,3 +1,5 @@
+import { validGroups } from './model.js';
+
 export const PENDING_MOVE_KEY = 'tabernacle.pending-move.v1';
 
 function validExtras(value) {
@@ -40,33 +42,6 @@ function validExtras(value) {
     pair(effects.folderPins, pins) &&
     (effects.pin == null || (typeof effects.pin.treeId === 'string' && pair(effects.pin, native)))
   );
-}
-
-function validGroups(groups) {
-  if (!Array.isArray(groups)) return false;
-  const byId = new Map();
-  for (const group of groups) {
-    if (
-      !group ||
-      typeof group.id !== 'string' ||
-      !group.id ||
-      byId.has(group.id) ||
-      typeof group.name !== 'string' ||
-      (group.parentId !== null && typeof group.parentId !== 'string')
-    )
-      return false;
-    byId.set(group.id, group);
-  }
-  for (const group of groups) {
-    const seen = new Set([group.id]);
-    let id = group.parentId;
-    while (id !== null) {
-      if (seen.has(id) || !byId.has(id)) return false;
-      seen.add(id);
-      id = byId.get(id).parentId;
-    }
-  }
-  return true;
 }
 
 // One serialized move at a time. This record contains only changed memberships
