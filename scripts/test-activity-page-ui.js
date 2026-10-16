@@ -12,6 +12,9 @@ try {
   await page.goto(`${base}/extension/activity.html?demo&mockup`);
   await expect(page.getByRole('combobox', { name: 'Layout', exact: true })).toHaveCount(0);
   await expect(page.locator('.activity-row')).toHaveCount(18);
+  await page.evaluate(() => {
+    window.retainedActivityRow = document.querySelectorAll('.activity-row')[1];
+  });
   await page.screenshot({ path: `test-results/activity-timeline.png` });
   await page.getByRole('link', { name: /^Folders/ }).click();
   await page.getByLabel('Folder activity', { exact: true }).selectOption('expanded');
@@ -25,6 +28,7 @@ try {
   await expect(page.getByText('No matching activity', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.locator('.activity-row')).toHaveCount(18);
+  expect(await page.evaluate(() => retainedActivityRow.isConnected)).toBe(true);
   await page.getByLabel('Time period').selectOption('yesterday');
   expect(await page.locator('.activity-row').count()).toBeGreaterThan(0);
   await page.getByLabel('Time period').selectOption('all');

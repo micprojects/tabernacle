@@ -2,6 +2,8 @@ import { createRefreshScheduler } from './refresh-scheduler.js';
 import { icon } from './icons.js';
 import { groupById } from './model.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
+import { createRowCache, reconcileChildren } from './dom.js';
+import { createFolderIndex } from './folder-index.js';
 import {
   activityItems,
   activityKinds,
@@ -22,6 +24,9 @@ const folderEvent = $('folder-event');
 let state, request, windowId, busyKey, readFailed;
 let disposed = false;
 let kind = 'all';
+const rows = createRowCache({ retain: 2048 });
+const sections = new Map();
+const timelineRoot = el('div', 'activity-timeline');
 
 function el(tag, className = '', text) {
   const node = document.createElement(tag);
@@ -39,7 +44,8 @@ function button(className, text, action) {
 
 function appearance() {
   if (!state) return;
-  document.documentElement.dataset.colorScheme = state.look.colorScheme;
+  if (document.documentElement.dataset.colorScheme !== state.look.colorScheme)
+    document.documentElement.dataset.colorScheme = state.look.colorScheme;
 }
 
 function itemIcon(item) {
@@ -140,21 +146,56 @@ function row(item) {
 }
 
 function timeline(items) {
-  const container = el('div', 'activity-timeline');
-  let currentDay, list;
+  const folders = createFolderIndex(state);
+  const days = new Map();
+  const labels = new Map();
+  const now = Date.now();
   for (const item of items) {
-    const day = activityDay(item.timestamp);
-    if (day !== currentDay) {
-      currentDay = day;
-      const section = el('section', 'day-section');
-      section.append(el('h3', 'day-heading', day));
-      list = el('ul', 'activity-list');
-      section.append(list);
-      container.append(section);
-    }
-    list.append(row(item));
+    const date = new Date(item.timestamp).toDateString();
+    if (!labels.has(date)) labels.set(date, activityDay(item.timestamp, now));
+    const day = labels.get(date);
+    if (!days.has(day)) days.set(day, []);
+    const group = item.kind === 'folder' && folders.byId.get(item.id);
+    const details = group && folders.details.get(item.id);
+    days
+      .get(day)
+      .push(
+        rows.get(
+          item.key,
+          [
+            item.title,
+            item.detail,
+            item.path,
+            item.event,
+            item.timestamp,
+            item.favIconUrl,
+            busyKey === item.key,
+            activityTime(item.timestamp, now),
+            group?.appearance?.icon,
+            details?.appearance?.color,
+            details?.container?.icon,
+            details?.container?.iconUrl,
+            group?.defaultCookieStoreId,
+          ],
+          () => row(item),
+        ),
+      );
   }
-  return container;
+  const nodes = [];
+  for (const [day, children] of days) {
+    if (!sections.has(day)) {
+      const node = el('section', 'day-section');
+      const list = el('ul', 'activity-list');
+      node.append(el('h3', 'day-heading', day), list);
+      sections.set(day, { node, list });
+    }
+    const section = sections.get(day);
+    reconcileChildren(section.list, children);
+    nodes.push(section.node);
+  }
+  reconcileChildren(timelineRoot, nodes);
+  for (const day of sections.keys()) if (!days.has(day)) sections.delete(day);
+  return timelineRoot;
 }
 
 function empty() {
@@ -213,9 +254,22 @@ function render() {
   $('activity-history-error').textContent = historyError
     ? `Could not load closed tabs. ${historyError}`
     : '';
-  results.replaceChildren();
-  if (!items.length) results.append(empty());
-  else results.append(timeline(items));
+  reconcileChildren(results, [items.length ? timeline(items) : empty()]);
+  if (!items.length) {
+    timelineRoot.replaceChildren();
+    sections.clear();
+  }
+  const live = new Set(all.map((item) => item.key));
+  // A folder-event filter hides otherwise live history; keep those rows just
+  // as we keep rows hidden by the text, date and category filters.
+  const historyFolders = new Set(
+    [...(state.view.recentFolders || []), ...(state.view.recentExpandedFolders || [])].map(
+      ({ id }) => id,
+    ),
+  );
+  for (const group of state.groups)
+    if (historyFolders.has(group.id)) live.add(`folder:${group.id}`);
+  rows.finish((key) => live.has(key));
   results.setAttribute('aria-busy', 'false');
   if (focusedKey) {
     const selector = `[data-key="${CSS.escape(focusedKey)}"]`;
@@ -272,7 +326,14 @@ for (const [value, label, symbol] of [
 }
 for (const node of document.querySelectorAll('span[data-icon]'))
   node.append(icon(node.dataset.icon));
-search.addEventListener('input', render);
+let searchFrame;
+search.addEventListener('input', () => {
+  if (searchFrame) return;
+  searchFrame = requestAnimationFrame(() => {
+    searchFrame = null;
+    render();
+  });
+});
 period.addEventListener('change', render);
 folderEvent.addEventListener('change', render);
 window.addEventListener('hashchange', navigate);
@@ -349,6 +410,7 @@ window.addEventListener(
     disposed = true;
     refreshScheduler.dispose();
     clearInterval(timer);
+    cancelAnimationFrame(searchFrame);
   },
   { once: true },
 );
