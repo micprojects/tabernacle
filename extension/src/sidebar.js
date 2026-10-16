@@ -7,7 +7,6 @@ import { createFaviconTints } from './favicon-tint.js';
 import { createLabelColors } from './label-colors.js';
 import { createDialogs } from './dialogs.js';
 import { folderIcon, folderIconColor } from './folder-icons.js';
-import { folderAppearance } from './folder-appearance.js';
 import { pinActionLabels } from './pinned-items.js';
 import { createPointerMove } from './pointer-move.js';
 import { createRecentActivity } from './recently-closed.js';
@@ -502,7 +501,7 @@ function groupNode(group, query, ancestorMatch = false) {
   if (query && !ancestorMatch && !searchVisible(group.id)) return null;
   const { node, branch } = wrapperFor('group', group.id);
   const container = groupContainerDetails(group);
-  const appearance = folderAppearance(group, container, state);
+  const { appearance } = index.folders.details.get(group.id);
   const color = folderIconColor(appearance.color) || 'var(--folder-icon)';
   node.style.setProperty('--item-colour', color);
   branch.style.setProperty('--parent-guide', color);
@@ -531,7 +530,7 @@ function groupNode(group, query, ancestorMatch = false) {
   const label = `${expanded ? 'Collapse' : 'Expand'} ${group.name}`;
   if (disclosure.getAttribute('aria-expanded') !== String(expanded))
     disclosure.replaceChildren(
-      folderIcon(group, container, { className: 'group', expanded, state }),
+      folderIcon(group, container, { className: 'group', expanded, appearance }),
     );
   setAttribute(disclosure, 'aria-expanded', expanded);
   setAttribute(disclosure, 'aria-label', label);
@@ -576,13 +575,8 @@ function tabFavicon(tab) {
 }
 
 function groupContainerDetails(group) {
-  const source = groupPath(state, group.id)
-    .reverse()
-    .find((item) => item.defaultCookieStoreId != null);
+  const { source, container: identity } = index.folders.details.get(group.id);
   if (!source) return null;
-  const identity = state.containers?.find(
-    (item) => item.cookieStoreId === source.defaultCookieStoreId,
-  );
   const name =
     source.defaultCookieStoreId === 'firefox-default'
       ? 'No container'
@@ -663,10 +657,11 @@ function createPinnedTab(tab) {
 }
 
 function pinnedFolder(pin) {
-  const group = groupById(state, pin.id);
+  const group = index.groups.get(pin.id);
   const container = groupContainerDetails(group);
-  const appearance = folderAppearance(group, container, state);
-  const path = groupPath(state, group.id)
+  const { appearance } = index.folders.details.get(group.id);
+  const path = index.folders
+    .path(group.id)
     .map((item) => item.name)
     .join(' / ');
   const current = group.id === state.view.scopeId;
@@ -696,7 +691,7 @@ function pinnedFolder(pin) {
       node.dataset.key = `pin:group:${group.id}`;
       node.classList.toggle('active', current);
       if (current) node.setAttribute('aria-current', 'location');
-      node.append(folderIcon(group, container, { state }));
+      node.append(folderIcon(group, container, { appearance }));
       pinnedDrag(node, { kind: 'group', id: group.id });
       pinnedMenu(node, 'group', group.id);
       return node;
@@ -826,9 +821,8 @@ function tabNode(tab, query, ancestorMatch = false) {
 }
 
 function newTabItem(groupId, parentTab = null) {
-  const group = groupById(state, groupId);
-  const container = group && groupContainerDetails(group);
-  const folderColor = group && folderAppearance(group, container, state).color;
+  const group = index.groups.get(groupId);
+  const folderColor = index.folders.details.get(groupId)?.appearance.color;
   // Creation controls follow the folder, never an individual tab's container.
   const color = folderIconColor(folderColor) || 'var(--folder-icon)';
   const parentTabId = parentTab?.id ?? null;
@@ -1046,7 +1040,7 @@ function render(motionKey = null) {
     $('home').setAttribute('aria-current', 'location');
     if (!homeLabel.isConnected) $('home').append(homeLabel);
   }
-  const crumbs = groupPath(state, state.view.scopeId);
+  const crumbs = index.folders.path(state.view.scopeId);
   const scopeContainer = scope && groupContainerDetails(scope);
   const scopeAudio = audioInGroups.get(scope?.id);
   const nextBreadcrumbKey = JSON.stringify([

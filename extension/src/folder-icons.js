@@ -29,8 +29,16 @@ export function folderIconColor(color) {
   return color && CSS.supports('color', color) ? appearanceColor(color, true) || color : null;
 }
 
-export function folderIcon(group, container, { expanded = false, className = '', state } = {}) {
-  const appearance = folderAppearance(group, container, state);
+export function folderIcon(
+  group,
+  container,
+  {
+    expanded = false,
+    className = '',
+    state,
+    appearance = folderAppearance(group, container, state),
+  } = {},
+) {
   let glyph;
   const url = folderContainerIconUrl(group, container);
   if (appearance.icon && appearance.icon !== 'folder') glyph = folderSymbol(appearance.icon);
