@@ -1,4 +1,5 @@
-import { children, groupById, groupPath, isWithin, tabSubtree } from './model.js';
+import { groupById, groupPath, tabSubtree } from './model.js';
+import { createFolderIndex } from './folder-index.js';
 import { moveSource, resolveMove, sourcePlacement } from './move-plan.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
 import { icon } from './icons.js';
@@ -127,8 +128,9 @@ export function createMovePicker(getState, kind, id, { favicon } = {}) {
     const state = getState();
     const query = search.value.trim().toLocaleLowerCase();
     clear.hidden = !search.value;
+    const folders = createFolderIndex(state);
     const allowed = state.groups.filter(
-      (group) => kind !== 'group' || !isWithin(state, group.id, id),
+      (group) => kind !== 'group' || !folders.isWithin(group.id, id),
     );
     const allowedIds = new Set(allowed.map((group) => group.id));
     const matches = new Set(
@@ -137,15 +139,21 @@ export function createMovePicker(getState, kind, id, { favicon } = {}) {
         .map((group) => group.id),
     );
     if ('home'.includes(query)) matches.add(null);
-    const visible = new Set(matches);
-    for (const match of matches) {
-      visible.add(null);
-      for (const ancestor of groupPath(state, match)) visible.add(ancestor.id);
-    }
+    const visible = new Set();
+    if (query)
+      for (let match of matches) {
+        visible.add(null);
+        while (match != null && !visible.has(match)) {
+          visible.add(match);
+          match = folders.parents.get(match);
+        }
+      }
     rows = [];
 
+    const pending = [];
+
     function branch(entry, depth, position, size) {
-      const nested = children(state, entry.id).filter(
+      const nested = (folders.children.get(entry.id) || []).filter(
         (child) => allowedIds.has(child.id) && (!query || visible.has(child.id)),
       );
       const open = nested.length > 0 && (Boolean(query) || expanded.has(entry.id));
@@ -183,7 +191,10 @@ export function createMovePicker(getState, kind, id, { favicon } = {}) {
         disclosure,
         entry.id === null
           ? icon('home')
-          : folderIcon(entry, folderContainer(state, entry), { expanded: open, state }),
+          : folderIcon(entry, folders.details.get(entry.id).container, {
+              expanded: open,
+              appearance: folders.details.get(entry.id).appearance,
+            }),
         name,
         check,
       );
@@ -198,9 +209,14 @@ export function createMovePicker(getState, kind, id, { favicon } = {}) {
         const list = el('div', 'move-tree-group');
         list.setAttribute('role', 'group');
         list.style.setProperty('--move-indent', depth < 4 ? '16px' : '4px');
-        nested.forEach((child, index) =>
-          list.append(branch(child, depth + 1, index + 1, nested.length)),
-        );
+        for (let i = nested.length - 1; i >= 0; i--)
+          pending.push({
+            entry: nested[i],
+            depth: depth + 1,
+            position: i + 1,
+            size: nested.length,
+            parent: list,
+          });
         item.append(list);
       }
       item.addEventListener('keydown', (event) => {
@@ -247,9 +263,20 @@ export function createMovePicker(getState, kind, id, { favicon } = {}) {
       return item;
     }
 
-    tree.replaceChildren(
-      ...(!query || visible.has(null) ? [branch({ id: null, name: 'Home' }, 0, 1, 1)] : []),
-    );
+    const fragment = document.createDocumentFragment();
+    if (!query || visible.has(null))
+      pending.push({
+        entry: { id: null, name: 'Home' },
+        depth: 0,
+        position: 1,
+        size: 1,
+        parent: fragment,
+      });
+    while (pending.length) {
+      const { entry, depth, position, size, parent } = pending.pop();
+      parent.append(branch(entry, depth, position, size));
+    }
+    tree.replaceChildren(fragment);
     empty.hidden = rows.length > 0;
     tree.hidden = !rows.length;
     const active = rows.findIndex(

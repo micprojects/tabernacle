@@ -1,3 +1,4 @@
+import { createFolderIndex } from './folder-index.js';
 import { sortTabs, unpinnedTabTree } from './model.js';
 
 function indexTabs(tabs) {
@@ -59,13 +60,11 @@ export function createTreeIndex(state, query = '') {
     if (all.byId.has(tab.parentTabId))
       audio.set(tab.parentTabId, audio.get(tab.parentTabId) + audio.get(tab.id));
   }
-  const groups = new Map(state.groups.map((group) => [group.id, group]));
-  const groupChildren = new Map();
+  const folders = createFolderIndex(state);
+  const groups = folders.byId;
+  const groupChildren = folders.children;
   const groupStats = new Map();
   for (const group of state.groups) {
-    const parent = groups.has(group.parentId) ? group.parentId : null;
-    if (!groupChildren.has(parent)) groupChildren.set(parent, []);
-    groupChildren.get(parent).push(group);
     groupStats.set(group.id, {
       count: 0,
       audio: 0,
@@ -88,8 +87,8 @@ export function createTreeIndex(state, query = '') {
     const stats = groupStats.get(tab.groupId);
     if (stats && tab.audible && !tab.mutedInfo?.muted) stats.audio++;
   }
-  for (const group of descendantsFirst(groupChildren.get(null) || [], groupChildren)) {
-    const parent = groupStats.get(group.parentId);
+  for (const group of folders.order.slice().reverse()) {
+    const parent = groupStats.get(folders.parents.get(group.id));
     if (!parent) continue;
     const stats = groupStats.get(group.id);
     parent.count += stats.count;
@@ -102,6 +101,7 @@ export function createTreeIndex(state, query = '') {
     children: visible.children,
     roots,
     groups,
+    folders,
     groupChildren,
     tabStats,
     groupStats,

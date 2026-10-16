@@ -1,3 +1,4 @@
+import { createFolderIndex } from './folder-index.js';
 import { icon } from './icons.js';
 import { groupPath, groupById } from './model.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
@@ -107,28 +108,19 @@ export function createFolderPicker({
   }
 
   function render(focusId) {
-    const groups = getState().groups;
-    const byParent = new Map();
-    for (const group of groups) {
-      if (!byParent.has(group.parentId)) byParent.set(group.parentId, []);
-      byParent.get(group.parentId).push(group);
-    }
+    const folders = createFolderIndex(getState());
     const query = search.value.trim().toLocaleLowerCase();
     const entries = [];
-    const visited = new Set();
-
-    function visit(group, depth, path) {
-      if (visited.has(group.id)) return;
-      visited.add(group.id);
-      const nested = byParent.get(group.id) || [];
-      const fullPath = [...path, group.name];
-      if (!query || fullPath.join(' / ').toLocaleLowerCase().includes(query))
-        entries.push({ ...group, depth, path: fullPath.join(' / '), hasChildren: !!nested.length });
+    const pending = [{ group: { id: null, name: 'Home' }, depth: 0, path: 'Home' }];
+    while (pending.length) {
+      const { group, depth, path } = pending.pop();
+      const nested = folders.children.get(group.id) || [];
+      if (!query || path.toLocaleLowerCase().includes(query))
+        entries.push({ ...group, depth, path, hasChildren: !!nested.length });
       if (query || expanded.has(group.id))
-        for (const child of nested) visit(child, depth + 1, fullPath);
+        for (let i = nested.length - 1; i >= 0; i--)
+          pending.push({ group: nested[i], depth: depth + 1, path: `${path} / ${nested[i].name}` });
     }
-
-    visit({ id: null, name: 'Home' }, 0, []);
     rows = [];
     for (const entry of entries) {
       const open = !query && entry.hasChildren && expanded.has(entry.id);
@@ -164,9 +156,9 @@ export function createFolderPicker({
         disclosure,
         entry.id === null
           ? icon('home')
-          : folderIcon(entry, folderContainer(getState(), entry), {
+          : folderIcon(entry, folders.details.get(entry.id).container, {
               expanded: open,
-              state: getState(),
+              appearance: folders.details.get(entry.id).appearance,
             }),
         text,
       );
