@@ -70,8 +70,11 @@ multi-window/session checks. Core behaviour is included in `npm test`.
 
 `src/move-plan.js` resolves drag and keyboard destinations to the same typed slot.
 Tabs always go inside folders; their own rows offer before, inside and after.
-Folder ordering remains separate from tab ordering. The Move tab dialog also
-offers parent tabs, exact sibling positions and the mixed pinned strip.
+Folder ordering remains separate from tab ordering. Move tab and Move folder use
+a searchable folder tree with Home as its root and append to the selected folder.
+Search retains matching folders' ancestors, without breadcrumbs or individual tabs.
+The picker omits pin destinations and position controls; shortcut reordering uses drag.
+Its shell and scrollable tree use the shared neutral palette in `move-dialog.css`.
 
 `src/pointer-move.js` captures the pointer on the persistent sidebar after 5px
 of movement. It owns the floating preview, insertion marker, edge scrolling and
@@ -87,7 +90,10 @@ receipt per window makes retries after a lost response idempotent. A failed
 reveal is reported separately from a committed move and offers a Show retry.
 
 Run `node scripts/test-drag-ui.js` for destination geometry, continuous hierarchy
-navigation, cancellation, keyboard positions, colour modes and 100/500/1,000-tab scrolling.
+navigation, cancellation, folder moves, colour modes and 100/500/1,000-tab scrolling.
+`node scripts/test-move-dialog-ui.js` covers folder search, keyboard selection,
+subtree moves, stale destinations, narrow layouts and light/dark/forced colours.
+`node scripts/test-move-dialog-firefox.js` checks the picker in an isolated native sidebar.
 The unit suite injects failures and restarts at compound-operation write boundaries.
 `npm run test:firefox` also tests continuous dragging in Firefox's actual sidebar.
 For a visible, isolated-profile check, run
