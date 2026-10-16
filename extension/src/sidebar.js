@@ -1,3 +1,4 @@
+import { createRefreshScheduler } from './refresh-scheduler.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
@@ -80,17 +81,15 @@ function renderAppearance() {
 darkMode.addEventListener('change', renderAppearance);
 forcedColors.addEventListener('change', renderAppearance);
 reducedMotion.addEventListener('change', renderAppearance);
-let state, request, windowId, selected, drag, refreshTimer, toastTimer, menuReturnFocus;
+let state, request, windowId, selected, drag, toastTimer, menuReturnFocus;
 let confirmedState;
 let pointerMoves;
 let movingItem = false;
 let actionQueue = Promise.resolve();
 let activeActions = 0;
-let notifiedRevision = -1;
 const pendingViewActions = [];
 
 function acceptState(next) {
-  if (confirmedState?.generation !== next.generation) notifiedRevision = -1;
   confirmedState = next;
   const collapsed = new Set(next.view.collapsed);
   let scopeId = next.view.scopeId;
@@ -111,9 +110,7 @@ function acceptState(next) {
   state = { ...next, view: { ...next.view, scopeId, collapsed: [...collapsed] } };
 }
 
-let refreshing = false,
-  refreshAgain = false,
-  pointerHeld = false,
+let pointerHeld = false,
   renderPending = false;
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
 
@@ -262,8 +259,7 @@ function action(type, args = {}) {
       return null;
     } finally {
       activeActions--;
-      if (!activeActions && (refreshAgain || notifiedRevision > (state?.revision ?? -1)))
-        scheduleRefresh();
+      if (!activeActions) refreshScheduler.resume();
     }
   });
   actionQueue = result.catch(() => {});
@@ -334,50 +330,24 @@ tree.addEventListener(
   true,
 );
 
-async function refresh() {
-  refreshTimer = null;
-  if (pointerHeld || activeActions) {
-    refreshAgain = true;
-    return;
-  }
-  if (!renderPending && notifiedRevision >= 0 && notifiedRevision <= (state?.revision ?? -1)) {
-    refreshAgain = false;
-    return;
-  }
-  if (refreshing) {
-    refreshAgain = true;
-    return;
-  }
-  refreshing = true;
-  try {
-    const next = await request('snapshot');
-    acceptState(next);
-    render();
-  } catch (error) {
-    if (!state) tree.replaceChildren(el('p', 'loading', error.message));
-    announce(error.message, true);
-  } finally {
-    refreshing = false;
-    if (refreshAgain) {
-      refreshAgain = false;
-      scheduleRefresh();
-    }
-  }
-}
+const refreshScheduler = createRefreshScheduler({
+  getState: () => confirmedState,
+  getWindowId: () => windowId,
+  canRefresh: () => Boolean(request) && !pointerHeld && !activeActions,
 
-function scheduleRefresh(change) {
-  if (change?.windowIds && !change.windowIds.includes(windowId)) return;
-  if (change?.windowId != null && change.windowId !== windowId) return;
-  if (change?.generation && change.generation !== state?.generation) {
-    // An MV3 event page can restart while the sidebar stays open. Its new
-    // revision sequence must not be compared with the previous instance.
-    notifiedRevision = -1;
-  } else if (Number.isFinite(change?.revision)) {
-    notifiedRevision = Math.max(notifiedRevision, change.revision);
-    if (change.revision <= (state?.revision ?? -1)) return;
-  } else if (change) notifiedRevision = -1;
-  if (!refreshTimer) refreshTimer = setTimeout(refresh, 16);
-}
+  async refresh() {
+    try {
+      acceptState(await request('snapshot'));
+      render();
+    } catch (error) {
+      if (!state) tree.replaceChildren(el('p', 'loading', error.message));
+      announce(error.message, true);
+    }
+  },
+});
+const scheduleRefresh = refreshScheduler.schedule;
+const refresh = refreshScheduler.now;
+window.addEventListener('pagehide', refreshScheduler.dispose, { once: true });
 
 function enter(id, collapsed) {
   cancelGroupClick();
@@ -1034,7 +1004,7 @@ function render(motionKey = null) {
   // until dragend so native HTML drag-and-drop is not cancelled mid-gesture.
   if (pointerHeld) {
     renderPending = true;
-    refreshAgain = true;
+    scheduleRefresh();
     return;
   }
   renderPending = false;
@@ -1641,7 +1611,7 @@ pointerMoves = createPointerMove({
   onEnd() {
     drag = null;
     pointerHeld = false;
-    if (refreshAgain) scheduleRefresh();
+    refreshScheduler.resume();
   },
 });
 
@@ -1757,7 +1727,10 @@ document.addEventListener(
 for (const type of ['pointerup', 'pointercancel']) {
   document.addEventListener(type, () => {
     pointerHeld = false;
-    if ((renderPending || refreshAgain) && !drag) scheduleRefresh();
+    if (!drag) {
+      if (renderPending) scheduleRefresh();
+      else refreshScheduler.resume();
+    }
   });
 }
 document.addEventListener('keydown', (event) => {

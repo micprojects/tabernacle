@@ -880,7 +880,7 @@ export function createController(api, notify = () => {}) {
       case 'snapshot':
         return snapshot(windowId);
       case 'getSettings':
-        return { look: { ...model.look } };
+        return { look: { ...model.look }, generation, revision };
       case 'openPage':
         return openInternalPage(api, message.page, windowId);
       case 'claimSettingsPage': {

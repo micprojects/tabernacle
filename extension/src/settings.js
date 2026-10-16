@@ -1,3 +1,4 @@
+import { createRefreshScheduler } from './refresh-scheduler.js';
 import { normalizeLook } from './look.js';
 import { containerListIcon, visualChoices } from './container-dialogs.js';
 import { sortContainers } from './containers.js';
@@ -15,7 +16,8 @@ let containerItems = [],
   containerKey,
   editorGeneration = 0,
   editorTrigger;
-let refreshTimer;
+let settingsState;
+let disposed = false;
 const folderBackup = createSettingsBackup({ request: (...args) => request(...args) });
 
 function el(tag, className, text) {
@@ -371,38 +373,38 @@ function navigate(focus = false) {
   if (section === 'shortcuts') refreshShortcuts();
 }
 
-let refreshing = false,
-  refreshAgain = false;
+const refreshScheduler = createRefreshScheduler({
+  delay: 50,
+  globalOnly: true,
+  getState: () => settingsState,
+  canRefresh: () => Boolean(request) && !document.hidden,
 
-async function refresh() {
-  if (!request) return;
-  if (refreshing) {
-    refreshAgain = true;
-    return;
-  }
-  refreshing = true;
-  try {
-    do {
-      refreshAgain = false;
-      acceptLook((await request('getSettings')).look);
-    } while (refreshAgain);
-    $('appearance-fields').disabled = savingLook;
-    errorAt('page-error');
-  } catch (error) {
-    errorAt('page-error', error);
-  } finally {
-    refreshing = false;
-  }
-  if (!$('containers').hidden) await loadContainers();
-}
-
-function scheduleRefresh() {
-  if (refreshTimer) return;
-  refreshTimer = setTimeout(() => {
-    refreshTimer = null;
-    refresh();
-  }, 50);
-}
+  async refresh() {
+    try {
+      const next = await request('getSettings');
+      if (disposed) return;
+      settingsState = next;
+      acceptLook(next.look);
+      $('appearance-fields').disabled = savingLook;
+      errorAt('page-error');
+      if (!$('containers').hidden) await loadContainers();
+    } catch (error) {
+      if (!disposed) errorAt('page-error', error);
+    }
+  },
+});
+const scheduleRefresh = refreshScheduler.schedule;
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) scheduleRefresh();
+});
+window.addEventListener(
+  'pagehide',
+  () => {
+    disposed = true;
+    refreshScheduler.dispose();
+  },
+  { once: true },
+);
 
 window.addEventListener('hashchange', () => navigate(true));
 window.addEventListener('focus', () => {
@@ -451,7 +453,7 @@ async function start() {
     }
 
     const changed = (message) => {
-      if (message.type === 'tabernacle:changed') scheduleRefresh();
+      if (message.type === 'tabernacle:changed') scheduleRefresh(message);
     };
 
     browser.runtime.onMessage.addListener(changed);
@@ -461,7 +463,8 @@ async function start() {
     manifest = browser.runtime.getManifest();
   }
   $('extension-version').textContent = `Version ${manifest.version}`;
-  acceptLook((await request('getSettings')).look);
+  settingsState = await request('getSettings');
+  acceptLook(settingsState.look);
   $('appearance-fields').disabled = false;
   navigate();
 }
