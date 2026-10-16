@@ -1,7 +1,7 @@
 import { icon } from './icons.js';
 import { children, groupById, groupContainer, isWithin, tabSubtree } from './model.js';
-import { containerListIcon, createContainerManagement } from './container-dialogs.js';
-import { sortContainers } from './containers.js';
+import { createContainerManagement } from './container-dialogs.js';
+import { populateContainerPicker } from './container-picker.js';
 import { createGroupCreation } from './group-creation.js';
 import { createAppearancePicker } from './appearance-picker.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
@@ -46,7 +46,12 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
     dialogContext = Symbol();
     dialogBusy = false;
     $('dialog').classList.toggle('compact-container-dialog', compact);
-    $('dialog').classList.remove('folder-appearance-dialog', 'move-dialog');
+    $('dialog').classList.remove(
+      'folder-appearance-dialog',
+      'picker-dialog',
+      'move-dialog',
+      'container-picker-dialog',
+    );
     $('dialog').removeAttribute('aria-describedby');
     $('dialog-close').hidden = true;
     $('dialog-icon').replaceChildren(icon('groupPlus'));
@@ -56,6 +61,7 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
     $('dialog-options').hidden = true;
     $('dialog-options').replaceChildren();
     $('container-tools').hidden = true;
+    $('container-picker-content').hidden = true;
     $('dialog-content').hidden = !content;
     $('dialog-content').replaceChildren(...(content ? [content] : []));
     $('dialog-title').textContent = title;
@@ -172,8 +178,16 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
       title: creating ? 'New tab in container' : 'Reopen in container',
       description: creating
         ? `Open a new tab in ${groupById(getState(), groupId)?.name || 'Home'} with the selected container’s sign-in.`
-        : 'Reopens this page with the selected container’s sign-in. Page history and unsaved changes won’t carry over.',
+        : '',
+      note: creating ? '' : 'Page history and unsaved changes won’t carry over.',
       submit: creating ? 'Create tab' : 'Reopen tab',
+
+      onCancel: () => {
+        const openingRow = creating
+          ? $('new-tab')
+          : document.querySelector(`[data-key="tab:${id}"]`);
+        openingRow?.focus({ preventScroll: true });
+      },
 
       load: async () => {
         const { containers, cookieStoreId } = await request('getContainers', { id });
@@ -202,6 +216,11 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
       title: 'Default container',
       description: `New tabs created through Tabernacle in “${group.name}” use this container. Subfolders inherit this default.`,
       submit: 'Save',
+
+      onCancel: () =>
+        document
+          .querySelector(`[data-key="group:${CSS.escape(groupId)}"]`)
+          ?.focus({ preventScroll: true }),
 
       load: async () => {
         // Even with containers disabled, allow clearing a saved default.
@@ -240,16 +259,29 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
     });
   }
 
-  async function containerPicker({ load, ...options }) {
-    const context = showDialog({ ...options, input: false, compact: true });
+  async function containerPicker({ load, note = '', query = '', ...options }) {
+    const context = showDialog({ ...options, input: false });
+    $('dialog').classList.add('picker-dialog', 'container-picker-dialog');
+    $('dialog-close').hidden = false;
+    $('container-picker-content').hidden = false;
     $('container-tools').hidden = false;
+    $('container-search').value = query;
+    $('container-search').disabled = true;
+    $('container-search-clear').hidden = true;
+    $('container-search-status').textContent = '';
+    $('container-picker-note').textContent = note;
+    $('container-picker-note').hidden = !note;
+    if (note) $('dialog').setAttribute('aria-describedby', 'container-picker-note');
 
     const resume = (cookieStoreId) => {
       const selectedStore =
         cookieStoreId ?? $('dialog-options').querySelector('input:checked')?.value;
+      const savedQuery = cookieStoreId === undefined ? $('container-search').value : '';
       return () =>
         containerPicker({
           ...options,
+          note,
+          query: savedQuery,
 
           load: async () => {
             const data = await load();
@@ -274,41 +306,17 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
     try {
       const { containers, selectedStore, currentStore, inheritName, warning } = await load();
       if (dialogContext !== context || !$('dialog').open) return;
-      list.replaceChildren();
-      for (const container of [
-        ...(inheritName ? [{ cookieStoreId: '', name: inheritName }] : []),
-        { cookieStoreId: 'firefox-default', name: 'No container' },
-        ...sortContainers(containers),
-      ]) {
-        const label = el('label', 'container-option');
-        const radio = el('input');
-        radio.type = 'radio';
-        radio.name = 'container';
-        radio.value = container.cookieStoreId;
-        radio.checked = container.cookieStoreId === selectedStore;
-        radio.dataset.current = String(container.cookieStoreId === currentStore);
-        radio.addEventListener('change', () => {
-          $('dialog-submit').disabled = radio.dataset.current === 'true';
-        });
-        const name = el('span', 'container-name', container.name);
-        label.title = container.name;
-        label.append(radio, containerListIcon(container), name);
-        if (radio.dataset.current === 'true')
-          label.append(el('span', 'container-current', 'Current'));
-        label.append(icon('check', 'container-check'));
-        list.append(label);
-      }
-      if (!containers.length)
-        list.append(el('p', 'container-empty', 'No containers are configured in Firefox.'));
+      populateContainerPicker({
+        containers,
+        selectedStore,
+        currentStore,
+        inheritName,
+        onSelect: (valid) => ($('dialog-submit').disabled = !valid),
+      });
       if (warning) {
         $('dialog-error').textContent = warning;
         $('dialog-error').hidden = false;
       }
-      const checked = list.querySelector('input:checked');
-      const current = checked || list.querySelector('input');
-      $('dialog-submit').disabled = !checked || checked.dataset.current === 'true';
-      current.focus();
-      current.scrollIntoView({ block: 'nearest' });
     } catch (error) {
       if (dialogContext !== context || !$('dialog').open) return;
       list.hidden = true;
@@ -444,7 +452,7 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
         afterSubmit: onMove,
         onCancel: () => openingRow?.isConnected && openingRow.focus({ preventScroll: true }),
       });
-      $('dialog').classList.add('move-dialog');
+      $('dialog').classList.add('picker-dialog', 'move-dialog');
       $('dialog').setAttribute('aria-describedby', 'move-source');
       $('dialog-close').hidden = false;
       $('dialog-submit').disabled = !picker.valid();

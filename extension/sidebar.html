@@ -7,7 +7,9 @@
     <link rel="icon" href="icons/tabernacle.svg" type="image/svg+xml" sizes="any" />
     <link rel="stylesheet" href="sidebar.css" />
     <link rel="stylesheet" href="tree.css" />
+    <link rel="stylesheet" href="picker-dialog.css" />
     <link rel="stylesheet" href="move-dialog.css" />
+    <link rel="stylesheet" href="container-picker.css" />
     <script type="module" src="src/sidebar.js"></script>
   </head>
   <body>
@@ -111,17 +113,40 @@
           aria-label="Destination folder"
           hidden
         ></select>
-        <div
-          id="dialog-options"
-          class="dialog-options"
-          role="radiogroup"
-          aria-label="Containers"
-          hidden
-        ></div>
         <div id="dialog-content" hidden></div>
-        <div id="container-tools" class="container-tools" hidden>
-          <button type="button" id="create-container">New container…</button>
-          <button type="button" id="manage-containers">Manage containers…</button>
+        <div id="container-picker-content" hidden>
+          <div class="picker-search-field">
+            <label for="container-search">Container</label>
+            <div class="picker-search" id="container-search-field">
+              <input
+                id="container-search"
+                type="search"
+                placeholder="Search containers"
+                autocomplete="off"
+                aria-controls="dialog-options"
+              />
+              <button
+                type="button"
+                id="container-search-clear"
+                class="picker-search-clear"
+                aria-label="Clear container search"
+                hidden
+              ></button>
+            </div>
+          </div>
+          <div
+            id="dialog-options"
+            class="dialog-options"
+            role="radiogroup"
+            aria-label="Containers"
+            hidden
+          ></div>
+          <p id="container-search-status" class="sr-only" role="status"></p>
+          <div id="container-tools" class="container-tools" hidden>
+            <button type="button" id="create-container">New container…</button>
+            <button type="button" id="manage-containers">Manage containers…</button>
+          </div>
+          <p id="container-picker-note" hidden></p>
         </div>
         <p id="dialog-error" class="dialog-error" role="alert" hidden></p>
         <div class="dialog-actions">

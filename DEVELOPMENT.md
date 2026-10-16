@@ -83,7 +83,15 @@ Folder ordering remains separate from tab ordering. Move tab and Move folder use
 a searchable folder tree with Home as its root and append to the selected folder.
 Search retains matching folders' ancestors, without breadcrumbs or individual tabs.
 The picker omits pin destinations and position controls; shortcut reordering uses drag.
-Its shell and scrollable tree use the shared neutral palette in `move-dialog.css`.
+Its shell uses `picker-dialog.css`; the scrollable tree uses `move-dialog.css`.
+
+Container choosers share this shell, with a searchable single-selection list in
+`src/container-picker.js` and `container-picker.css`. Filtering keeps the current
+identity separate from the selected target and disables submission if that target
+is hidden. Enter in search selects a result without submitting. New-container and
+management detours retain selection; management also retains the search query.
+Run `npm run test:containers` for search, keyboard, reopening, default-container,
+management, narrow-panel and failure checks.
 
 `src/pointer-move.js` captures the pointer on the persistent sidebar after 5px
 of movement. It owns the floating preview, insertion marker, edge scrolling and
