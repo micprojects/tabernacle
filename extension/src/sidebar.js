@@ -4,6 +4,8 @@ import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { domainFromUrl, domainResults } from './domain-filter.js';
 import { createDomainHeader } from './domain-header.js';
+import { isYouTubeDomain, youtubeVideoId } from './youtube.js';
+import { createYouTubeView } from './youtube-view.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
 import { createFaviconTints } from './favicon-tint.js';
@@ -37,6 +39,29 @@ let domainFilter = null;
 let domainSort = 'newest';
 let domainOrigin;
 let domainSourceId;
+let youtubeFilter = 'all';
+let youtubeAllowed = false;
+let youtubeVisibleIds = [];
+const youtubeView = createYouTubeView({
+  tree,
+
+  onChange: () => {
+    if (youtubeActive()) {
+      if (youtubeFilter !== 'all') render();
+      else youtubeView.mount();
+    }
+  },
+
+  onPermission: (allowed) => {
+    youtubeAllowed = allowed;
+    $('youtube-access').hidden = !youtubeActive() || allowed;
+  },
+});
+
+function youtubeActive() {
+  return isYouTubeDomain(domainFilter) && state?.youtubeMode !== false;
+}
+
 let searchOrigin;
 let searchScroll;
 let changingTree = false;
@@ -693,7 +718,13 @@ function activateTab(id) {
 }
 
 function closeFilter() {
-  return domainFilter ? { domain: domainFilter, sort: domainSort } : null;
+  return domainFilter
+    ? {
+        domain: domainFilter,
+        sort: domainSort,
+        ...(youtubeActive() && youtubeFilter !== 'all' ? { tabIds: youtubeVisibleIds } : {}),
+      }
+    : null;
 }
 
 function closeOnMiddleClick(node, id) {
@@ -826,7 +857,12 @@ function createTabRow(tab, expanded, stats) {
   }
   describeContainer(row, tab);
   describeAudio(row, audioDescription(tab));
-  if (stats.descendants) {
+  if (youtubeActive()) {
+    row.classList.add('youtube-row');
+    const videoId = youtubeVideoId(tab.url);
+    if (videoId) row.dataset.videoId = videoId;
+    row.append(...youtubeView.content(tab, tabFolderLabel(tab)));
+  } else if (stats.descendants) {
     row.setAttribute('aria-expanded', String(expanded));
     const count = `${stats.descendants} nested ${stats.descendants === 1 ? 'tab' : 'tabs'}`;
     row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${count}`);
@@ -852,7 +888,7 @@ function createTabRow(tab, expanded, stats) {
     slot.append(favicon);
     row.append(slot);
   }
-  row.append(tabLabel(tab));
+  if (!youtubeActive()) row.append(tabLabel(tab));
   if (childAudioCount(tab) && !playsAudio(tab))
     row.append(audioIndicator(playingLabel(childAudioCount(tab), 'in this tab’s children')));
   if (tab.audible || tab.mutedInfo?.muted)
@@ -906,6 +942,8 @@ function tabRow(tab, expanded, stats) {
         stats.descendants,
         stats.active,
         domainFilter ? tabFolderLabel(tab) : null,
+        youtubeActive(),
+        youtubeActive() ? youtubeView.duplicateCount(tab) : 0,
       ],
       () => createTabRow(tab, expanded, stats),
     ),
@@ -1311,22 +1349,41 @@ function render(motionKey = null) {
   $('navigation-capsule').hidden = Boolean(domainFilter);
   $('sidebar-header').classList.toggle('domain-mode', Boolean(domainFilter));
   $('domain-tools').hidden = !domainFilter;
+  const youtube = youtubeActive();
+  $('youtube-mode').hidden = !isYouTubeDomain(domainFilter);
+  $('youtube-mode').setAttribute('aria-checked', String(state.youtubeMode !== false));
+  $('youtube-tools').hidden = !youtube;
+  $('youtube-access').hidden = !youtube || youtubeAllowed;
+  $('domain-count').hidden = isYouTubeDomain(domainFilter);
+  tree.classList.toggle('youtube-results', youtube);
+  $('domain-tools').classList.toggle('youtube-domain-tools', isYouTubeDomain(domainFilter));
   if (domainFilter) {
     const results = domainResults(index, domainFilter, query, domainSort);
+    youtubeView.prepare(results, youtube);
+    const visibleResults = youtube
+      ? results.filter((tab) => youtubeView.matches(tab, youtubeFilter))
+      : results;
+    youtubeVisibleIds = visibleResults.map((tab) => tab.id);
     renderDomainHeader(domainFilter, results, domainSourceId);
     reconcileChildren(
       tree,
-      results.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
+      visibleResults.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
     );
     const count = `${results.length} ${results.length === 1 ? 'tab' : 'tabs'}`;
     $('domain-count').textContent = count;
-    $('domain-status').textContent = `${count} from ${domainFilter} in this window`;
+    const status = `${youtube && youtubeFilter !== 'all' ? `${visibleResults.length} of ` : ''}${count} from ${domainFilter} in this window`;
+    if ($('domain-status').textContent !== status) $('domain-status').textContent = status;
+    $('youtube-mode').title = `${count} · Show video thumbnails, duration and observed progress`;
+    for (const button of document.querySelectorAll('[data-youtube-filter]'))
+      button.setAttribute('aria-pressed', String(button.dataset.youtubeFilter === youtubeFilter));
+    youtubeView.mount();
     $('domain-sort').title =
       ['newest', 'oldest'].includes(domainSort) &&
       results.some((tab) => !(Number.isFinite(tab.openedAt) && tab.openedAt > 0))
         ? 'Tabs without a recorded opening time follow dated tabs in tree order.'
         : 'Sort filtered tabs';
   } else {
+    youtubeView.prepare([], false);
     renderDomainHeader(null);
     fillChildren(tree, state.view.scopeId, query);
     $('domain-status').textContent = '';
@@ -1342,13 +1399,27 @@ function render(motionKey = null) {
     empty.setAttribute('role', 'none');
     empty.append(
       icon('searchLarge'),
-      el('h2', '', domainFilter ? `No tabs from ${domainFilter}` : 'Nothing found'),
+      el(
+        'h2',
+        '',
+        youtube && youtubeFilter !== 'all'
+          ? youtubeFilter === 'progress'
+            ? 'No videos in progress'
+            : 'No duplicate videos'
+          : domainFilter
+            ? `No tabs from ${domainFilter}`
+            : 'Nothing found',
+      ),
       el(
         'p',
         '',
-        domainFilter
-          ? 'Close this view to return to your folders.'
-          : 'Try another name or website address.',
+        youtube && youtubeFilter !== 'all'
+          ? youtubeFilter === 'progress'
+            ? 'Progress appears as loaded videos are observed. Choose All to see every tab.'
+            : 'Choose All to see every tab.'
+          : domainFilter
+            ? 'Close this view to return to your folders.'
+            : 'Try another name or website address.',
       ),
     );
     tree.prepend(empty);
@@ -1406,6 +1477,7 @@ function filterByDomain(domain, sourceId) {
     if (searchOpen) showSearch(false, { restoreFocus: false });
   }
   domainFilter = domain;
+  youtubeFilter = 'all';
   domainSourceId = sourceId;
   searchScroll = 0;
   render();
@@ -1982,6 +2054,25 @@ $('home').addEventListener('click', () => enter(null));
 $('search-toggle').addEventListener('click', () => showSearch());
 $('search-close').addEventListener('click', () => showSearch(false));
 $('domain-close').addEventListener('click', () => leaveDomain());
+$('youtube-mode').addEventListener('click', async () => {
+  const toggle = $('youtube-mode');
+  toggle.disabled = true;
+  youtubeFilter = 'all';
+  await action('setYouTubeMode', { enabled: state.youtubeMode === false });
+  toggle.disabled = false;
+});
+$('youtube-tools').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-youtube-filter]');
+  if (!button) return;
+  youtubeFilter = button.dataset.youtubeFilter;
+  tree.scrollTop = 0;
+  render();
+});
+$('youtube-allow').addEventListener('click', () => {
+  youtubeView.allow().catch(() => announce('Could not enable YouTube access. Try again.', true));
+});
+globalThis.browser?.permissions?.onAdded?.addListener(() => youtubeView.refreshPermission());
+globalThis.browser?.permissions?.onRemoved?.addListener(() => youtubeView.refreshPermission());
 $('domain-sort').addEventListener('change', () => {
   domainSort = $('domain-sort').value;
   searchScroll = 0;

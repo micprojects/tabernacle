@@ -3,6 +3,7 @@ export const uiSuites = [
   'test-navigation-ui',
   'test-search-dismiss-ui',
   'test-domain-filter-ui',
+  'test-youtube-ui',
   'test-breadcrumbs-ui',
   'test-folder-picker-ui',
   'test-move-dialog-ui',
@@ -38,6 +39,7 @@ export const uiSuites = [
 export const firefoxSuites = [
   'test-firefox',
   'test-domain-filter-firefox',
+  'test-youtube-firefox',
   'test-move-dialog-firefox',
   'test-container-picker-firefox',
   'test-drag-firefox',

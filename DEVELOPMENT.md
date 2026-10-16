@@ -122,6 +122,40 @@ navigation, view restoration, favicon colours and narrow-panel/colour-mode check
 `node scripts/test-domain-filter-firefox.js` for native Firefox and window isolation.
 Hostname, colour and ordering checks are included in `npm test`.
 
+### YouTube Mode
+
+The model's `youtubeMode` boolean defaults to true when absent. `setYouTubeMode` saves
+it through the existing serialised controller and notifies all windows. The toggle
+replaces the count only on supported YouTube domains, including when switched off.
+The accessible status retains the result count. Domain navigation and sorting are unchanged.
+
+`src/youtube.js` recognises video IDs from watch, Shorts, live, embed and short-link
+URLs, ignoring tracking and timestamp parameters. `src/youtube-view.js` renders the
+Continue watching layout, using an IntersectionObserver to load visible thumbnails
+and check at most two loaded tabs concurrently every five seconds. Optional host
+access is requested from the explicit Allow access button; without it, ordinary tab
+data and thumbnails remain usable. `scripting.executeScript` only reads the isolated
+DOM/video properties. It never activates, seeks, starts or loads a video. Discarded
+tabs are never injected. Ad players and mismatched navigation IDs are rejected.
+
+Public oEmbed metadata is cached by video ID with a bounded cache, failure backoff,
+an eight-second timeout and credential/referrer-free requests. Observed positions
+are cached separately per tab in `tabernacle.youtube.v1` session values, never shared
+between duplicate tabs. Saved observations are labelled Last seen; unknown remains
+unknown. Cached duration/channel metadata can be shared for the same video. Switching
+off stops polling and aborts pending metadata fetches. Late results cannot update a
+different video or the standard tree. The CSP permits metadata connections only to
+`https://www.youtube.com`; no third-party metadata service or API key is used.
+
+The In progress and Duplicates filters are temporary projections. Their visible IDs
+are passed to close selection, so sidebar and native closes use visible neighbours.
+Run `node scripts/test-youtube-ui.js` for permission, layout, filters and persistence;
+`node scripts/test-youtube-firefox.js` checks optional access, real media properties
+and sleeping-tab/persistence behaviour in an isolated native Firefox profile. Its
+tiny local silent WebM fixture replaces the body of a fresh public YouTube tab; it
+never opens a personal profile. Pure parsing, caching and preference tests run in
+`npm test`.
+
 ## Moving tabs and folders
 
 `src/move-plan.js` resolves drag and keyboard destinations to the same typed slot.

@@ -529,6 +529,7 @@ export function createController(
       pins: pins.items,
       containers: identities,
       look: { ...model.look },
+      youtubeMode: model.youtubeMode !== false,
       canUndoClose: history.tabs.length > 0,
       recentlyClosed: history.tabs,
       recentlyClosedError: history.error ?? null,
@@ -1456,6 +1457,14 @@ export function createController(
         if (tab) await revealTab(tab.id, windowId);
         break;
       }
+      case 'setYouTubeMode': {
+        if (typeof message.enabled !== 'boolean')
+          throw new Error('Choose whether to use YouTube Mode.');
+        await changeModel((next) => {
+          next.youtubeMode = message.enabled;
+        });
+        break;
+      }
       case 'setLook': {
         const look = requireLook(
           message.partial ? { ...model.look, ...message.value } : message.value,
@@ -1482,6 +1491,7 @@ export function createController(
         'removeGroup',
         'setGroupPin',
         'setLook',
+        'setYouTubeMode',
       ].includes(type) ||
         (type === 'moveItem' && message.source?.kind !== 'tab')
         ? undefined

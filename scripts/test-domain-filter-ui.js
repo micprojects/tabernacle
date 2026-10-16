@@ -55,6 +55,7 @@ const ids = () => results.evaluateAll((rows) => rows.map((row) => Number(row.dat
 const reset = async () => {
   await page.goto(`${base}/extension/sidebar.html?demo`);
   await expect(row(1)).toBeVisible();
+  await send('setYouTubeMode', { enabled: false });
 };
 
 const filter = async (
@@ -517,9 +518,10 @@ try {
     expect(name.x + name.width).toBeLessThan(clear.x);
     expect(clear.x + clear.width).toBeLessThanOrEqual(box.width);
     await expect(exit).toBeVisible();
-    const count = await page.locator('#domain-count').boundingBox();
+    const count = await page.locator('#youtube-mode').boundingBox();
     const sorter = await sort.boundingBox();
-    expect(count.x + count.width).toBeLessThan(sorter.x);
+    if (Math.abs(count.y - sorter.y) < 8) expect(count.x + count.width).toBeLessThan(sorter.x);
+    else expect(count.y + count.height).toBeLessThanOrEqual(sorter.y);
     expect(sorter.x + sorter.width).toBeLessThanOrEqual(width);
     const geometry = await results.evaluateAll((rows) =>
       rows.map((row) => {

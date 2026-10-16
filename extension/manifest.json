@@ -3,7 +3,21 @@
   "name": "Tabernacle",
   "version": "0.2.0",
   "description": "Organise your Firefox tabs with sidebar folders, nested tab trees and search.",
-  "permissions": ["tabs", "storage", "sessions", "tabGroups", "contextualIdentities", "cookies"],
+  "permissions": [
+    "tabs",
+    "storage",
+    "sessions",
+    "tabGroups",
+    "contextualIdentities",
+    "cookies",
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://www.youtube.com/*",
+    "https://youtube.com/*",
+    "https://m.youtube.com/*",
+    "https://music.youtube.com/*"
+  ],
   "incognito": "not_allowed",
   "browser_specific_settings": {
     "gecko": {
@@ -50,7 +64,7 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self' data: https: http: moz-extension: resource://usercontext-content/; connect-src 'none'"
+    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self' data: https: http: moz-extension: resource://usercontext-content/; connect-src https://www.youtube.com"
   },
   "author": "Michael Projects",
   "homepage_url": "https://michaelprojects.com/tabernacle/"
