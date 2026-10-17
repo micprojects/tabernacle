@@ -44,7 +44,13 @@ try {
           .data,
     );
 
-  await parent.locator('.close-tab').click();
+  const closeBranch = async () => {
+    await parent.click({ button: 'right' });
+    await expect(page.getByRole('menuitem', { name: 'Close tab', exact: true })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Close tab and nested tabs…', exact: true }).click();
+  };
+
+  await closeBranch();
   await expect(dialog).toBeVisible();
   await expect(page.locator('#dialog-description')).toContainText(
     '“Figma — Website” and its 3 nested tabs',
@@ -73,7 +79,7 @@ try {
   await page.evaluate(() => {
     window.failClose = true;
   });
-  await parent.locator('.close-tab').click();
+  await closeBranch();
   await confirm.click();
   await expect(page.locator('#dialog-error')).toHaveText('Firefox could not close these tabs.');
   expect((await snapshot()).tabs).toHaveLength(16);
@@ -87,19 +93,53 @@ try {
   for (const id of [1, 2, 3, 4]) expect(remaining).not.toContain(id);
   await expect(page.locator('[data-key="group:design"]')).toBeVisible();
 
-  // Pinned parents use the same confirmation, including their hidden tree.
+  // Every single-tab affordance preserves children, even in collapsed branches.
+  for (const method of ['middle', 'button', 'menu']) {
+    for (const collapsed of [false, true]) {
+      await load();
+      if (collapsed) await parent.locator('.tab-disclosure').click();
+      if (method === 'middle') await parent.click({ button: 'middle' });
+      else if (method === 'button') await parent.locator('.close-tab').click();
+      else {
+        await parent.click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click();
+      }
+      await expect(parent).toHaveCount(0);
+      await expect(dialog).toBeHidden();
+      const state = await snapshot();
+      expect(state.tabs).toHaveLength(16);
+      expect(state.tabs.find((tab) => tab.id === 2).parentTabId).toBe(null);
+      expect(state.tabs.find((tab) => tab.id === 3).parentTabId).toBe(2);
+      expect(state.tabs.find((tab) => tab.id === 4).parentTabId).toBe(3);
+      await expect(page.locator('[data-key="tab:2"]')).toBeVisible();
+      await expect(page.locator('[data-key="tab:3"]')).toBeVisible();
+    }
+  }
+
+  // Middle-clicking a pin also preserves its children in their folder.
   await load();
   await parent.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Pin tab', exact: true }).click();
   const pin = page.locator('.pinned-tab[data-key="tab:1"]');
   await pin.click({ button: 'middle' });
+  await expect(pin).toHaveCount(0);
+  await expect(dialog).toBeHidden();
+  expect((await snapshot()).tabs).toHaveLength(16);
+  expect((await snapshot()).tabs.find((tab) => tab.id === 3).parentTabId).toBe(2);
+
+  // The explicit branch action still confirms and includes the pinned parent.
+  await load();
+  await parent.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pin tab', exact: true }).click();
+  await pin.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Close tab and nested tabs…', exact: true }).click();
   await expect(page.locator('#dialog-description')).toContainText('1 pinned tab');
   await confirm.click();
   await expect(pin).toHaveCount(0);
   expect((await snapshot()).tabs).toHaveLength(13);
   expect(errors).toEqual([]);
   console.log(
-    '✓ Parent close confirms every depth, supports Cancel/Escape and retry, includes pins, and leaves unrelated tabs open',
+    '✓ Close button, menu and middle click promote the first child; the separate branch action confirms every depth and supports retry, including collapsed branches and pins',
   );
 } finally {
   await close();

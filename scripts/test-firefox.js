@@ -427,20 +427,11 @@ try {
     .press(Button.MIDDLE)
     .release(Button.MIDDLE)
     .perform();
-  await driver.wait(until.elementIsVisible(await driver.findElement(By.id('dialog'))), 5000);
-  assert.equal(
-    await driver.findElement(By.id('dialog-title')).getText(),
-    'Close tab and nested tabs?',
-  );
-  await driver.findElement(By.id('dialog-cancel')).click();
-  assert((await send('snapshot')).tabs.some((item) => item.id === tab.id));
-  // Native Firefox closing removes only the parent; the sidebar's close action
-  // deliberately confirms closing its whole branch instead.
-  await browserCall('return browser.tabs.remove(arguments[0]);', tab.id);
   await driver.wait(
     async () => !(await send('snapshot')).tabs.some((item) => item.id === tab.id),
     5000,
   );
+  assert.equal(await driver.findElement(By.id('dialog')).isDisplayed(), false);
   state = await send('snapshot');
   assert.equal(state.tabs.find((item) => item.id === child.id).parentTabId, null);
   assert.equal(state.tabs.find((item) => item.id === grandchild.id).parentTabId, child.id);
@@ -466,7 +457,7 @@ try {
     5000,
   );
   console.log(
-    '✓ Middle-click confirms parent branches and closes pinned leaves with Firefox autoscroll enabled',
+    '✓ Middle-click preserves parent branches and closes pinned leaves with Firefox autoscroll enabled',
   );
   await send('enterGroup', { id: design });
   await send('setLook', {

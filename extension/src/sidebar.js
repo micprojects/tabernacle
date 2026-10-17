@@ -788,13 +788,14 @@ function describeContainer(node, { container }, label = 'Container') {
 }
 
 function closeTab(id) {
+  const args = { id, promoteFirstChild: true };
   if (domainFilter) {
     const domain = domainFilter;
     const rows = [...tree.querySelectorAll('.tab-row')];
     const position = rows.findIndex((row) => row.dataset.id === String(id));
     const focused = document.activeElement;
     const hadFocus = rows[position]?.contains(focused) || $('menu').contains(focused);
-    action('closeTab', { id }).then((next) => {
+    action('closeTab', args).then((next) => {
       if (!next || domainFilter !== domain || !hadFocus) return;
       // Do not steal focus if the user has already moved elsewhere while closing.
       if (document.activeElement !== focused && document.activeElement !== document.body) return;
@@ -806,8 +807,7 @@ function closeTab(id) {
       if (target) selectRow(target);
       else $('domain-close').focus();
     });
-  } else if (tabSubtree(state.tabs, id).length > 1) closeTabTreeDialog(id);
-  else action('closeTab', { id });
+  } else action('closeTab', args);
 }
 
 function activateTab(id) {
@@ -2078,14 +2078,16 @@ function contextMenu(kind, id, x, y) {
           run: () => action('duplicateTab', { id }),
         },
         null,
-        {
-          label:
-            !domainFilter && tabSubtree(state.tabs, id).length > 1
-              ? 'Close tab and nested tabs…'
-              : 'Close tab',
-          icon: 'close',
-          run: () => closeTab(id),
-        },
+        { label: 'Close tab', icon: 'close', run: () => closeTab(id) },
+        ...(!domainFilter && tabSubtree(state.tabs, id).length > 1
+          ? [
+              {
+                label: 'Close tab and nested tabs…',
+                icon: 'close',
+                run: () => closeTabTreeDialog(id),
+              },
+            ]
+          : []),
       ],
       x,
       y,

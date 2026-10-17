@@ -88,7 +88,7 @@ try {
   let state = await read();
   assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, null);
   state = await browser.evaluate(() => window.closeCheckSend('undoCloseTab'));
-  const restored = state.tabs.find((tab) => tab.id === state.restoredTabId);
+  let restored = state.tabs.find((tab) => tab.id === state.restoredTabId);
   assert.notEqual(restored.id, fixture.parent.id);
   assert.equal(restored.treeId, fixture.parent.treeId);
   assert.equal(restored.groupId, fixture.groupId);
@@ -133,6 +133,56 @@ try {
   state = await read();
   assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, restored.id);
   assert(state.groups.some((group) => group.id === fixture.groupId));
+
+  const branch = await browser.evaluate(
+    async ({ parent, child }) => {
+      const grandchild = (await window.closeCheckSend('newChildTab', { id: child })).tabs.find(
+        (tab) => tab.active,
+      ).id;
+      const sibling = (await window.closeCheckSend('newChildTab', { id: parent })).tabs.find(
+        (tab) => tab.active,
+      ).id;
+      await window.closeCheckSend('activateTab', { id: parent });
+      return { grandchild, sibling };
+    },
+    { parent: restored.id, child: fixture.child },
+  );
+  for (const [selector, button] of [
+    ['.label', Button.MIDDLE],
+    ['.close-tab', Button.LEFT],
+  ]) {
+    await visible(restored.id, true);
+    await visible(branch.sibling, true);
+    const parentRect = await browser.evaluate(
+      (id, selector) => {
+        const rect = document
+          .querySelector(`[data-key="tab:${id}"] ${selector}`)
+          .getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      },
+      restored.id,
+      selector,
+    );
+    await browser.driver
+      .actions()
+      .move({ x: Math.round(offset.x + parentRect.x), y: Math.round(offset.y + parentRect.y) })
+      .press(button)
+      .release(button)
+      .perform();
+    await visible(restored.id, false);
+    state = await read();
+    assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, null);
+    assert.equal(state.tabs.find((tab) => tab.id === branch.sibling).parentTabId, fixture.child);
+    assert.equal(state.tabs.find((tab) => tab.id === branch.grandchild).parentTabId, fixture.child);
+    state = await browser.evaluate(() => window.closeCheckSend('undoCloseTab'));
+    restored = state.tabs.find((tab) => tab.id === state.restoredTabId);
+    assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, restored.id);
+    assert.equal(state.tabs.find((tab) => tab.id === branch.sibling).parentTabId, restored.id);
+    assert.equal(state.tabs.find((tab) => tab.id === branch.grandchild).parentTabId, fixture.child);
+  }
+  console.log(
+    '✓ Native middle click and close button promote the first child, preserve descendants and support undo',
+  );
 
   const selection = await browser.evaluate(async (outsideId) => {
     const groupId = (await window.closeCheckSend('createGroup', { name: 'Folder-aware close' }))

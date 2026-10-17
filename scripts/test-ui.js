@@ -404,12 +404,13 @@ try {
     'Typography reference',
   ]);
   check('Dropping at the edge reorders siblings without nesting them');
-  await child.getByRole('button', { name: 'Close Brand guidelines', exact: true }).click();
+  await child.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Close tab and nested tabs…', exact: true }).click();
   await page.getByRole('button', { name: 'Close 2 tabs', exact: true }).click();
   await expect(child).toHaveCount(0);
   await expect(grandchild).toHaveCount(0);
   await expect(branch.locator('.tab-row')).toHaveCount(2);
-  check('Closing a parent tab confirms and closes its nested tabs together');
+  check('The separate right-click branch action confirms and closes its nested tabs together');
   await parent.dragTo(page.locator('#home'));
   await expect(page.locator('#tree > .tab-node > [data-key="tab:1"]')).toBeVisible();
   await page.locator('#home').click();
@@ -485,22 +486,20 @@ try {
   await expect(page.locator('[data-key="tab:2"]')).toHaveCount(0);
   await expect(page.locator('[data-key="tab:1"]')).toHaveAttribute('aria-selected', 'true');
   await page.locator('[data-key="tab:3"] .close-tab').click({ button: 'middle' });
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.locator('#dialog-submit')).toHaveText('Close 2 tabs');
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.locator('[data-key="tab:3"]')).toBeVisible();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.locator('[data-key="tab:3"]')).toHaveCount(0);
   await expect(page.locator('[data-key="tab:4"]')).toBeVisible();
   await page.locator('[data-key="tab:1"] .tab-disclosure').click({ button: 'middle' });
-  await page.getByRole('button', { name: 'Close 3 tabs', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page.locator('[data-key="tab:1"]')).toHaveCount(0);
-  await expect(page.locator('[data-key="tab:4"]')).toHaveCount(0);
-  await expect(page.locator('.tab-row')).toHaveCount(2);
+  await expect(page.locator('[data-key="tab:4"]')).toBeVisible();
+  await expect(page.locator('.tab-row')).toHaveCount(3);
   await page.locator('[data-key="tab:10"] .tab-icon').click({ button: 'middle' });
   await expect(page.locator('[data-key="tab:10"]')).toHaveCount(0);
   await expect(page.locator('.pinned-tab')).toHaveCount(3);
   expect(await page.evaluate(() => window.middleClicks)).toEqual([true, true, true, true]);
   check(
-    'Middle-click closes leaves and pins immediately, confirms parent branches and prevents autoscroll',
+    'Middle-click closes leaves and pins immediately, preserves children and prevents autoscroll',
   );
   await page.goto(`${base}/extension/sidebar.html?demo`);
   await expect(page.locator('.tab-row')).toHaveCount(6);

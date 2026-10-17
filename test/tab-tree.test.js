@@ -553,6 +553,131 @@ test('closing a middle tab promotes children and restoring it reconnects changed
   assert.equal(get(state, restored.id).parentTabId, 1);
 });
 
+function promotionFixture({ nested = false, collapsed = false, active = false } = {}) {
+  const parents = { 2: nested ? 1 : null, 3: 2, 4: 3, 5: 2, 6: 5, 7: nested ? 1 : null };
+  const ancestors = (id) => (parents[id] ? [`t${parents[id]}`, ...ancestors(parents[id])] : []);
+  // Child order deliberately differs from native order and the parent's slot.
+  const orders = [0, 1024, 9000, -500, 10000, 0, 2048, 3072];
+  const api = memoryBrowser({
+    events: true,
+    tabs: [1, 2, 5, 6, 7, 3, 4, 8].map((id, index) => ({
+      id,
+      index,
+      windowId: 1,
+      title: `Tab ${id}`,
+      active: id === (active ? 2 : 8),
+    })),
+    memberships: Object.fromEntries(
+      orders.map((order, index) => [
+        index + 1,
+        {
+          groupId: null,
+          treeId: `t${index + 1}`,
+          ancestors: ancestors(index + 1),
+          order,
+          collapsed: index === 1 && collapsed,
+        },
+      ]),
+    ),
+  });
+  let controller = createController(api);
+  return {
+    api,
+    send: (type, args = {}) => controller.request({ type, windowId: 1, ...args }),
+
+    restart: () => {
+      controller = createController(api);
+    },
+  };
+}
+
+test('single parent close promotes the first child into its slot and preserves the branch through restart and undo', async () => {
+  for (const nested of [false, true]) {
+    for (const collapsed of [false, true]) {
+      const { api, send, restart } = promotionFixture({ nested, collapsed });
+      const before = await send('snapshot');
+      const state = await send('closeTab', { id: 2, promoteFirstChild: true });
+      assert.equal(state.tabs.length, 7);
+      assert.equal(get(state, 3).parentTabId, nested ? 1 : null);
+      assert.equal(get(state, 3).order, get(before, 2).order);
+      assert.equal(get(state, 4).parentTabId, 3);
+      assert.equal(get(state, 5).parentTabId, 3);
+      assert.equal(get(state, 6).parentTabId, 5);
+      assert.equal(get(state, 8).active, true, 'Closing a background parent must not change tabs');
+      assert.deepEqual(
+        tabSubtree(state.tabs, 3).map((tab) => tab.id),
+        [3, 4, 5, 6],
+      );
+      assert.deepEqual(
+        sortTabs(state.tabs.filter((tab) => tab.parentTabId === (nested ? 1 : null))).map(
+          (tab) => tab.id,
+        ),
+        nested ? [3, 7] : [1, 3, 7, 8],
+      );
+      restart();
+      assert.deepEqual(
+        tabSubtree((await send('snapshot')).tabs, 3).map((tab) => tab.id),
+        [3, 4, 5, 6],
+      );
+      const restored = await api.testing.restore();
+      const undone = await send('snapshot');
+      assert.deepEqual(
+        tabSubtree(undone.tabs, restored.id).map((tab) => tab.treeId),
+        ['t2', 't3', 't4', 't5', 't6'],
+      );
+      assert.equal(get(undone, 5).parentTabId, restored.id);
+      assert.equal(get(undone, restored.id).collapsed, collapsed);
+    }
+  }
+});
+
+test('successive first-child promotions can be undone without changing the original hierarchy', async () => {
+  const { api, send, restart } = promotionFixture({ active: true });
+  await send('snapshot');
+  await send('closeTab', { id: 2, promoteFirstChild: true });
+  let state = await send('closeTab', { id: 3, promoteFirstChild: true });
+  assert.deepEqual(
+    tabSubtree(state.tabs, 4).map((tab) => tab.id),
+    [4, 5, 6],
+  );
+  restart();
+  const child = await api.testing.restore();
+  state = await send('snapshot');
+  assert.deepEqual(
+    tabSubtree(state.tabs, child.id).map((tab) => tab.treeId),
+    ['t3', 't4', 't5', 't6'],
+  );
+  const parent = await api.testing.restore();
+  state = await send('snapshot');
+  assert.equal(get(state, 5).parentTabId, parent.id);
+  assert.equal(get(state, 4).parentTabId, child.id);
+  assert.deepEqual(
+    tabSubtree(state.tabs, parent.id).map((tab) => tab.treeId),
+    ['t2', 't3', 't4', 't5', 't6'],
+  );
+});
+
+test('a failed parent close rolls back promotion; an error after removal keeps the surviving tree', async () => {
+  for (const removed of [false, true]) {
+    const { api, send } = promotionFixture();
+    const before = await send('snapshot');
+    const remove = api.tabs.remove;
+    api.tabs.remove = async (id) => {
+      if (removed) await remove(id);
+      throw new Error('Close failed');
+    };
+    await assert.rejects(send('closeTab', { id: 2, promoteFirstChild: true }), /Close failed/);
+    const state = await send('snapshot');
+    if (removed) {
+      assert.equal(get(state, 3).parentTabId, null);
+      assert.deepEqual(
+        tabSubtree(state.tabs, 3).map((tab) => tab.id),
+        [3, 4, 5, 6],
+      );
+    } else assert.deepEqual(state.tabs, before.tabs);
+  }
+});
+
 test('parents and children reconnect even when the whole tree is restored in reverse order', async () => {
   const { api, send, tree, restart } = fixture();
   await tree();

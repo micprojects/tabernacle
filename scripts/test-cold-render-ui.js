@@ -115,7 +115,7 @@ try {
   await last.locator('.close-tab').click();
   await expect
     .poll(() => page.evaluate(() => coldTest.calls))
-    .toContainEqual({ type: 'closeTab', id: 5000 });
+    .toContainEqual(expect.objectContaining({ type: 'closeTab', id: 5000 }));
   console.log('✓ Keyboard traversal and offscreen row controls retain their targets');
 
   await page.evaluate(() => coldTest.search('Tab 4999'));
@@ -178,7 +178,7 @@ try {
   await deepClose.click();
   await expect
     .poll(() => page.evaluate(() => coldTest.calls))
-    .toContainEqual({ type: 'closeTab', id: 35 });
+    .toContainEqual(expect.objectContaining({ type: 'closeTab', id: 35 }));
   console.log('✓ Deep narrow trees preserve horizontal overflow and reachable controls');
 
   await page.evaluate(async () => {
