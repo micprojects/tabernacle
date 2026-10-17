@@ -11,7 +11,7 @@ context-fill/context-fill-opacity attributes are omitted so the inline SVG
 can inherit currentColor and work in ordinary extension pages.
 
 The following Tabernacle additions and adaptations are not official Acorn assets:
-- saved-later.svg is an original bookmark-and-clock drawing, released under the
+- saved-later.svg is an original plain tray drawing, released under the
   project's MIT licence (root LICENSE).
 - folder-open-16 adds a slanted front panel for expanded folders, matching
   folder-16's tab shape, rounded corners and 1.5px outline weight.

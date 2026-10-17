@@ -112,7 +112,7 @@ and newly opened tabs are never added to an existing review.
 ## Save tabs for later
 
 Right-click a tab and choose **Save for later** to move it out of the tree. Open
-**Saved for Later** from the bookmark-and-clock button before Domains in the bottom
+**Saved for Later** from the tray button before Domains in the bottom
 bar. The newest saved tabs appear first; search titles and URLs or switch to oldest
 first. Each row shows the tab’s favicon and title, wrapped to at most three lines.
 The full title and website address remain in its tooltip.
