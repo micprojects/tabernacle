@@ -87,67 +87,15 @@ close button also returns to folders. When you opened a site from Domains, **Bac
 Domains** restores your place in that directory. Pinned domains remain listed with
 one matching tab, including a subdomain; at zero they hide but retain their pin.
 
-On YouTube, **Enhanced** replaces the count with a remembered toggle. It starts on
-and shows thumbnails, channels, folders, duplicate indicators and video progress where
-available. Switch it off to use the standard domain list. The All, In progress and
-Duplicates filters keep each tab separate. A filtered view shows its matching count.
-Hover over a result (or focus it with the keyboard) for **Show in folder** and
-**Copy video link**. Titles omit YouTube's notification count; known progress is
-shown as a slim bar beneath the thumbnail.
-
-Choose **Allow access** once to enable YouTube channel lookups and read duration and
-playback position from loaded tabs. Only visible videos are checked, every five seconds;
-sleeping tabs stay asleep. Saved positions have a Last seen tooltip; missing progress
-is left blank. This is observed tab progress, not your account's watch history.
-Thumbnails and public metadata contact YouTube directly. Metadata requests omit credentials
-and referrers; thumbnails omit referrers. Playback positions stay in Firefox's tab session
-data. No API key is needed.
-
-Other supported sites have the same remembered **Enhanced** switch in the domain view:
-
-| Mode                                    | Extra context                                                                                                  |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Reddit                                  | Subreddit, post flair, comment count and available post images. Comment links stay distinguishable from posts. |
-| Hacker News                             | Story source, comment count, Ask HN / Show HN labels and a Comments / Article switch.                          |
-| GitHub                                  | Repository, page type, issue/PR number and observed open, closed, draft or merged state.                       |
-| Shopping (Amazon, eBay, Etsy)           | Product image, observed price and selected options where available.                                            |
-| Wikipedia                               | Article image, short description and linked section.                                                           |
-| Documents (Google Docs, Sheets, Slides) | File type, clean title and the current sheet or slide where available.                                         |
-| Maps (Google Maps)                      | Place name, category and address.                                                                              |
-| Film (IMDb, Letterboxd)                 | Poster, release year, runtime and director.                                                                    |
-
-Related tabs are labelled **Same thread**, **Same file**, **Same product**, or similar.
-They remain separate: comments, document locations and selected product options can differ.
-Maps enhancement is offered when filtering from a Maps tab; other Google pages retain their normal rows.
-These modes enrich the existing domain results without changing folders or the filter's scope.
-
-For Hacker News submissions with an external link, choose **Comments** or **Article** on
-the row to switch the same tab between the discussion and its linked page. The selected
-button shows the current view. The tab stays in the Hacker News list, including after
-reopening the sidebar; following an unrelated link returns it to normal domain grouping.
-Text-only submissions and the Hacker News homepage have no article switch.
-
-Choose **Allow access** for the site to read details from its loaded tabs. Only visible rows
-are checked, sleeping tabs stay asleep, and missing details are omitted. Detail tooltips show
-when information was last read; prices and issue states are observations, not live guarantees.
-The extension retries unavailable details with increasing delays. Sign-in pages, consent
-screens and site challenges may prevent enrichment until the page is available normally.
-The last observation stays in that tab's Firefox session data. Turning a mode off restores
-the standard list and stops its reads. Site access can be removed in Firefox's extension settings.
-
-Images load from the source site's image hosts without referrers. Hacker News can also use
-its public API without credentials. The other modes read the loaded page and do not fetch
-private document contents, account history or a separate copy of the page.
-
 <img src="assets/screenshots/03-search-ui.png" width="550" alt="Search results for grid, showing matching tabs within their folders.">
 
 ## Process tabs together
 
 Right-click a folder to **Save tabs for later**, including tabs in its subfolders and
 pinned tabs. The domain actions menu can save, copy URLs or close the complete current
-result set, including rows below the viewport. Search and YouTube filters define that
-set. Saving offers one **Undo** for the batch. Closing shows the count and any pinned
-tabs before you confirm. Copying retains original article URLs, query parameters and
+result set, including rows below the viewport. The domain search defines that set.
+Saving offers one **Undo** for the batch. Closing shows the count and any pinned tabs
+before you confirm. Copying retains original article URLs, query parameters and
 fragments in result order.
 
 Choose **Review duplicates…** from Domains, a domain's actions, a folder's context
@@ -165,37 +113,16 @@ and newly opened tabs are never added to an existing review.
 
 Right-click a tab and choose **Save for later** to move it out of the tree. Open
 **Saved for Later** from the bookmark-and-clock button before Domains in the bottom
-bar. The newest saved tabs appear first; search titles and URLs, switch to oldest
-first, or use the **Articles**, **Videos** and **Documents** filters. Articles use
-Firefox's detection, available previews and common page URLs; other pages remain in **All**.
-
-Choose **Read** on an eligible article to open the same tab in Firefox's Reader View.
-**View original** switches back. The tab stays saved, and these controls do not need
-access to the page's contents.
-
-Open **Article previews** and choose **Enable on all sites** to approve website access
-once. New sites then work without further permission prompts. The control stays
-collapsed until opened; declining does not trigger another prompt. Where available,
-the row shows an excerpt, author, publication date and estimated reading time. Search
-also finds preview titles and authors. Previews are extracted locally with Mozilla
-Readability from loaded pages; sleeping tabs stay asleep. Only the small preview is
-kept in that tab's Firefox session data, so it remains available in Reader View and
-after reopening the sidebar. Page access is optional. **Remove all-site access** in
-the same control revokes the broad grant; any access granted separately to individual
-sites remains. Firefox's extension settings can also manage site access.
+bar. The newest saved tabs appear first; search titles and URLs or switch to oldest
+first. Each row shows the tab’s favicon and title, wrapped to at most three lines.
+The full title and website address remain in its tooltip.
 
 Clicking a saved tab activates it and leaves it in the list. Hover or focus a row
 to return it to its original folder or close it. Saving a parent leaves its children
 in the tree. Returning it restores its previous position and nesting where possible;
 if its folder has been deleted, it returns to Home. Pinned tabs return to the pinned strip.
-Returning keeps your filter, search, sort and scroll position, with focus moving to the
+Returning keeps your search, sort and scroll position, with focus moving to the
 nearest remaining row. Use **Show in folder** in the confirmation to navigate deliberately.
-
-YouTube videos in All and Videos use the same thumbnails, cleaned titles, channels,
-durations and observed progress as the domain view. They share its YouTube preference
-and the master Site Enhancements switch. **Allow YouTube access** is explicit; changing
-views never requests it. Only the visible view polls loaded videos, and no video is
-started, sought or woken by showing it here.
 
 Saved tabs remain real Firefox tabs in their current window, retaining their containers
 and page state. Membership is kept in Firefox session data across extension reloads

@@ -289,54 +289,6 @@ test('a title change that leaves the domain query is skipped', async () => {
   assert.deepEqual(next.batchResult.skipped, [1]);
 });
 
-test('YouTube duplicate batches retain their full reviewed set while excluding changed companions', async () => {
-  for (const changed of [false, true]) {
-    const { api, send } = fixture();
-    for (const id of [1, 2])
-      await api.tabs.update(id, { url: `https://www.youtube.com/watch?v=jNQXAC9IVRw&t=${id}` });
-    const state = await send('snapshot');
-    if (changed) await api.tabs.remove(2);
-    const next = await send('saveTabsForLater', {
-      scope: { kind: 'domain', domain: 'youtube.com', youtubeFilter: 'duplicates' },
-      targets: state.tabs.filter((tab) => tab.id <= 2).map(captureTarget),
-    });
-    assert.deepEqual(next.batchResult.completed, changed ? [] : [1, 2]);
-    assert.deepEqual(next.batchResult.skipped, changed ? [1, 2] : []);
-  }
-});
-
-test('YouTube progress and Later filters are revalidated without reading pages', async () => {
-  const { api, send } = fixture();
-  await api.tabs.update(1, { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw' });
-  let state = await send('snapshot');
-  const request = {
-    scope: { kind: 'domain', domain: 'youtube.com', youtubeFilter: 'progress' },
-    targets: [captureTarget(state.tabs[0])],
-  };
-  let next = await send('saveTabsForLater', request);
-  assert.deepEqual(next.batchResult.skipped, [1]);
-  const getValue = api.sessions.getTabValue;
-  const observation = {
-    treeId: state.tabs[0].treeId,
-    videoId: 'jNQXAC9IVRw',
-    duration: 20,
-    position: 10,
-  };
-  api.sessions.getTabValue = (id, key) =>
-    key === 'tabernacle.youtube.v1'
-      ? Promise.resolve(id === 1 ? observation : undefined)
-      : getValue(id, key);
-  next = await send('saveTabsForLater', request);
-  assert.deepEqual(next.batchResult.completed, [1]);
-  state = next;
-  next = await send('closeDuplicateTabs', {
-    scope: { kind: 'later', category: 'articles' },
-    targets: [captureTarget(state.tabs[0])],
-    keepers: [],
-  });
-  assert.deepEqual(next.batchResult.skipped, [1]);
-});
-
 test('folder collections include descendant pins and saved items in a deterministic order', async () => {
   const { api, send } = fixture();
   await api.tabs.update(2, { pinned: true });
@@ -384,4 +336,16 @@ test('a browser error after confirmed removal still reports the completed close'
   });
   assert.deepEqual(next.batchResult.completed, [1]);
   assert.deepEqual(next.batchResult.failed, []);
+});
+
+test('Later searches are revalidated before batch writes', async () => {
+  const { api, send } = fixture();
+  await api.tabs.update(1, { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw' });
+  const state = await send('saveForLater', { id: 1 });
+  const next = await send('closeDuplicateTabs', {
+    scope: { kind: 'later', query: 'no matching title' },
+    targets: [captureTarget(state.tabs[0])],
+    keepers: [],
+  });
+  assert.deepEqual(next.batchResult.skipped, [1]);
 });

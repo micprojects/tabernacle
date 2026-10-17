@@ -5,7 +5,7 @@ import { isSavedForLater } from './model.js';
 // target; a failure never expands the reviewed set or hides partial success.
 export async function applyTabBatch(
   message,
-  { state, freshTab, save, close, isClosed = async () => false, inScope = async () => true },
+  { state, freshTab, save, close, isClosed = async () => false },
 ) {
   const { type, targets, scope } = message;
   if (
@@ -45,7 +45,6 @@ export async function applyTabBatch(
             if (
               matchesTarget(candidate, expected) &&
               inCollection(state, candidate, scope) &&
-              (await inScope(candidate, scope, result.completed)) &&
               key &&
               duplicateKey(candidate) === key
             ) {
@@ -57,7 +56,6 @@ export async function applyTabBatch(
             return false;
           }
         }
-        if (!undoing && !(await inScope(tab, scope, result.completed))) return false;
         // Keeper and metadata reads can yield to a native navigation or move.
         const current = await freshTab(target.id);
         return matchesTarget(current, target) && (undoing || inCollection(state, current, scope));

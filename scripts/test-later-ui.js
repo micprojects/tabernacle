@@ -36,7 +36,6 @@ const send = (type, args = {}) =>
 const pane = page.locator('#later-view');
 const trigger = page.getByRole('button', { name: 'Saved for Later', exact: true });
 const row = (id) => pane.locator(`.later-row[data-id="${id}"]`);
-const filter = (name) => pane.getByRole('button', { name, exact: true });
 const search = pane.getByRole('searchbox');
 
 try {
@@ -79,13 +78,66 @@ try {
   await expect(row(7)).toBeVisible();
   await row(1).hover();
   await expect(page.locator('#toast')).toBeHidden({ timeout: 6000 });
+  await expect(
+    pane.locator(
+      '.later-filters, .later-preview-options, .later-read, .later-article-details, .later-excerpt, .later-domain, .later-time',
+    ),
+  ).toHaveCount(0);
+  const longTitle =
+    'A saved page with a long title that wraps across several lines while keeping all its original words available in the tooltip — ' +
+    'more details '.repeat(20);
+  await page.evaluate(
+    (title) =>
+      laterTest.api.tabs.update(7, {
+        title,
+        isArticle: true,
+        articlePreview: {
+          title: 'An obsolete preview title',
+          byline: 'Old author',
+          excerpt: 'Old excerpt',
+        },
+      }),
+    longTitle,
+  );
+  await expect(row(7).locator('.later-label')).toHaveText(longTitle);
+  await expect(row(7).locator('.later-open-tab')).toHaveAttribute('aria-label', longTitle);
+  await expect(row(7).locator('.later-open-tab')).toHaveAttribute(
+    'title',
+    `${longTitle}\nhttps://maps.google.com/`,
+  );
+  for (const width of [220, 320, 480]) {
+    await page.setViewportSize({ width, height: 740 });
+    await row(7).scrollIntoViewIfNeeded();
+    const geometry = await row(7).evaluate((node) => {
+      const label = node.querySelector('.later-label');
+      const rect = label.getBoundingClientRect();
+      const actions = node.querySelector('.later-row-actions').getBoundingClientRect();
+      return {
+        height: rect.height,
+        line: parseFloat(getComputedStyle(label).lineHeight),
+        fullHeight: label.scrollHeight,
+        right: rect.right,
+        actionsLeft: actions.left,
+        actionsRight: actions.right,
+      };
+    });
+    expect(geometry.height).toBeLessThanOrEqual(geometry.line * 3 + 1);
+    expect(geometry.height).toBeGreaterThan(geometry.line * 2);
+    expect(geometry.fullHeight).toBeGreaterThan(geometry.height);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.actionsLeft);
+    expect(geometry.actionsRight).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: `test-results/later-plain-${width}.png` });
+  }
+  await page.setViewportSize({ width: 400, height: 740 });
+  await pane.locator('.later-content').evaluate((node) => {
+    node.scrollTop = 0;
+  });
   await page.screenshot({ path: 'test-results/later-all-400.png' });
 
-  await filter('Articles').click();
-  await expect(pane.locator('.later-row')).toHaveCount(3);
-  await expect(pane.getByRole('status')).toHaveText('3 of 7 tabs');
-  await filter('Videos').click();
-  await expect(pane.locator('.later-row')).toHaveCount(2);
+  await expect(row(2).locator('.later-label')).toHaveText(
+    'How the London Underground map was designed',
+  );
+  await expect(pane.locator('.later-row')).toHaveCount(7);
   await row(2).locator('.later-open-tab').click();
   await expect(row(2).locator('.later-open-tab')).toHaveAttribute('aria-current', 'true');
   await expect(pane).toBeVisible();
@@ -95,10 +147,6 @@ try {
   await search.fill('nothing matches');
   await expect(pane.getByRole('heading', { name: 'No matching tabs' })).toBeVisible();
   await search.fill('');
-  await filter('Documents').click();
-  await expect(pane.locator('.later-row')).toHaveCount(1);
-  await expect(row(3)).toBeVisible();
-  await filter('All').click();
   await pane.getByRole('combobox').selectOption('oldest');
   const times = await send('snapshot');
   const first = await pane.locator('.later-row').first().getAttribute('data-id');
@@ -163,7 +211,7 @@ try {
   await expect(pane.getByRole('heading', { name: 'Nothing saved for later' })).toBeVisible();
   expect(errors).toEqual([]);
   console.log(
-    '✓ Saved for Later: save/undo, filters, search, sorting, return, safe close, footer order, keyboard and themes',
+    '✓ Saved for Later: plain rows, three-line captions, save/undo, search, sorting, return, safe close, footer order, keyboard and themes',
   );
 } finally {
   await close();

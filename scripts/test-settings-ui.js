@@ -67,6 +67,14 @@ try {
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(settings).toHaveTitle('Settings · Tabernacle');
   await expect(settings.getByRole('heading', { name: 'Appearance', exact: true })).toBeVisible();
+  await expect(settings.getByRole('link', { name: 'Site Enhancements', exact: true })).toHaveCount(
+    0,
+  );
+  await settings.evaluate(() => {
+    location.hash = 'site-enhancements';
+  });
+  await expect(settings.getByRole('heading', { name: 'Appearance', exact: true })).toBeVisible();
+  await expect(settings.locator('#site-enhancements')).toHaveCount(0);
   await expect(settings.locator('#appearance-save')).toBeDisabled();
   const lines = settings.getByRole('checkbox', { name: 'Show connecting lines', exact: true });
   const domains = settings.getByRole('checkbox', {

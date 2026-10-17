@@ -1,5 +1,4 @@
 import { matchesText, sourceUrl } from './tab-source.js';
-import { hackerNewsStory, HACKER_NEWS_DOMAIN } from './hacker-news.js';
 
 // Match hostnames, never a domain mentioned in a title, path or query string.
 export function normaliseDomain(value) {
@@ -34,7 +33,7 @@ export function domainFromUrl(value) {
 }
 
 export function domainForTab(tab) {
-  return hackerNewsStory(tab) ? HACKER_NEWS_DOMAIN : domainFromUrl(sourceUrl(tab));
+  return domainFromUrl(sourceUrl(tab));
 }
 
 export function matchesDomain(tab, domain, query = '') {

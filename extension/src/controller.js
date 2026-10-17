@@ -10,17 +10,6 @@ import { normaliseDomain } from './domain-filter.js';
 import { normaliseDomainPins } from './domains.js';
 import { normalizeLook, requireLook } from './look.js';
 import { normalizeNewTab, requireNewTab, isNewTabPage } from './new-tab-preferences.js';
-import { SITE_MODES } from './site-modes.js';
-import { hackerNewsArticle, hackerNewsStory, normaliseHackerNewsStory } from './hacker-news.js';
-import { articleUrl, normaliseArticle } from './article.js';
-import { ARTICLE_SESSION_KEY } from './article-service.js';
-import {
-  YOUTUBE_SESSION_KEY,
-  youtubeVideoId,
-  normaliseVideoData,
-  videoInProgress,
-} from './youtube.js';
-import { inCollection } from './tab-collection.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
@@ -524,16 +513,6 @@ export function createController(
         value.order = tab.index ?? 0;
         needsSave = true;
       }
-      // Capture the destination after an article's initial redirects finish.
-      // Later, unrelated navigation must not inherit the HN grouping.
-      const hnStory = normaliseHackerNewsStory(value.hnStory);
-      if (hnStory?.pendingArticle && tab.status !== 'loading') {
-        delete hnStory.pendingArticle;
-        const destination = hackerNewsArticle(tab.url);
-        if (destination) hnStory.articleUrl = destination;
-        value.hnStory = hnStory;
-        needsSave = true;
-      }
       if (needsSave) repairs.push({ id: tab.id, value });
       owners.set(value.treeId, tab.id);
       const { groupId: nativeGroupId, ...nativeTab } = tab;
@@ -545,7 +524,6 @@ export function createController(
         openedAt: value.openedAt,
         ...(isSavedForLater(value) ? { savedForLaterAt: value.savedForLaterAt } : {}),
         treeId: value.treeId,
-        ...(hackerNewsStory({ ...tab, hnStory }) ? { hnStory } : {}),
         ancestors: Array.isArray(value.ancestors)
           ? [...new Set(value.ancestors.filter((id) => typeof id === 'string'))]
           : [],
@@ -615,9 +593,6 @@ export function createController(
       pins: pins.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id)),
       containers: identities,
       look: { ...model.look },
-      siteEnhancementsEnabled: model.siteEnhancementsEnabled !== false,
-      youtubeMode: model.youtubeMode !== false,
-      siteModes: { ...model.siteModes },
       canUndoClose: history.tabs.length > 0,
       recentlyClosed: history.tabs,
       recentlyClosedError: history.error ?? null,
@@ -1093,9 +1068,6 @@ export function createController(
       case 'getSettings':
         return {
           look: { ...model.look },
-          siteEnhancementsEnabled: model.siteEnhancementsEnabled !== false,
-          youtubeMode: model.youtubeMode !== false,
-          siteModes: { ...model.siteModes },
           newTab: structuredClone(model.newTab),
           generation,
           revision,
@@ -1540,74 +1512,6 @@ export function createController(
         if (message.reveal === true) await revealTab(message.id, windowId);
         break;
       }
-      case 'setHackerNewsView': {
-        if (!['comments', 'article'].includes(message.view))
-          throw new Error('Choose Comments or Article.');
-        if (model.siteEnhancementsEnabled === false || model.siteModes?.hn === false)
-          throw new Error('Enable the Hacker News enhancement first.');
-        await listTabs(windowId);
-        const tab = await checkedTab(message.id, windowId);
-        if (tab.url !== message.url) throw new Error('That page has changed. Try again.');
-        const before = await membership(tab.id);
-        const saved = hackerNewsStory({ ...tab, hnStory: before?.hnStory });
-        const story = normaliseHackerNewsStory(message.story);
-        const current =
-          story && hackerNewsStory({ ...tab, hnStory: { ...story, pendingArticle: false } });
-        if (!current || (current.view === 'article' && !saved))
-          throw new Error('The link for this Hacker News submission is no longer available.');
-        // An article can only return to its own saved discussion.
-        if (
-          saved &&
-          current.view === 'article' &&
-          (story.commentsUrl !== saved.commentsUrl || story.articleUrl !== saved.articleUrl)
-        )
-          throw new Error('That Hacker News submission has changed. Try again.');
-        const destination = message.view === 'comments' ? story.commentsUrl : story.articleUrl;
-        const navigate = current.view !== message.view;
-        const next = { ...story };
-        delete next.pendingArticle;
-        if (navigate && message.view === 'article') next.pendingArticle = true;
-        // Persist before navigation, so refreshes and an event-page restart can
-        // still find the return route. Restore it if Firefox refuses navigation.
-        await updateMembership(tab.id, { hnStory: next });
-        try {
-          const latest = await checkedTab(tab.id, windowId);
-          if (latest.url !== message.url) throw new Error('That page has changed. Try again.');
-          await writeTab(windowId, 'update', tab.id, {
-            active: true,
-            ...(navigate ? { url: destination } : {}),
-          });
-        } catch (error) {
-          await updateMembership(tab.id, { hnStory: before?.hnStory });
-          throw error;
-        }
-        if (!window.focused) await api.windows.update(windowId, { focused: true });
-        break;
-      }
-      case 'setReaderMode': {
-        if (typeof message.enabled !== 'boolean' || !articleUrl(message.url))
-          throw new Error('Choose an article and a reading view.');
-        let tab = await checkedTab(message.id, windowId);
-        if (!isSavedForLater(await membership(tab.id)))
-          throw new Error('That tab is no longer saved for later.');
-        if (articleUrl(tab.url) !== message.url)
-          throw new Error('That page has changed. Try again.');
-        if (message.enabled && !tab.isInReaderMode && !tab.isArticle)
-          throw new Error('Reader View is not available for this page.');
-        await writeTab(windowId, 'update', tab.id, { active: true });
-        if (!window.focused) await api.windows.update(windowId, { focused: true });
-        tab = await checkedTab(tab.id, windowId);
-        if (articleUrl(tab.url) !== message.url)
-          throw new Error('That page has changed. Try again.');
-        if (Boolean(tab.isInReaderMode) !== message.enabled) {
-          try {
-            await writeTab(windowId, 'toggleReaderMode', tab.id);
-          } catch {
-            throw new Error('Reader View is not available yet. Open the page and try again.');
-          }
-        }
-        break;
-      }
       case 'saveTabsForLater':
       case 'undoSaveTabsForLater':
       case 'closeTabSet':
@@ -1620,15 +1524,9 @@ export function createController(
           if (!original) return null;
           const current = await membership(id);
           if (!current || current.treeId !== original.treeId) return null;
-          let articlePreview;
-          if (message.scope?.kind === 'later') {
-            const saved = await api.sessions.getTabValue(id, ARTICLE_SESSION_KEY).catch(() => null);
-            if (saved?.treeId === current.treeId)
-              articlePreview = normaliseArticle(saved, articleUrl(original.url));
-          }
           const native = await findOpenTab(id);
           if (!native || native.windowId !== windowId) return null;
-          return { ...original, ...native, ...current, articlePreview };
+          return { ...original, ...native, ...current };
         };
 
         const state = { groups: model.groups, tabs };
@@ -1636,32 +1534,6 @@ export function createController(
           state,
           freshTab,
           isClosed: async (id) => !(await findOpenTab(id)),
-
-          inScope: async (tab, scope, completed) => {
-            if (scope?.kind !== 'domain') return true;
-            const videoId = youtubeVideoId(tab.url);
-            if (scope.youtubeFilter === 'progress') {
-              const saved = await api.sessions.getTabValue(tab.id, YOUTUBE_SESSION_KEY);
-              return (
-                saved?.treeId === tab.treeId && videoInProgress(normaliseVideoData(saved, videoId))
-              );
-            }
-            if (scope.youtubeFilter === 'duplicates') {
-              if (!videoId) return false;
-              // Earlier mutations in this same batch must not shrink its reviewed
-              // duplicate scope. External changes still remove invalid companions.
-              if (completed.some((id) => youtubeVideoId(initial.get(id)?.url) === videoId))
-                return true;
-              for (const other of await api.tabs.query({ windowId })) {
-                if (other.id === tab.id || youtubeVideoId(other.url) !== videoId) continue;
-                const candidate = await freshTab(other.id);
-                if (candidate && inCollection(state, candidate, { ...scope, query: '' }))
-                  return true;
-              }
-              return false;
-            }
-            return true;
-          },
 
           save: async (id, savedForLaterAt, validate) => {
             if (!(await validate())) return false;
@@ -1761,30 +1633,6 @@ export function createController(
         if (tab) await revealTab(tab.id, windowId);
         break;
       }
-      case 'setSiteEnhancementsEnabled': {
-        if (typeof message.enabled !== 'boolean')
-          throw new Error('Choose whether to enable site enhancements.');
-        await changeModel((next) => {
-          next.siteEnhancementsEnabled = message.enabled;
-        });
-        break;
-      }
-      case 'setSiteMode': {
-        if (!Object.hasOwn(SITE_MODES, message.mode) || typeof message.enabled !== 'boolean')
-          throw new Error('Choose a site mode and whether to use it.');
-        await changeModel((next) => {
-          next.siteModes = { ...next.siteModes, [message.mode]: message.enabled };
-        });
-        break;
-      }
-      case 'setYouTubeMode': {
-        if (typeof message.enabled !== 'boolean')
-          throw new Error('Choose whether to enhance YouTube tabs.');
-        await changeModel((next) => {
-          next.youtubeMode = message.enabled;
-        });
-        break;
-      }
       case 'setLook': {
         const look = requireLook(
           message.partial ? { ...model.look, ...message.value } : message.value,
@@ -1812,9 +1660,6 @@ export function createController(
         'setGroupPin',
         'setDomainPin',
         'setLook',
-        'setSiteEnhancementsEnabled',
-        'setYouTubeMode',
-        'setSiteMode',
       ].includes(type) ||
         (type === 'moveItem' && message.source?.kind !== 'tab')
         ? undefined

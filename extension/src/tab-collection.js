@@ -1,8 +1,7 @@
-import { articleUrl } from './article.js';
 import { isSavedForLater, isWithin } from './model.js';
 import { matchesDomain } from './domain-filter.js';
 import { createTreeIndex } from './tree-index.js';
-import { sourceUrl, matchesText } from './tab-source.js';
+import { sourceUrl, matchesText, httpUrl } from './tab-source.js';
 import { laterResults } from './later.js';
 
 export { sourceUrl, matchesText };
@@ -95,7 +94,7 @@ export function inCollection(state, tab, scope) {
 }
 
 export function duplicateKey(tab) {
-  const url = articleUrl(tab.url);
+  const url = httpUrl(tab.url);
   return url ? JSON.stringify([url, tab.cookieStoreId || 'firefox-default']) : null;
 }
 

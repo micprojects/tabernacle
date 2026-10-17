@@ -15,11 +15,6 @@ import { domainForTab, domainResults } from './domain-filter.js';
 import { createDomainHeader } from './domain-header.js';
 import { createDomainsView } from './domains-view.js';
 import { createLaterView } from './later-view.js';
-import { isYouTubeDomain, youtubeVideoId } from './youtube.js';
-import { createYouTubeView } from './youtube-view.js';
-import { SITE_MODES, siteModeForDomain } from './site-modes.js';
-import { createSiteView } from './site-view.js';
-import { hackerNewsDisplayTab, siteTabPage } from './hacker-news.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
 import { createFaviconTints } from './favicon-tint.js';
@@ -64,56 +59,6 @@ let domainSourceId;
 let domainFromDirectory = false;
 let domainVisibleTabs = [];
 let searchVisibleIds = [];
-let youtubeFilter = 'all';
-let youtubeAllowed = false;
-let siteMode = null;
-let siteAllowed = false;
-const siteView = createSiteView({
-  tree,
-  onNavigate: (id, view, url, story) => action('setHackerNewsView', { id, view, url, story }),
-
-  onPermission: (allowed) => {
-    siteAllowed = allowed;
-    $('site-access').hidden = !siteActive() || allowed;
-  },
-});
-
-function siteActive() {
-  return state?.siteEnhancementsEnabled !== false &&
-    siteMode &&
-    state?.siteModes?.[siteMode] !== false
-    ? siteMode
-    : null;
-}
-
-function enrichedSiteTab(tab) {
-  return siteActive() && siteTabPage(tab)?.mode === siteMode;
-}
-
-const youtubeView = createYouTubeView({
-  tree,
-
-  onChange: () => {
-    if (youtubeActive()) {
-      if (youtubeFilter !== 'all') render();
-      else youtubeView.mount();
-    }
-  },
-
-  onPermission: (allowed) => {
-    youtubeAllowed = allowed;
-    $('youtube-access').hidden = !youtubeActive() || allowed;
-  },
-});
-
-function youtubeActive() {
-  return (
-    state?.siteEnhancementsEnabled !== false &&
-    isYouTubeDomain(domainFilter) &&
-    state?.youtubeMode !== false
-  );
-}
-
 let searchOrigin;
 let searchScroll;
 let changingTree = false;
@@ -190,8 +135,6 @@ const domainsView = createDomainsView({
     closeMenu();
     recentlyClosed?.close();
     treeMotion.finishAll();
-    youtubeView.prepare([], false);
-    siteView.prepare([], null, null);
     if (domainFilter) leaveDomain({ restoreFocus: false });
     if (searchOpen) showSearch(false, { restoreFocus: false });
   },
@@ -210,8 +153,6 @@ const laterView = createLaterView({
     closeMenu();
     recentlyClosed?.close();
     treeMotion.finishAll();
-    youtubeView.prepare([], false);
-    siteView.prepare([], null, null);
     domainsView.close({ restoreFocus: false });
     if (domainFilter) leaveDomain({ restoreFocus: false });
     if (searchOpen) showSearch(false, { restoreFocus: false });
@@ -221,9 +162,7 @@ const laterView = createLaterView({
   onActivate: (id) => action('activateTab', { id, expandAncestors: false }),
   onReturn: returnSavedTab,
   onCloseTab: (id) => action('closeTab', { id }),
-  onRead: (id, enabled, url) => action('setReaderMode', { id, enabled, url }),
   onError: (message) => announce(message, true),
-  onNotice: (message) => announce(message),
   onMenu: (id, x, y) => contextMenu('tab', id, x, y),
   onActions: (event, tabs, scope) => collectionMenu(event, scope, tabs, false),
 });
@@ -987,7 +926,7 @@ function pinnedTab(tab) {
 }
 
 function createTabRow(tab, expanded, stats) {
-  const favicon = tabFavicon(enrichedSiteTab(tab) ? hackerNewsDisplayTab(tab) : tab);
+  const favicon = tabFavicon(tab);
   const row = rowBase('tab', tab.id);
   row.classList.toggle('active', Boolean(tab.active));
   row.classList.toggle('contains-active', !expanded && stats.active);
@@ -1001,25 +940,7 @@ function createTabRow(tab, expanded, stats) {
   }
   describeContainer(row, tab);
   describeAudio(row, audioDescription(tab));
-  if (youtubeActive()) {
-    row.classList.add('youtube-row');
-    const videoId = youtubeVideoId(tab.url);
-    if (videoId) row.dataset.videoId = videoId;
-    row.append(...youtubeView.content(tab, tabFolderLabel(tab)));
-    const actions = el('span', 'youtube-actions');
-    actions.append(
-      button('Show in folder', 'group', () => showTabInFolder(tab.id)),
-      button(videoId ? 'Copy video link' : 'Copy link', 'copy', () => copyUrls('tab', tab.id)),
-    );
-    row.querySelector('.youtube-media').append(actions);
-  } else if (enrichedSiteTab(tab)) {
-    row.classList.add('site-row');
-    row.dataset.folder = tabFolderLabel(tab);
-    row.dataset.siteAriaSuffix = row
-      .getAttribute('aria-label')
-      .slice((tab.title || 'New tab').length);
-    row.append(...siteView.content(tab, tabFolderLabel(tab), favicon));
-  } else if (stats.descendants) {
+  if (stats.descendants) {
     row.setAttribute('aria-expanded', String(expanded));
     const count = `${stats.descendants} nested ${stats.descendants === 1 ? 'tab' : 'tabs'}`;
     row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${count}`);
@@ -1045,7 +966,7 @@ function createTabRow(tab, expanded, stats) {
     slot.append(favicon);
     row.append(slot);
   }
-  if (!youtubeActive() && !enrichedSiteTab(tab)) row.append(tabLabel(tab));
+  row.append(tabLabel(tab));
   if (domainFilter && domainSort === 'least-viewed' && viewedAge(tab.lastAccessed)) {
     const age = el('span', 'viewed-age', viewedAge(tab.lastAccessed));
     age.title = `Last viewed ${new Date(tab.lastAccessed).toLocaleString()}`;
@@ -1112,10 +1033,6 @@ function tabRow(tab, expanded, stats) {
         isSavedForLater(tab),
         domainSort === 'least-viewed' ? viewedAge(tab.lastAccessed) : null,
         domainSort === 'least-viewed' ? tab.lastAccessed : null,
-        youtubeActive(),
-        youtubeActive() ? youtubeView.duplicateCount(tab) : 0,
-        enrichedSiteTab(tab),
-        enrichedSiteTab(tab) ? siteView.duplicateCount(tab) : 0,
       ],
       () => createTabRow(tab, expanded, stats),
     ),
@@ -1532,62 +1449,25 @@ function render(motionKey = null) {
   $('domain-search-tools').hidden = !domainFilter;
   $('domain-back').hidden = !domainFromDirectory;
   domainsView.detail(domainFromDirectory && Boolean(domainFilter));
-  const site = siteActive();
-  const enhancements = state.siteEnhancementsEnabled !== false;
-  $('site-mode').hidden = !enhancements || !siteMode;
-  $('site-mode-label').textContent = siteMode ? 'Enhanced' : '';
-  $('site-mode').setAttribute('aria-checked', String(Boolean(site)));
-  $('site-access').hidden = !site || siteAllowed;
-  $('site-access-description').textContent = siteMode
-    ? `Allow access for ${SITE_MODES[siteMode].access}.`
-    : '';
-  const youtube = youtubeActive();
-  $('youtube-mode').hidden = !enhancements || !isYouTubeDomain(domainFilter);
-  $('youtube-mode').setAttribute('aria-checked', String(youtube));
-  $('youtube-tools').hidden = !youtube;
-  $('youtube-access').hidden = !youtube || youtubeAllowed;
-  $('domain-count').hidden = enhancements && (isYouTubeDomain(domainFilter) || Boolean(siteMode));
-  tree.classList.toggle('youtube-results', youtube);
-  $('domain-tools').classList.toggle(
-    'youtube-domain-tools',
-    enhancements && isYouTubeDomain(domainFilter),
-  );
-  $('domain-tools').classList.toggle('site-domain-tools', enhancements && Boolean(siteMode));
   if (domainFilter) {
     const results = domainResults(index, domainFilter, '', domainSort);
-    youtubeView.prepare(results, youtube);
-    siteView.prepare(results, domainFilter, site);
-    const visibleResults = results.filter(
-      (tab) => matchesText(tab, query) && (!youtube || youtubeView.matches(tab, youtubeFilter)),
-    );
+    const visibleResults = results.filter((tab) => matchesText(tab, query));
     domainVisibleTabs = visibleResults;
-    renderDomainHeader(domainFilter, results.map(hackerNewsDisplayTab), domainSourceId);
+    renderDomainHeader(domainFilter, results, domainSourceId);
     reconcileChildren(
       tree,
       visibleResults.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
     );
     const count = `${results.length} ${results.length === 1 ? 'tab' : 'tabs'}`;
-    $('domain-count').textContent =
-      query || (youtube && youtubeFilter !== 'all')
-        ? `${visibleResults.length} of ${count}`
-        : count;
-    if (query || (youtube && youtubeFilter !== 'all')) $('domain-count').hidden = false;
-    const status = `${query || (youtube && youtubeFilter !== 'all') ? `${visibleResults.length} of ` : ''}${count} from ${domainFilter} in this window`;
+    $('domain-count').textContent = query ? `${visibleResults.length} of ${count}` : count;
+    const status = `${query ? `${visibleResults.length} of ` : ''}${count} from ${domainFilter} in this window`;
     if ($('domain-status').textContent !== status) $('domain-status').textContent = status;
-    $('youtube-mode').title = `${count} · Show video thumbnails, duration and observed progress`;
-    $('site-mode').title = `${count} · Show details for these tabs`;
-    for (const button of document.querySelectorAll('[data-youtube-filter]'))
-      button.setAttribute('aria-pressed', String(button.dataset.youtubeFilter === youtubeFilter));
-    youtubeView.mount();
-    siteView.mount();
     $('domain-sort').title =
       ['newest', 'oldest'].includes(domainSort) &&
       results.some((tab) => !(Number.isFinite(tab.openedAt) && tab.openedAt > 0))
         ? 'Tabs without a recorded opening time follow dated tabs in tree order.'
         : 'Sort filtered tabs';
   } else {
-    youtubeView.prepare([], false);
-    siteView.prepare([], null, null);
     renderDomainHeader(null);
     fillChildren(tree, state.view.scopeId, query);
     const saved = savedSearchResults(state, query);
@@ -1617,27 +1497,13 @@ function render(motionKey = null) {
     empty.setAttribute('role', 'none');
     empty.append(
       icon('searchLarge'),
-      el(
-        'h2',
-        '',
-        youtube && youtubeFilter !== 'all'
-          ? youtubeFilter === 'progress'
-            ? 'No videos in progress'
-            : 'No duplicate videos'
-          : domainFilter
-            ? `No tabs from ${domainFilter}`
-            : 'Nothing found',
-      ),
+      el('h2', '', domainFilter ? `No tabs from ${domainFilter}` : 'Nothing found'),
       el(
         'p',
         '',
-        youtube && youtubeFilter !== 'all'
-          ? youtubeFilter === 'progress'
-            ? 'Progress appears as loaded videos are observed. Choose All to see every tab.'
-            : 'Choose All to see every tab.'
-          : domainFilter
-            ? 'Close this view to return to your folders.'
-            : 'Try another name or website address.',
+        domainFilter
+          ? 'Close this view to return to your folders.'
+          : 'Try another name or website address.',
       ),
     );
     tree.prepend(empty);
@@ -1702,11 +1568,6 @@ function filterByDomain(domain, sourceId, fromDirectory = false) {
   domainFromDirectory = fromDirectory;
   $('domain-search').value = '';
   domainFilter = domain;
-  siteMode = siteModeForDomain(
-    domain,
-    state.tabs.filter((tab) => tab.id === sourceId),
-  );
-  youtubeFilter = 'all';
   domainSourceId = sourceId;
   searchScroll = 0;
   render();
@@ -1722,7 +1583,6 @@ function leaveDomain({ restoreFocus = true } = {}) {
   domainVisibleTabs = [];
   $('domain-search').value = '';
   domainsView.detail(false);
-  siteMode = null;
   domainSourceId = null;
   selected = domainOrigin?.selected;
   searchScroll = domainOrigin?.scroll ?? 0;
@@ -2413,49 +2273,11 @@ $('domain-actions').addEventListener('click', (event) =>
       kind: 'domain',
       domain: domainFilter,
       query: $('domain-search').value,
-      youtubeFilter:
-        isYouTubeDomain(domainFilter) &&
-        state.siteEnhancementsEnabled !== false &&
-        state.youtubeMode !== false
-          ? youtubeFilter
-          : 'all',
     },
     domainVisibleTabs,
     true,
   ),
 );
-$('youtube-mode').addEventListener('click', async () => {
-  if (state.siteEnhancementsEnabled === false) return;
-  const toggle = $('youtube-mode');
-  toggle.disabled = true;
-  youtubeFilter = 'all';
-  await action('setYouTubeMode', { enabled: state.youtubeMode === false });
-  toggle.disabled = false;
-});
-$('youtube-tools').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-youtube-filter]');
-  if (!button) return;
-  youtubeFilter = button.dataset.youtubeFilter;
-  tree.scrollTop = 0;
-  render();
-});
-$('youtube-allow').addEventListener('click', () => {
-  youtubeView.allow().catch(() => announce('Could not enable YouTube access. Try again.', true));
-});
-$('site-mode').addEventListener('click', async () => {
-  if (!siteMode || state.siteEnhancementsEnabled === false) return;
-  const toggle = $('site-mode');
-  toggle.disabled = true;
-  await action('setSiteMode', { mode: siteMode, enabled: !siteActive() });
-  toggle.disabled = false;
-});
-$('site-allow').addEventListener('click', () => {
-  siteView.allow().catch(() => announce('Could not enable site access. Try again.', true));
-});
-globalThis.browser?.permissions?.onAdded?.addListener(() => siteView.refreshPermission());
-globalThis.browser?.permissions?.onRemoved?.addListener(() => siteView.refreshPermission());
-globalThis.browser?.permissions?.onAdded?.addListener(() => youtubeView.refreshPermission());
-globalThis.browser?.permissions?.onRemoved?.addListener(() => youtubeView.refreshPermission());
 $('domain-sort').addEventListener('change', () => {
   domainSort = $('domain-sort').value;
   searchScroll = 0;

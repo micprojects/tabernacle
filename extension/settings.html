@@ -22,7 +22,6 @@
         <nav aria-label="Settings sections">
           <a href="#appearance" aria-current="page" data-icon="list">Appearance</a>
           <a href="#new-tab" data-icon="addCircle">New tab</a>
-          <a href="#site-enhancements" data-icon="globe">Site Enhancements</a>
           <a href="#containers" data-icon="container">Containers</a>
           <a href="#backup" data-icon="history">Backup and restore</a>
           <a href="#shortcuts" data-icon="keyboard">Shortcuts</a>
@@ -143,37 +142,6 @@
               >
             </div>
           </form>
-        </section>
-        <section id="site-enhancements" aria-labelledby="site-enhancements-title" hidden>
-          <h2 id="site-enhancements-title" tabindex="-1">Site Enhancements</h2>
-          <p class="section-description">
-            Enhancements add site-specific details to domain views. You can also switch each
-            enhancement on or off there.
-          </p>
-          <div class="settings-card">
-            <label class="enhancement-switch" for="site-enhancements-enabled">
-              <span
-                ><strong id="site-enhancements-label">Enable site enhancements</strong>
-                <span id="site-enhancements-help" class="setting-help">
-                  Turning this off uses standard domain views and hides their enhancement switches.
-                  Your choices below are kept.
-                </span>
-              </span>
-              <input
-                id="site-enhancements-enabled"
-                type="checkbox"
-                role="switch"
-                aria-labelledby="site-enhancements-label"
-                aria-describedby="site-enhancements-help"
-                disabled
-              />
-            </label>
-          </div>
-          <div id="site-enhancements-list" class="settings-card"></div>
-          <p id="site-enhancements-error" class="settings-error" role="alert" hidden></p>
-          <p id="site-enhancements-status" class="settings-note" role="status" aria-live="polite">
-            Loading settings…
-          </p>
         </section>
         <section id="new-tab" aria-labelledby="new-tab-title" hidden>
           <div class="nt-heading">
