@@ -1,3 +1,6 @@
+import { hackerNewsArticle } from './hacker-news.js';
+import { sitePage } from './site-modes.js';
+
 // Self-contained for scripting.executeScript's isolated world. Read the loaded
 // page only: no clicks, navigation, account APIs or page-world application state.
 export function readSitePage(expectedUrl, page) {
@@ -102,8 +105,10 @@ export function readSitePage(expectedUrl, page) {
       if (link) {
         try {
           const source = new URL(link.href);
-          if (source.hostname !== location.hostname)
+          if (source.hostname !== location.hostname) {
             data.source = source.hostname.replace(/^www\./, '');
+            data.articleUrl = source.href;
+          }
         } catch {
           /* Invalid source. */
         }
@@ -272,6 +277,8 @@ export function readSitePage(expectedUrl, page) {
 export function normaliseSiteData(value, url) {
   if (!value || value.url !== url) return null;
   const data = { url };
+  const article = hackerNewsArticle(value.articleUrl);
+  if (sitePage(url)?.mode === 'hn' && article) data.articleUrl = article;
   for (const field of [
     'title',
     'description',

@@ -96,7 +96,7 @@ Other supported sites have the same remembered **Enhanced** switch in the domain
 | Mode                                    | Extra context                                                                                                  |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Reddit                                  | Subreddit, post flair, comment count and available post images. Comment links stay distinguishable from posts. |
-| Hacker News                             | Story source, comment count and Ask HN / Show HN labels.                                                       |
+| Hacker News                             | Story source, comment count, Ask HN / Show HN labels and a Comments / Article switch.                          |
 | GitHub                                  | Repository, page type, issue/PR number and observed open, closed, draft or merged state.                       |
 | Shopping (Amazon, eBay, Etsy)           | Product image, observed price and selected options where available.                                            |
 | Wikipedia                               | Article image, short description and linked section.                                                           |
@@ -108,6 +108,12 @@ Related tabs are labelled **Same thread**, **Same file**, **Same product**, or s
 They remain separate: comments, document locations and selected product options can differ.
 Maps enhancement is offered when filtering from a Maps tab; other Google pages retain their normal rows.
 These modes enrich the existing domain results without changing folders or the filter's scope.
+
+For Hacker News submissions with an external link, choose **Comments** or **Article** on
+the row to switch the same tab between the discussion and its linked page. The selected
+button shows the current view. The tab stays in the Hacker News list, including after
+reopening the sidebar; following an unrelated link returns it to normal domain grouping.
+Text-only submissions and the Hacker News homepage have no article switch.
 
 Choose **Allow access** for the site to read details from its loaded tabs. Only visible rows
 are checked, sleeping tabs stay asleep, and missing details are omitted. Detail tooltips show

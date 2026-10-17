@@ -1,5 +1,6 @@
 import { sitePage, siteOrigins } from './site-modes.js';
 import { readSitePage, normaliseSiteData } from './site-reader.js';
+import { hackerNewsStory } from './hacker-news.js';
 
 export const SITE_SESSION_KEY = 'tabernacle.site-details.v1';
 
@@ -23,7 +24,16 @@ export function createSiteService({ api, fetcher = globalThis.fetch, now = Date.
 
   function peek(tab) {
     const record = records.get(tab.id);
-    return allowed && mode && record?.url === tab.url ? record : null;
+    if (!allowed || !mode) return null;
+    if (record?.url === tab.url) return record;
+    const story = mode === 'hn' && hackerNewsStory(tab);
+    return story
+      ? {
+          ...story,
+          url: story.commentsUrl,
+          source: new URL(story.linkUrl).hostname.replace(/^www\./, ''),
+        }
+      : null;
   }
 
   function access(value) {
@@ -71,6 +81,7 @@ export function createSiteService({ api, fetcher = globalThis.fetch, now = Date.
     }
     return {
       url: tab.url,
+      articleUrl: item.url,
       source,
       // DOM titles are already decoded; API titles can contain HTML entities.
       // Keep Firefox's tab title when the response isn't plain text.

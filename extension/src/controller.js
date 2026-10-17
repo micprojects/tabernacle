@@ -10,6 +10,7 @@ import { normaliseDomainPins } from './domains.js';
 import { normalizeLook, requireLook } from './look.js';
 import { normalizeNewTab, requireNewTab, isNewTabPage } from './new-tab-preferences.js';
 import { SITE_MODES } from './site-modes.js';
+import { hackerNewsArticle, hackerNewsStory, normaliseHackerNewsStory } from './hacker-news.js';
 import { articleUrl } from './article.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
@@ -513,6 +514,16 @@ export function createController(
         value.order = tab.index ?? 0;
         needsSave = true;
       }
+      // Capture the destination after an article's initial redirects finish.
+      // Later, unrelated navigation must not inherit the HN grouping.
+      const hnStory = normaliseHackerNewsStory(value.hnStory);
+      if (hnStory?.pendingArticle && tab.status !== 'loading') {
+        delete hnStory.pendingArticle;
+        const destination = hackerNewsArticle(tab.url);
+        if (destination) hnStory.articleUrl = destination;
+        value.hnStory = hnStory;
+        needsSave = true;
+      }
       if (needsSave) repairs.push({ id: tab.id, value });
       owners.set(value.treeId, tab.id);
       const { groupId: nativeGroupId, ...nativeTab } = tab;
@@ -524,6 +535,7 @@ export function createController(
         openedAt: value.openedAt,
         ...(isSavedForLater(value) ? { savedForLaterAt: value.savedForLaterAt } : {}),
         treeId: value.treeId,
+        ...(hackerNewsStory({ ...tab, hnStory }) ? { hnStory } : {}),
         ancestors: Array.isArray(value.ancestors)
           ? [...new Set(value.ancestors.filter((id) => typeof id === 'string'))]
           : [],
@@ -1516,6 +1528,50 @@ export function createController(
           if (!window.focused) await api.windows.update(windowId, { focused: true });
         }
         if (message.reveal === true) await revealTab(message.id, windowId);
+        break;
+      }
+      case 'setHackerNewsView': {
+        if (!['comments', 'article'].includes(message.view))
+          throw new Error('Choose Comments or Article.');
+        if (model.siteEnhancementsEnabled === false || model.siteModes?.hn === false)
+          throw new Error('Enable the Hacker News enhancement first.');
+        await listTabs(windowId);
+        const tab = await checkedTab(message.id, windowId);
+        if (tab.url !== message.url) throw new Error('That page has changed. Try again.');
+        const before = await membership(tab.id);
+        const saved = hackerNewsStory({ ...tab, hnStory: before?.hnStory });
+        const story = normaliseHackerNewsStory(message.story);
+        const current =
+          story && hackerNewsStory({ ...tab, hnStory: { ...story, pendingArticle: false } });
+        if (!current || (current.view === 'article' && !saved))
+          throw new Error('The link for this Hacker News submission is no longer available.');
+        // An article can only return to its own saved discussion.
+        if (
+          saved &&
+          current.view === 'article' &&
+          (story.commentsUrl !== saved.commentsUrl || story.articleUrl !== saved.articleUrl)
+        )
+          throw new Error('That Hacker News submission has changed. Try again.');
+        const destination = message.view === 'comments' ? story.commentsUrl : story.articleUrl;
+        const navigate = current.view !== message.view;
+        const next = { ...story };
+        delete next.pendingArticle;
+        if (navigate && message.view === 'article') next.pendingArticle = true;
+        // Persist before navigation, so refreshes and an event-page restart can
+        // still find the return route. Restore it if Firefox refuses navigation.
+        await updateMembership(tab.id, { hnStory: next });
+        try {
+          const latest = await checkedTab(tab.id, windowId);
+          if (latest.url !== message.url) throw new Error('That page has changed. Try again.');
+          await writeTab(windowId, 'update', tab.id, {
+            active: true,
+            ...(navigate ? { url: destination } : {}),
+          });
+        } catch (error) {
+          await updateMembership(tab.id, { hnStory: before?.hnStory });
+          throw error;
+        }
+        if (!window.focused) await api.windows.update(windowId, { focused: true });
         break;
       }
       case 'setReaderMode': {
