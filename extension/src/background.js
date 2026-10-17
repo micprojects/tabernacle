@@ -1,5 +1,9 @@
 import { createController } from './controller.js';
 import { createSnapshotEncoder } from './snapshot-transfer.js';
+import { createNewTabRouting } from './new-tab-routing.js';
+import { createWeatherService } from './new-tab-weather.js';
+
+const weather = createWeatherService(browser);
 
 let notificationTimer;
 let pendingWindows = new Set();
@@ -29,6 +33,7 @@ const notify = ({ windowId, revision, generation: nextGeneration } = {}) => {
 };
 
 const controller = createController(browser, notify);
+createNewTabRouting(browser);
 const snapshots = createSnapshotEncoder();
 browser.windows.onRemoved.addListener(snapshots.forget);
 
@@ -40,7 +45,22 @@ browser.runtime.onMessage.addListener((message, sender) => {
     !message.type.startsWith('tabernacle:')
   )
     return undefined;
-  if (['tabernacle:changed', 'tabernacle:getCloseFilter'].includes(message.type)) return undefined;
+  if (
+    ['tabernacle:changed', 'tabernacle:getCloseFilter', 'tabernacle:showSettingsSection'].includes(
+      message.type,
+    )
+  )
+    return undefined;
+  if (['tabernacle:weatherLocations', 'tabernacle:weatherCurrent'].includes(message.type)) {
+    const work =
+      message.type === 'tabernacle:weatherLocations'
+        ? weather.locations(message.query)
+        : weather.current();
+    return work.then(
+      (data) => ({ ok: true, data }),
+      (error) => ({ ok: false, error: error.message }),
+    );
+  }
   return controller.request({ ...message, type: message.type.slice('tabernacle:'.length) }).then(
     (data) => ({
       ok: true,

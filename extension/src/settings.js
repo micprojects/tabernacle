@@ -4,6 +4,7 @@ import { containerListIcon, visualChoices } from './container-dialogs.js';
 import { sortContainers } from './containers.js';
 import { icon } from './icons.js';
 import { createSettingsBackup } from './settings-backup.js';
+import { createNewTabSettings } from './new-tab-settings.js';
 
 const $ = (id) => document.getElementById(id);
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
@@ -19,6 +20,7 @@ let containerItems = [],
 let settingsState;
 let disposed = false;
 const folderBackup = createSettingsBackup({ request: (...args) => request(...args) });
+const newTabSettings = createNewTabSettings({ request: (...args) => request(...args), demo });
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -360,7 +362,7 @@ $('shortcut-settings').addEventListener('click', async () => {
 });
 
 function navigate(focus = false) {
-  const sections = ['appearance', 'containers', 'backup', 'shortcuts', 'about'];
+  const sections = ['appearance', 'new-tab', 'containers', 'backup', 'shortcuts', 'about'];
   const section = sections.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'appearance';
   for (const id of sections) $(id).hidden = id !== section;
   for (const link of document.querySelectorAll('nav a')) {
@@ -385,6 +387,7 @@ const refreshScheduler = createRefreshScheduler({
       if (disposed) return;
       settingsState = next;
       acceptLook(next.look);
+      newTabSettings.accept(next.newTab);
       $('appearance-fields').disabled = savingLook;
       errorAt('page-error');
       if (!$('containers').hidden) await loadContainers();
@@ -402,6 +405,7 @@ window.addEventListener(
   () => {
     disposed = true;
     refreshScheduler.dispose();
+    newTabSettings.dispose();
   },
   { once: true },
 );
@@ -412,7 +416,8 @@ window.addEventListener('focus', () => {
   if (!$('shortcuts').hidden) refreshShortcuts();
 });
 window.addEventListener('beforeunload', (event) => {
-  if (dirty.size || savingContainer || folderBackup.isBusy()) event.preventDefault();
+  if (dirty.size || savingContainer || folderBackup.isBusy() || newTabSettings.isBusy())
+    event.preventDefault();
 });
 for (const link of document.querySelectorAll('nav a')) link.prepend(icon(link.dataset.icon));
 navigate();
@@ -454,6 +459,12 @@ async function start() {
 
     const changed = (message) => {
       if (message.type === 'tabernacle:changed') scheduleRefresh(message);
+      if (
+        message.type === 'tabernacle:showSettingsSection' &&
+        message.tabId === tab.id &&
+        message.section === 'new-tab'
+      )
+        location.hash = 'new-tab';
     };
 
     browser.runtime.onMessage.addListener(changed);
@@ -465,6 +476,7 @@ async function start() {
   $('extension-version').textContent = `Version ${manifest.version}`;
   settingsState = await request('getSettings');
   acceptLook(settingsState.look);
+  newTabSettings.accept(settingsState.newTab);
   $('appearance-fields').disabled = false;
   navigate();
 }

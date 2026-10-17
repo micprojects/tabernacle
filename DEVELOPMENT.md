@@ -34,6 +34,56 @@ as the contextual sidebar dialogs. Escape and Cancel return focus to the opening
 The Firefox add-on ID is `tabernacle@michaelprojects.com`, with saved data under `tabernacle.*`
 keys.
 
+## Optional new tab page
+
+`extension/new-tab.html` uses the shared neutral palette and the current window's
+controller snapshot. `src/new-tab-preferences.js` normalises the global `model.newTab`
+preferences, defaults the master and weather switches off, and validates up to
+60 HTTP(S) links. `setNewTab` merges only changed settings fields and persists them
+atomically. `getNewTabState` returns window data and the global page preferences.
+New tab pages remain ordinary tabs so links and web searches keep their folder
+membership and container; closed copies of the page are excluded from recent history.
+
+Firefox's manifest new-tab override is static, so the extension deliberately has
+no `chrome_url_overrides` entry. `src/new-tab-routing.js` synchronously registers
+listeners for newly created `about:newtab` tabs and redirects only while enabled.
+It checks current navigation, private/discarded state and prior session membership
+before replacing the initial history entry. Existing tabs, explicit blanks and other
+extensions' overrides are left alone. Tabernacle's own new-tab and child-tab commands
+create the page directly when enabled. Firefox cannot expose an empty, selected
+address bar for a runtime redirect. Newly opened foreground pages therefore focus
+their search field, or Customise when search is hidden. Background tabs and reloads
+do not take focus. The address bar still shows the extension URL; ⌘L/Ctrl+L selects it.
+
+The New tab section in Settings supports editable links, drag and keyboard reordering,
+manual Save/Discard, visibility and appearance choices. `previewNewTab` passes an
+unsaved draft via one-use `storage.session` data to a page with `?preview=…`; previewing
+does not enable routing or fetch weather. Customise reuses the existing Settings page
+and sends it to the New tab section without resetting unsaved edits. Search matches
+open tabs and folders locally; form submission calls `browser.search.search` with
+the current tab ID and no engine override. Obvious HTTP(S) website addresses navigate
+in the same tab. Favicons reuse Firefox's known tab icons.
+
+`src/new-tab-weather.js` requests only Open-Meteo's geocoding and forecast endpoints.
+Both host access and Firefox's optional `locationInfo` data consent are requested
+from the Find location click. There is no automatic geolocation. The selected town
+and coordinates are stored locally; location lookups send the entered place name.
+Forecasts require both saved switches and permission, omit credentials/referrers,
+time out after eight seconds, share pending requests and cache readings in
+`tabernacle.weather.v1` for 30 minutes. The page refreshes when visible; the background
+has no polling timer. Failures back off for a minute and can display labelled stale
+readings. Preference changes and permission revocation invalidate pending responses.
+Attribution links identify Open-Meteo and GeoNames. The integration uses Open-Meteo's
+[free non-commercial endpoint](https://open-meteo.com/en/terms); a commercial release
+would need the appropriate provider licence and endpoint configuration.
+
+Run `npm run test:new-tab` for editing, previews, local search, live preferences,
+responsive layout and colour modes, or `npm run test:new-tab:firefox` for native
+routing, focus, default-engine search, settings, weather permissions and containers
+in an isolated temporary profile. Set `TABERNACLE_LIVE_WEATHER=1` for an additional
+live lookup of the test city Manchester. Preference, routing, cancellation and cache
+failure tests run with `npm test`.
+
 ## Folder backups
 
 Settings → Backup and restore uses `src/settings-backup.js`, with portable parsing and

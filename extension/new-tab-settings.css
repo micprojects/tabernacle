@@ -1,0 +1,229 @@
+.nt-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.nt-heading > button {
+  flex: 0 0 auto;
+}
+#new-tab-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.nt-enable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  cursor: pointer;
+}
+.nt-enable strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.nt-enable input {
+  appearance: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border: 1px solid var(--field-line);
+  border-radius: 20px;
+  background: var(--subtle);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.nt-enable input::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  background: var(--muted);
+  border-radius: 50%;
+}
+.nt-enable input:checked {
+  background: var(--text);
+  border-color: var(--text);
+}
+.nt-enable input:checked::after {
+  left: 17px;
+  background: var(--background);
+}
+.nt-routing-note {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.nt-columns {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 20px;
+}
+.nt-columns > div {
+  min-width: 0;
+}
+.nt-columns .settings-card {
+  padding: 20px;
+}
+.nt-columns h3 {
+  margin-bottom: 14px;
+}
+.nt-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-top: 18px;
+  font-size: 13px;
+}
+.nt-form-row + .nt-form-row {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+#new-tab-links {
+  margin: 12px 0 18px;
+}
+.nt-link-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.nt-link-row.drag-over {
+  background: var(--selected);
+}
+.nt-link-copy {
+  flex: 1;
+  min-width: 90px;
+  overflow-wrap: anywhere;
+}
+.nt-link-copy strong {
+  font-weight: 500;
+  font-size: 13px;
+}
+.nt-link-copy small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.nt-link-controls {
+  display: flex;
+  gap: 2px;
+}
+.nt-link-controls button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 30px;
+  border-radius: 4px;
+}
+.nt-link-controls button:nth-child(-n + 2) svg {
+  transform: rotate(90deg);
+}
+.nt-drag {
+  color: var(--muted);
+  cursor: grab;
+}
+.nt-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 16px 0;
+}
+.nt-weather-help {
+  margin: 14px 0;
+}
+.nt-location-label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 7px;
+}
+.nt-location-search {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nt-location-search input {
+  flex: 1 1 130px;
+}
+.nt-location-search button {
+  font-size: 12px;
+}
+#nt-location-results {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+#nt-location-results button {
+  border: 1px solid var(--line);
+  padding: 9px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 13px;
+}
+.nt-remove-access {
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+}
+#new-tab-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+#new-tab-link-editor {
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+}
+#new-tab-link-editor::backdrop {
+  background: #0005;
+}
+#new-tab-link-form {
+  display: grid;
+  gap: 12px;
+}
+#new-tab-link-form label {
+  font-size: 13px;
+  margin-top: 4px;
+}
+#new-tab-link-form .settings-actions {
+  margin-top: 8px;
+}
+@media (max-width: 1050px) {
+  .nt-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+@media (max-width: 480px) {
+  .nt-heading {
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .nt-heading .section-description {
+    margin-bottom: 0;
+  }
+  .nt-columns .settings-card {
+    padding: 16px;
+  }
+  .nt-form-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .nt-link-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+@media (pointer: coarse) {
+  .nt-link-controls button {
+    width: 44px;
+    height: 44px;
+  }
+}

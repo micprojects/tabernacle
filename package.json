@@ -28,6 +28,8 @@
     "screenshots:export": "node scripts/export-screenshots.js",
     "icons:generate": "node scripts/generate-icons.js",
     "test:settings": "node scripts/test-settings-ui.js",
+    "test:new-tab": "node scripts/test-new-tab-ui.js",
+    "test:new-tab:firefox": "node scripts/test-new-tab-firefox.js",
     "test:backup": "node scripts/test-backup-ui.js",
     "test:backup:firefox": "node scripts/test-backup-firefox.js",
     "test:neutral": "node scripts/test-neutral-ui.js",

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>New tab · Tabernacle</title>
+    <link rel="icon" href="icons/tabernacle.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="new-tab.css" />
+    <script type="module" src="src/new-tab-page.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#new-tab-content">Skip to content</a>
+    <div class="page-top">
+      <div class="brand">
+        <img src="icons/tabernacle.svg" alt="" width="30" height="30" />Tabernacle
+      </div>
+      <button id="customise" class="page-button">
+        <span data-icon="settings"></span>Customise
+      </button>
+    </div>
+    <main id="new-tab-content">
+      <div class="intro">
+        <div>
+          <p id="date" class="date"></p>
+          <h1>New tab</h1>
+        </div>
+        <aside id="weather" aria-label="Weather" hidden></aside>
+      </div>
+      <p id="preview-notice" class="notice" hidden>
+        Preview of your settings. This does not change Firefox’s new tab page.
+      </p>
+      <p id="page-error" class="error" role="alert" hidden></p>
+      <div id="loading" class="empty" role="status">Loading your links…</div>
+      <section id="search-section" aria-label="Search" hidden>
+        <form id="search-form">
+          <span data-icon="searchLarge"></span
+          ><input
+            id="search"
+            type="search"
+            aria-label="Search the web or your tabs"
+            placeholder="Search the web or your tabs…"
+            autocomplete="off"
+            maxlength="2048"
+          /><button type="submit" class="search-submit" aria-label="Search the web">
+            <span data-icon="enter"></span>
+          </button>
+        </form>
+        <p class="search-help">
+          Enter searches the web with your Firefox search engine, or opens a website address.
+        </p>
+        <div id="search-results" hidden>
+          <h2>Open tabs and folders</h2>
+          <p id="search-status" class="sr-only" role="status"></p>
+          <div id="search-matches"></div>
+        </div>
+      </section>
+      <section id="links-section" class="page-section" hidden>
+        <div class="section-heading">
+          <h2>Favourite links</h2>
+          <button id="edit-links" class="text-button">Edit</button>
+        </div>
+        <div id="links" class="links"></div>
+      </section>
+      <section id="folders-section" class="page-section" hidden>
+        <div class="section-heading">
+          <h2>Your folders</h2>
+          <button id="all-folders" class="text-button" aria-expanded="false">View all</button>
+        </div>
+        <div id="folders" class="folders"></div>
+      </section>
+      <div class="lower-sections">
+        <section id="later-section" class="page-section" hidden>
+          <div class="section-heading">
+            <h2>Saved for Later</h2>
+            <button id="all-later" class="text-button" aria-expanded="false">View all</button>
+          </div>
+          <div id="later"></div>
+        </section>
+        <section id="recent-section" class="page-section" hidden>
+          <div class="section-heading">
+            <h2>Recently closed</h2>
+            <button id="all-recent" class="text-button" aria-expanded="false">View all</button>
+          </div>
+          <div id="recent"></div>
+        </section>
+      </div>
+      <p id="page-status" role="status" class="status"></p>
+    </main>
+  </body>
+</html>
