@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>New tab · Tabernacle design preview</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #242424;
+        background: #fff;
+        font-size: 14px;
+      }
+      body {
+        margin: 0;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button,
+      input,
+      select {
+        border: 1px solid #dedee1;
+        border-radius: 7px;
+        background: #fff;
+      }
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 36px;
+        padding: 8px 13px;
+        font-weight: 500;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 2px solid #505050;
+        outline-offset: 3px;
+      }
+      button:hover {
+        background: #f4f4f5;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      svg {
+        display: block;
+        flex: 0 0 auto;
+        fill: currentColor;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .muted {
+        color: #6a6a70;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        font-weight: 600;
+        font-size: 17px;
+        letter-spacing: -0.25px;
+      }
+      .brand img {
+        width: 30px;
+        height: 30px;
+      }
+      .plain {
+        border: 0;
+        background: transparent;
+      }
+      .subtle-action {
+        border: 0;
+        background: transparent;
+        color: #63636b;
+        padding: 4px 0;
+        min-height: 28px;
+        font-weight: 400;
+        font-size: 13px;
+      }
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+      }
+      .section-head h2 {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.1px;
+      }
+      .new-tab {
+        min-height: 960px;
+        position: relative;
+        padding: 38px 48px 34px;
+        background: #fdfdfd;
+      }
+      .new-tab-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .new-tab-top button {
+        background: transparent;
+      }
+      .start-content {
+        width: min(100%, 976px);
+        margin: 83px auto 0;
+      }
+      .intro {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 30px;
+      }
+      .date {
+        color: #707075;
+        font-size: 13px;
+        margin-bottom: 9px;
+      }
+      .intro h1 {
+        font-size: 31px;
+        font-weight: 600;
+        letter-spacing: -0.8px;
+      }
+      .weather {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+      .weather-cloud {
+        width: 37px;
+        height: 37px;
+        stroke: #85858c;
+        fill: none;
+        stroke-width: 1.5;
+      }
+      .temperature {
+        font-size: 32px;
+        font-weight: 400;
+        letter-spacing: -1.3px;
+      }
+      .weather-details {
+        border-left: 1px solid #e0e0e3;
+        padding-left: 17px;
+        margin-left: 1px;
+      }
+      .weather-details strong {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 5px;
+      }
+      .weather-details span {
+        font-size: 12px;
+        color: #717177;
+      }
+      .search-field {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        border: 1px solid #d7d7db;
+        border-radius: 10px;
+        height: 58px;
+        padding: 0 18px;
+        background: #fff;
+        box-shadow: 0 2px 4px #00000003;
+      }
+      .search-field svg {
+        color: #65656c;
+        width: 20px;
+        height: 20px;
+      }
+      .search-field input {
+        border: 0;
+        padding: 0;
+        flex: 1;
+        background: transparent;
+        font-size: 15px;
+        min-width: 0;
+      }
+      .search-field input::placeholder {
+        color: #727279;
+        opacity: 1;
+      }
+      .key {
+        color: #99999f;
+        font-size: 19px;
+      }
+      .search-help {
+        color: #808087;
+        font-size: 11px;
+        margin: 10px 0 0 2px;
+      }
+      .favourites {
+        margin-top: 38px;
+      }
+      .link-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 14px;
+      }
+      .site {
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+        gap: 11px;
+        border: 0;
+        background: transparent;
+        padding: 0 0 3px;
+        min-width: 0;
+        font-weight: 400;
+        font-size: 12px;
+      }
+      .site-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 64px;
+        height: 64px;
+        background: #f3f3f4;
+        border-radius: 14px;
+        border: 1px solid #ededee;
+      }
+      .site-icon img {
+        width: 27px;
+        height: 27px;
+        object-fit: contain;
+      }
+      .site.add {
+        color: #7a7a80;
+      }
+      .site.add .site-icon {
+        background: transparent;
+        border-style: dashed;
+        border-color: #d6d6db;
+      }
+      .site.add svg {
+        width: 22px;
+        height: 22px;
+      }
+      .folders {
+        margin-top: 40px;
+      }
+      .folder-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 13px;
+      }
+      .folder {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        text-align: left;
+        border: 1px solid #e3e3e6;
+        border-radius: 9px;
+        padding: 16px 18px;
+        background: #fff;
+      }
+      .folder-art {
+        background: #edf3ee;
+        color: #6d9277;
+        width: 35px;
+        height: 35px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+      }
+      .folder-art svg {
+        width: 19px;
+        height: 19px;
+      }
+      .folder:nth-child(2) .folder-art {
+        color: #7293ad;
+        background: #eef2f6;
+      }
+      .folder:nth-child(3) .folder-art {
+        color: #9785ad;
+        background: #f1eef5;
+      }
+      .folder-text {
+        display: grid;
+        gap: 5px;
+        flex: 1;
+        font-size: 13px;
+      }
+      .folder-text span {
+        font-weight: 400;
+        font-size: 11px;
+        color: #78787e;
+      }
+      .folder > svg {
+        color: #a1a1a7;
+        width: 12px;
+        height: 12px;
+      }
+      .lower {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+        margin-top: 38px;
+      }
+      .lower .section-head {
+        margin-bottom: 6px;
+      }
+      .entry {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 0;
+        border-bottom: 1px solid #e9e9ec;
+      }
+      .entry img {
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+      }
+      .entry-text {
+        flex: 1;
+        display: grid;
+        gap: 5px;
+        min-width: 0;
+      }
+      .entry-text strong {
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .entry-text span {
+        font-size: 11px;
+        color: #77777e;
+      }
+      .entry > svg {
+        color: #a0a0a6;
+        width: 12px;
+        height: 12px;
+      }
+      .preview-caption {
+        color: #929298;
+        font-size: 11px;
+        letter-spacing: 0.02em;
+        margin-top: 57px;
+      }
+      .settings-page {
+        min-height: 1110px;
+        padding: 51px 54px 28px;
+      }
+      .settings-layout {
+        display: grid;
+        grid-template-columns: 224px minmax(0, 1fr);
+        gap: 50px;
+        max-width: 1280px;
+        margin: auto;
+      }
+      .settings-sidebar .brand {
+        font-size: 18px;
+      }
+      .settings-sidebar .brand img {
+        width: 34px;
+        height: 34px;
+      }
+      .nav-label {
+        margin: 36px 12px 14px;
+        color: #707074;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .settings-sidebar nav {
+        display: grid;
+        gap: 7px;
+      }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid transparent;
+        padding: 12px;
+        border-radius: 7px;
+        font-size: 14px;
+      }
+      .nav-item.selected {
+        background: #ebebef;
+        border-color: #c7c7cd;
+        font-weight: 600;
+      }
+      .nav-item svg {
+        width: 16px;
+        height: 16px;
+      }
+      .settings-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 27px;
+      }
+      .settings-heading h1 {
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: -0.7px;
+        margin-bottom: 10px;
+      }
+      .settings-heading p {
+        color: #707075;
+        font-size: 14px;
+      }
+      .settings-heading button {
+        align-self: flex-start;
+        margin-top: 4px;
+        white-space: nowrap;
+      }
+      .settings-card {
+        border: 1px solid #dedee2;
+        border-radius: 10px;
+        padding: 23px;
+        background: #fff;
+      }
+      .settings-card h2 {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+      .settings-card .help {
+        font-size: 12px;
+        line-height: 1.6;
+        color: #77777e;
+      }
+      .enable-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .enable-row h2 {
+        margin-bottom: 6px;
+      }
+      .switch-area {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        color: #6a6a70;
+      }
+      .switch {
+        height: 24px;
+        width: 43px;
+        background: #d9d9dd;
+        border: 1px solid #cdcdd2;
+        border-radius: 20px;
+        padding: 2px;
+      }
+      .switch:before {
+        content: '';
+        display: block;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 2px #0002;
+      }
+      .enable-note {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid #e7e7e9;
+        font-size: 12px;
+        color: #77777e;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .enable-note svg {
+        color: #8a8a91;
+        width: 14px;
+        height: 14px;
+      }
+      .settings-columns {
+        display: grid;
+        grid-template-columns: 1.25fr 1fr;
+        gap: 20px;
+        margin-top: 20px;
+        align-items: start;
+      }
+      .settings-column {
+        display: grid;
+        gap: 20px;
+      }
+      .settings-links {
+        margin-top: 14px;
+      }
+      .settings-link {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        min-height: 61px;
+        border-bottom: 1px solid #e8e8eb;
+      }
+      .settings-link:last-child {
+        border-bottom: 0;
+      }
+      .drag {
+        font-size: 20px;
+        color: #b0b0b6;
+        width: 12px;
+      }
+      .settings-link img {
+        width: 19px;
+        height: 19px;
+        object-fit: contain;
+      }
+      .link-name {
+        flex: 1;
+        display: grid;
+        gap: 4px;
+        font-size: 13px;
+      }
+      .link-name small {
+        font-size: 11px;
+        color: #85858b;
+      }
+      .edit-link {
+        border: 0;
+        color: #8e8e95;
+        background: transparent;
+        padding: 6px;
+        min-height: 28px;
+      }
+      .edit-link svg {
+        width: 14px;
+        height: 14px;
+      }
+      .add-link {
+        margin-top: 17px;
+        font-size: 12px;
+        min-height: 34px;
+      }
+      .settings-card .check-row {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 15px 0;
+        border-bottom: 1px solid #e8e8eb;
+      }
+      .settings-card .check-row:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+      .check-row input {
+        width: 16px;
+        height: 16px;
+        margin: 1px 0 0;
+        accent-color: #55555b;
+      }
+      .check-copy {
+        font-size: 13px;
+        display: grid;
+        gap: 6px;
+      }
+      .check-copy small {
+        font-size: 11px;
+        color: #7b7b82;
+        line-height: 1.5;
+      }
+      .weather-settings .check-row {
+        border-bottom: 0;
+        padding: 7px 0 20px;
+      }
+      .field-label {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+      .settings-card input[type='text'] {
+        width: 100%;
+        padding: 9px 11px;
+        font-size: 13px;
+      }
+      .weather-settings .temperature-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        margin: 17px 0 18px;
+        font-size: 12px;
+      }
+      .segmented {
+        display: flex;
+        border: 1px solid #dcdce0;
+        border-radius: 6px;
+        padding: 3px;
+        gap: 2px;
+        background: #f9f9fa;
+      }
+      .segmented span {
+        display: grid;
+        place-items: center;
+        min-width: 42px;
+        padding: 5px 10px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #78787e;
+      }
+      .segmented .active {
+        background: white;
+        border-color: #d4d4d9;
+        box-shadow: 0 1px 2px #00000005;
+        color: #33333a;
+        font-weight: 500;
+      }
+      .appearance-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        font-size: 12px;
+        margin-top: 18px;
+      }
+      .appearance-row + .appearance-row {
+        border-top: 1px solid #e8e8eb;
+        padding-top: 18px;
+      }
+      .appearance-row select {
+        padding: 8px 10px;
+        width: 146px;
+        font-size: 12px;
+      }
+      .settings-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 24px;
+      }
+      .settings-actions button {
+        font-size: 12px;
+      }
+      .settings-actions .primary {
+        background: #505050;
+        color: #fff;
+        border-color: #505050;
+      }
+      .settings-actions .saved {
+        color: #87878e;
+        font-size: 12px;
+        margin-left: 4px;
+      }
+      .settings-page .preview-caption {
+        margin-top: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="new-tab" id="new-tab">
+      <header class="new-tab-top">
+        <div class="brand">
+          <img src="../../../extension/icons/tabernacle.svg" alt="" />Tabernacle
+        </div>
+        <button><span data-icon="settings"></span>Customise</button>
+      </header>
+      <main class="start-content">
+        <div class="intro">
+          <div>
+            <p class="date">Saturday, 17 October</p>
+            <h1>New tab</h1>
+          </div>
+          <div class="weather">
+            <svg class="weather-cloud" viewBox="0 0 32 32" aria-label="Cloudy">
+              <path
+                d="M7.5 23.5h17a5.5 5.5 0 0 0 .5-11A8 8 0 0 0 9.5 10a6.8 6.8 0 0 0-2 13.5Z"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="temperature">14°</span>
+            <div class="weather-details">
+              <strong>Manchester</strong><span>Cloudy · High 15° / Low 9°</span>
+            </div>
+          </div>
+        </div>
+        <div class="search-field">
+          <span data-icon="searchLarge"></span
+          ><input aria-label="Search" placeholder="Search the web or your tabs…" /><span class="key"
+            >↵</span
+          >
+        </div>
+        <p class="search-help">Web search uses your Firefox search engine</p>
+        <section class="favourites">
+          <div class="section-head">
+            <h2>Favourite links</h2>
+            <button class="subtle-action">Edit</button>
+          </div>
+          <div class="link-grid" id="favourite-links"></div>
+        </section>
+        <section class="folders">
+          <div class="section-head">
+            <h2>Your folders</h2>
+            <button class="subtle-action">View all <span data-icon="chevron"></span></button>
+          </div>
+          <div class="folder-grid">
+            <button class="folder">
+              <span class="folder-art" data-icon="group"></span
+              ><span class="folder-text">Work<span>12 tabs</span></span
+              ><span data-icon="chevron"></span>
+            </button>
+            <button class="folder">
+              <span class="folder-art" data-icon="group"></span
+              ><span class="folder-text">Reading<span>8 tabs</span></span
+              ><span data-icon="chevron"></span>
+            </button>
+            <button class="folder">
+              <span class="folder-art" data-icon="group"></span
+              ><span class="folder-text">Copenhagen<span>6 tabs</span></span
+              ><span data-icon="chevron"></span>
+            </button>
+          </div>
+        </section>
+        <div class="lower">
+          <section>
+            <div class="section-head">
+              <h2>Saved for Later</h2>
+              <button class="subtle-action">View all <span data-icon="chevron"></span></button>
+            </div>
+            <div class="entry">
+              <img src="favicons/copenhagen.png" alt="" />
+              <div class="entry-text">
+                <strong>A guide to Copenhagen</strong><span>visitcopenhagen.com</span>
+              </div>
+              <span data-icon="chevron"></span>
+            </div>
+            <div class="entry">
+              <img src="../../../assets/screenshots/favicons/openlibrary.png" alt="" />
+              <div class="entry-text">
+                <strong>The books on your reading list</strong><span>openlibrary.org</span>
+              </div>
+              <span data-icon="chevron"></span>
+            </div>
+          </section>
+          <section>
+            <div class="section-head">
+              <h2>Recently closed</h2>
+              <button class="subtle-action">View all <span data-icon="chevron"></span></button>
+            </div>
+            <div class="entry">
+              <img src="../../../assets/screenshots/favicons/mdn.svg" alt="" />
+              <div class="entry-text">
+                <strong>CSS grid layout</strong><span>MDN · 12 minutes ago</span>
+              </div>
+              <span data-icon="chevron"></span>
+            </div>
+            <div class="entry">
+              <img src="favicons/metro.png" alt="" />
+              <div class="entry-text">
+                <strong>Getting around Copenhagen</strong><span>m.dk · 28 minutes ago</span>
+              </div>
+              <span data-icon="chevron"></span>
+            </div>
+          </section>
+        </div>
+      </main>
+      <footer class="preview-caption">Design preview · Example content</footer>
+    </section>
+    <section class="settings-page" id="settings-page" hidden>
+      <div class="settings-layout">
+        <aside class="settings-sidebar">
+          <div class="brand">
+            <img src="../../../extension/icons/tabernacle.svg" alt="" />Tabernacle
+          </div>
+          <div class="nav-label">Settings</div>
+          <nav aria-label="Settings sections">
+            <div class="nav-item"><span data-icon="list"></span>Appearance</div>
+            <div class="nav-item selected"><span data-icon="addCircle"></span>New tab</div>
+            <div class="nav-item"><span data-icon="container"></span>Containers</div>
+            <div class="nav-item"><span data-icon="history"></span>Backup and restore</div>
+            <div class="nav-item"><span data-icon="keyboard"></span>Shortcuts</div>
+            <div class="nav-item"><span data-icon="info"></span>About</div>
+          </nav>
+        </aside>
+        <main>
+          <div class="settings-heading">
+            <div>
+              <h1>New tab</h1>
+              <p>Choose what appears when you open a new tab.</p>
+            </div>
+            <button><span data-icon="eye"></span>Preview page</button>
+          </div>
+          <section class="settings-card">
+            <div class="enable-row">
+              <div>
+                <h2>Use Tabernacle for new tabs</h2>
+                <p class="help">Off by default</p>
+              </div>
+              <div class="switch-area">
+                Off<span class="switch" role="img" aria-label="Off"></span>
+              </div>
+            </div>
+            <p class="enable-note">
+              <span data-icon="info"></span>You can customise and preview the page before enabling
+              it.
+            </p>
+          </section>
+          <div class="settings-columns">
+            <div class="settings-column">
+              <section class="settings-card">
+                <h2>Favourite links</h2>
+                <p class="help">Drag to reorder your links.</p>
+                <div class="settings-links" id="settings-links"></div>
+                <button class="add-link"><span data-icon="plus"></span>Add link</button>
+              </section>
+              <section class="settings-card">
+                <h2>Appearance</h2>
+                <div class="appearance-row">
+                  <label for="colour-mode">Colour mode</label
+                  ><select id="colour-mode">
+                    <option>Automatic</option>
+                  </select>
+                </div>
+                <div class="appearance-row">
+                  <span>Link style</span>
+                  <div class="segmented"><span class="active">Icons</span><span>List</span></div>
+                </div>
+              </section>
+            </div>
+            <div class="settings-column">
+              <section class="settings-card">
+                <h2>Page content</h2>
+                <label class="check-row"
+                  ><input type="checkbox" checked /><span class="check-copy"
+                    >Search<small>Use your Firefox search engine</small></span
+                  ></label
+                >
+                <label class="check-row"
+                  ><input type="checkbox" checked /><span class="check-copy"
+                    >Your folders</span
+                  ></label
+                >
+                <label class="check-row"
+                  ><input type="checkbox" checked /><span class="check-copy"
+                    >Saved for Later</span
+                  ></label
+                >
+                <label class="check-row"
+                  ><input type="checkbox" checked /><span class="check-copy"
+                    >Recently closed</span
+                  ></label
+                >
+              </section>
+              <section class="settings-card weather-settings">
+                <h2>Weather</h2>
+                <label class="check-row"
+                  ><input type="checkbox" checked /><span class="check-copy"
+                    >Show weather</span
+                  ></label
+                ><label class="field-label" for="location">Location</label
+                ><input id="location" type="text" value="Manchester" />
+                <div class="temperature-row">
+                  <span>Temperature</span>
+                  <div class="segmented"><span class="active">°C</span><span>°F</span></div>
+                </div>
+                <p class="help">Weather updates only when enabled.</p>
+              </section>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button class="primary">Save changes</button><button>Discard changes</button
+            ><span class="saved">All changes saved</span>
+          </div>
+          <footer class="preview-caption">Design preview · Example settings</footer>
+        </main>
+      </div>
+    </section>
+    <script type="module">
+      import { icon } from '../../../extension/src/icons.js';
+      const assets = '../../../assets/screenshots/favicons/';
+      const favicon = (file) =>
+        file.endsWith('.ico') ? 'favicons/' + file.replace('.ico', '.png') : assets + file;
+      const links = [
+        ['GitHub', 'github.com', 'github.svg'],
+        ['YouTube', 'youtube.com', 'youtube.ico'],
+        ['Wikipedia', 'wikipedia.org', 'wikipedia.ico'],
+        ['BBC', 'bbc.co.uk', 'bbc-news.png'],
+        ['Reddit', 'reddit.com', 'reddit.png'],
+        ['MDN', 'developer.mozilla.org', 'mdn.svg'],
+      ];
+      document.querySelector('#favourite-links').innerHTML =
+        links
+          .map(
+            ([name, domain, file]) =>
+              `<button class="site"><span class="site-icon"><img src="${favicon(file)}" alt="" /></span>${name}</button>`,
+          )
+          .join('') +
+        '<button class="site add"><span class="site-icon" data-icon="plus"></span>Add link</button>';
+      document.querySelector('#settings-links').innerHTML = links
+        .map(
+          ([name, domain, file]) =>
+            `<div class="settings-link"><span class="drag">⠿</span><img src="${favicon(file)}" alt="" /><span class="link-name">${name}<small>${domain}</small></span><button class="edit-link" aria-label="Edit ${name}"><span data-icon="rename"></span></button></div>`,
+        )
+        .join('');
+      for (const node of document.querySelectorAll('[data-icon]'))
+        node.append(icon(node.dataset.icon));
+      const settings = new URLSearchParams(location.search).get('screen') === 'settings';
+      document.querySelector('#new-tab').hidden = settings;
+      document.querySelector('#settings-page').hidden = !settings;
+      window.mockupReady = true;
+    </script>
+  </body>
+</html>
