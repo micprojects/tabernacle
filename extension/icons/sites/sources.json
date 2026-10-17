@@ -1,0 +1,72 @@
+[
+  {
+    "file": "reddit.png",
+    "source": "Firefox-provided data URL for https://www.reddit.com/",
+    "copiedFrom": "assets/screenshots/favicons/reddit.png"
+  },
+  {
+    "file": "google-maps.ico",
+    "source": "https://www.google.com/images/branding/product/ico/maps15_bnuw3a_32dp.ico",
+    "copiedFrom": "assets/screenshots/favicons/google-maps.ico"
+  },
+  {
+    "file": "hacker-news.ico",
+    "source": "https://news.ycombinator.com/favicon.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "amazon.ico",
+    "source": "https://www.amazon.com/favicon.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "ebay.ico",
+    "source": "https://www.ebay.com/favicon.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "etsy.png",
+    "source": "https://www.etsy.com/favicon.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "github.svg",
+    "source": "https://github.githubassets.com/favicons/favicon.svg",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "google-docs.ico",
+    "source": "https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "google-sheets.ico",
+    "source": "https://ssl.gstatic.com/docs/spreadsheets/spreadsheets_2023q4.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "google-slides.ico",
+    "source": "https://ssl.gstatic.com/docs/presentations/images/favicon5.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "imdb.png",
+    "source": "https://m.media-amazon.com/images/G/01/imdb/images-ANDW73HA/favicon_desktop_32x32._CB1582158068_.png",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "letterboxd.ico",
+    "source": "https://letterboxd.com/favicon.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "wikipedia.ico",
+    "source": "https://en.wikipedia.org/static/favicon/wikipedia.ico",
+    "retrieved": "2026-10-17"
+  },
+  {
+    "file": "youtube.png",
+    "source": "https://www.youtube.com/s/desktop/5d669aa8/img/favicon_32x32.png",
+    "retrieved": "2026-10-17"
+  }
+]
