@@ -9,7 +9,7 @@ export function internalPage(api, url) {
 }
 
 // Call inside the controller queue so simultaneous clicks cannot create duplicates.
-export async function openInternalPage(api, page, windowId, { claimingTabId } = {}) {
+export async function openInternalPage(api, page, windowId, { claimingTabId, section } = {}) {
   if (!Object.hasOwn(paths, page)) throw new Error('Unknown Tabernacle page.');
   // Preferences are shared; activity describes the window it belongs to.
   const query = page === 'settings' ? {} : { windowId };
@@ -37,7 +37,16 @@ export async function openInternalPage(api, page, windowId, { claimingTabId } = 
       }
     }
   }
-  tab ??= await api.tabs.create({ windowId, url: api.runtime.getURL(paths[page]), active: true });
+  const suffix = page === 'settings' && section === 'new-tab' ? '#new-tab' : '';
+  tab ??= await api.tabs.create({
+    windowId,
+    url: api.runtime.getURL(paths[page]) + suffix,
+    active: true,
+  });
+  if (suffix)
+    await api.runtime
+      .sendMessage?.({ type: 'tabernacle:showSettingsSection', tabId: tab.id, section })
+      .catch(() => {});
   await api.windows.update(tab.windowId, { focused: true });
   return { tabId: tab.id };
 }

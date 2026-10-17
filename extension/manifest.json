@@ -6,6 +6,7 @@
   "permissions": [
     "tabs",
     "storage",
+    "search",
     "sessions",
     "tabGroups",
     "contextualIdentities",
@@ -13,6 +14,8 @@
     "scripting"
   ],
   "optional_host_permissions": [
+    "https://api.open-meteo.com/*",
+    "https://geocoding-api.open-meteo.com/*",
     "https://www.youtube.com/*",
     "https://youtube.com/*",
     "https://m.youtube.com/*",
@@ -62,7 +65,8 @@
       "id": "tabernacle@michaelprojects.com",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": ["none"],
+        "optional": ["locationInfo"]
       }
     }
   },
@@ -102,7 +106,7 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self' data: https: http: moz-extension: resource://usercontext-content/; connect-src https://www.youtube.com https://hacker-news.firebaseio.com"
+    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self' data: https: http: moz-extension: resource://usercontext-content/; connect-src https://www.youtube.com https://hacker-news.firebaseio.com https://api.open-meteo.com https://geocoding-api.open-meteo.com"
   },
   "author": "Michael Projects",
   "homepage_url": "https://michaelprojects.com/tabernacle/"

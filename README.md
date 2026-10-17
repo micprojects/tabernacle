@@ -11,8 +11,35 @@ Tabernacle is a Firefox extension I made to help me navigate and organise my tab
 - Choose Automatic, Light or Dark colour mode for the neutral appearance.
 - Access pinned tabs and folders, mute audio and reopen recently closed tabs.
 - Revisit viewed tabs, recently opened folders and closed tabs in one searchable timeline.
+- Optionally use a custom new tab page with favourite links, search and weather.
 
 Requires Firefox 142 or newer.
+
+## Make new tabs your own
+
+Open **Settings → New tab** to customise and preview the page, then enable
+**Use Tabernacle for new tabs** and save. It starts off. Add, edit and reorder
+favourite links, choose icons or a list, and show or hide search, folders,
+Saved for Later and recently closed tabs. The page can follow Tabernacle's
+colour mode or use Light or Dark independently.
+
+Typing searches tabs and folders in the current window locally. Press Enter
+to search the web with your default Firefox search engine or open a website address. Favourite links
+open in the same tab, retaining its folder and container.
+
+The page replaces fresh Firefox Home new tabs while enabled, including tabs
+created through Tabernacle. Firefox's Blank Page setting and other extensions'
+new tab pages keep their own behaviour. Active new tabs focus the page's search box
+when shown; use ⌘L/Ctrl+L to select the address bar. Turning the feature
+off restores normal behaviour for subsequent new tabs.
+
+Weather is separately optional. **Find location** asks for weather access and
+lets you choose a town or city; it does not detect your location. Open-Meteo
+receives the location you search for, your selected coordinates and your IP
+address. Forecast requests omit cookies and referrers and are cached for
+30 minutes. Enable **Show weather** and save to display the temperature and
+daily high and low in Celsius or Fahrenheit. **Remove weather access** revokes
+the weather grants and switches the widget off.
 
 ## Keep related tabs together
 

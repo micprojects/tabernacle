@@ -48,6 +48,7 @@ export function memoryBrowser({
     Object.entries(memberships).map(([id, value]) => [Number(id), serializeMembership(value)]),
   );
   const windowValues = new Map();
+  const sessionStorage = {};
   const closed = [];
   const windows = new Map(
     [...new Set([1, ...liveTabs.map((tab) => tab.windowId)])].map((id) => [
@@ -65,10 +66,30 @@ export function memoryBrowser({
   };
 
   const api = {
+    runtime: { getURL: (path) => `moz-extension://tabernacle-preview/${path}` },
     storage: {
+      onChanged: memoryEvent(),
       local: {
         get: async (key) => ({ [key]: structuredClone(saved[key]) }),
-        set: async (value) => Object.assign(saved, structuredClone(value)),
+
+        set: async (value) => {
+          const changes = Object.fromEntries(
+            Object.entries(value).map(([key, next]) => [
+              key,
+              { oldValue: structuredClone(saved[key]), newValue: structuredClone(next) },
+            ]),
+          );
+          Object.assign(saved, structuredClone(value));
+          api.storage.onChanged.emit(changes, 'local');
+        },
+      },
+      session: {
+        get: async (key) => ({ [key]: structuredClone(sessionStorage[key]) }),
+        set: async (value) => Object.assign(sessionStorage, structuredClone(value)),
+
+        remove: async (key) => {
+          delete sessionStorage[key];
+        },
       },
     },
     sessions: {

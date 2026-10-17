@@ -8,6 +8,7 @@ import { deserializeModel, serializeModel } from './persistence.js';
 import { normaliseDomain } from './domain-filter.js';
 import { normaliseDomainPins } from './domains.js';
 import { normalizeLook, requireLook } from './look.js';
+import { normalizeNewTab, requireNewTab, isNewTabPage } from './new-tab-preferences.js';
 import { SITE_MODES } from './site-modes.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
@@ -214,6 +215,7 @@ export function createController(
           'The saved folder structure is invalid. Your stored data has not been changed.',
         );
       next.look = normalizeLook(next.look);
+      next.newTab = normalizeNewTab(next.newTab);
       next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
       next.domainPins = normaliseDomainPins(next.domainPins);
       await moves.load();
@@ -671,7 +673,8 @@ export function createController(
           tab?.windowId === windowId &&
           !tab.incognito &&
           tab.sessionId &&
-          !internalPage(api, tab.url),
+          !internalPage(api, tab.url) &&
+          !isNewTabPage(api, tab.url),
       )
       .map(({ tab, lastModified }) => ({
         sessionId: tab.sessionId,
@@ -1012,9 +1015,46 @@ export function createController(
       case 'snapshot':
         return snapshot(windowId);
       case 'getSettings':
-        return { look: { ...model.look }, generation, revision };
+        return {
+          look: { ...model.look },
+          newTab: structuredClone(model.newTab),
+          generation,
+          revision,
+        };
+      case 'getNewTabState':
+        return { ...(await snapshot(windowId)), newTab: structuredClone(model.newTab) };
+      case 'setNewTab': {
+        const value = requireNewTab({ ...model.newTab, ...message.value });
+        await changeModel((next) => {
+          next.newTab = value;
+        });
+        publish();
+        return {
+          newTab: structuredClone(model.newTab),
+          look: { ...model.look },
+          generation,
+          revision,
+        };
+      }
+      case 'previewNewTab': {
+        const value = requireNewTab({ ...model.newTab, ...message.value });
+        const token = crypto.randomUUID();
+        const key = `tabernacle.newTabPreview.${token}`;
+        await api.storage.session.set({ [key]: value });
+        try {
+          const tab = await api.tabs.create({
+            windowId,
+            url: api.runtime.getURL(`new-tab.html?preview=${token}`),
+            active: true,
+          });
+          return { tabId: tab.id };
+        } catch (error) {
+          await api.storage.session.remove(key);
+          throw error;
+        }
+      }
       case 'openPage':
-        return openInternalPage(api, message.page, windowId);
+        return openInternalPage(api, message.page, windowId, { section: message.section });
       case 'claimSettingsPage': {
         const tab = await checkedTab(message.id, windowId);
         if (internalPage(api, tab.url) !== 'settings') throw new Error('Not a Settings page.');
@@ -1350,6 +1390,7 @@ export function createController(
           windowId,
           openerTabId: parent.id,
           active: true,
+          ...(model.newTab.enabled ? { url: api.runtime.getURL('new-tab.html?start=1') } : {}),
           ...(cookieStoreId !== undefined ? { cookieStoreId } : {}),
         });
         await moveTab(tab.id, parent.groupId, windowId, null, parent.id);
@@ -1361,6 +1402,7 @@ export function createController(
         const tab = await writeTab(windowId, 'create', {
           windowId,
           active: true,
+          ...(model.newTab.enabled ? { url: api.runtime.getURL('new-tab.html?start=1') } : {}),
           ...(cookieStoreId !== undefined ? { cookieStoreId } : {}),
         });
         await moveTab(tab.id, groupId, windowId);
