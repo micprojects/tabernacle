@@ -153,6 +153,10 @@ export function sortTabs(tabs) {
   return [...tabs].sort((a, b) => (a.order ?? a.index) - (b.order ?? b.index) || a.index - b.index);
 }
 
+export function isSavedForLater(tab) {
+  return Number.isFinite(tab?.savedForLaterAt) && tab.savedForLaterAt > 0;
+}
+
 // Leave room between neighbours; return null only when floating-point precision
 // is exhausted (or old orders are tied), so the caller can rebalance that list.
 export function insertionOrder(siblings, index) {
@@ -185,6 +189,8 @@ export function resolveTabTree(tabs) {
       const candidate = byKey.get(key);
       if (
         candidate &&
+        !isSavedForLater(tab) &&
+        !isSavedForLater(candidate) &&
         candidate.id !== tab.id &&
         candidate.windowId === tab.windowId &&
         candidate.groupId === tab.groupId
@@ -220,9 +226,11 @@ export function tabChildren(tabs, parentTabId) {
 // Pins live in a separate strip. Keep their children accessible in the list,
 // without rewriting the saved tree: unpinning restores the original placement.
 export function unpinnedTabTree(tabs) {
-  const pinned = new Set(tabs.filter((tab) => tab.pinned).map((tab) => tab.id));
+  const pinned = new Set(
+    tabs.filter((tab) => tab.pinned || isSavedForLater(tab)).map((tab) => tab.id),
+  );
   return tabs
-    .filter((tab) => !tab.pinned)
+    .filter((tab) => !tab.pinned && !isSavedForLater(tab))
     .map((tab) => ({
       ...tab,
       parentTabId: pinned.has(tab.parentTabId) ? null : tab.parentTabId,

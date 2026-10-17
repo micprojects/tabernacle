@@ -24,6 +24,7 @@ import {
   groupPath,
   groupContainer,
   isWithin,
+  isSavedForLater,
   cleanName,
   addGroup,
   moveGroup,
@@ -440,6 +441,7 @@ export function createController(
           value.collapsed = false;
           // Firefox copies session values on duplication, including the source's date.
           delete value.openedAt;
+          delete value.savedForLaterAt;
         }
         // Do not set a group here: a just-created tab may still be waiting for
         // its queued onCreated handler to place it beneath its opener.
@@ -465,6 +467,7 @@ export function createController(
         nativeGroupId,
         order: value.order,
         openedAt: value.openedAt,
+        ...(isSavedForLater(value) ? { savedForLaterAt: value.savedForLaterAt } : {}),
         treeId: value.treeId,
         ancestors: Array.isArray(value.ancestors)
           ? [...new Set(value.ancestors.filter((id) => typeof id === 'string'))]
@@ -524,6 +527,7 @@ export function createController(
       await saveView(windowId, view);
     }
     forgottenPins.delete(windowId);
+    const savedKeys = new Set(tabs.filter(isSavedForLater).map((tab) => tab.treeId));
     const byStore = new Map(identities.map((identity) => [identity.cookieStoreId, identity]));
     return {
       generation,
@@ -531,7 +535,7 @@ export function createController(
       groups: structuredClone(model.groups),
       folderPins: structuredClone(model.folderPins),
       domainPins: [...model.domainPins],
-      pins: pins.items,
+      pins: pins.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id)),
       containers: identities,
       look: { ...model.look },
       youtubeMode: model.youtubeMode !== false,
@@ -587,7 +591,9 @@ export function createController(
     const group = groupById(model, requireGroup(model, id));
     if (!group) throw new Error('Choose a folder.');
     const groupIds = model.groups.filter((item) => isWithin(model, item.id, id)).map((g) => g.id);
-    const tabs = (await listTabs()).filter((tab) => groupIds.includes(tab.groupId));
+    const tabs = (await listTabs()).filter(
+      (tab) => !isSavedForLater(tab) && groupIds.includes(tab.groupId),
+    );
     return {
       groupIds,
       tabIds: tabs.map((tab) => tab.id),
@@ -602,7 +608,7 @@ export function createController(
     requireGroup(model, destinationId);
     if (isWithin(model, destinationId, id))
       throw new Error('Choose a destination outside this folder and its subfolders.');
-    const tabs = await listTabs();
+    const tabs = (await listTabs()).filter((tab) => !isSavedForLater(tab));
     const windows = new Set(tabs.filter((tab) => tab.groupId === id).map((tab) => tab.windowId));
     const changes = [];
     for (const windowId of windows) {
@@ -680,7 +686,7 @@ export function createController(
   async function revealTab(id, windowId) {
     const tabs = await listTabs(windowId);
     const tab = tabs.find((tab) => tab.id === id);
-    if (!tab) return;
+    if (!tab || isSavedForLater(tab)) return;
     const view = await viewFor(windowId);
     if (!isWithin(model, tab.groupId, view.scopeId)) view.scopeId = tab.groupId;
     const parents = new Set(groupPath(model, tab.groupId).map((group) => group.id));
@@ -795,11 +801,13 @@ export function createController(
     await checkedTab(tabId, windowId);
     requireGroup(model, groupId);
     const allTabs = await listTabs(windowId);
+    if (isSavedForLater(allTabs.find((tab) => tab.id === tabId)))
+      throw new Error('Return this tab from Saved for Later before moving it.');
     const subtree = tabSubtree(allTabs, tabId);
     if (!subtree.length) throw new Error('That tab has closed.');
     const moving = new Set(subtree.map((tab) => tab.id));
     const parent = allTabs.find((tab) => tab.id === parentTabId);
-    if (parentTabId !== null && (!parent || parent.groupId !== groupId))
+    if (parentTabId !== null && (!parent || isSavedForLater(parent) || parent.groupId !== groupId))
       throw new Error('The parent tab has moved. Try again.');
     if (moving.has(parentTabId))
       throw new Error('A tab cannot nest under itself or one of its children.');
@@ -1204,8 +1212,8 @@ export function createController(
         await saveView(windowId, view);
         // Navigating into a nonempty group brings a real member tab into view.
         if (scopeId !== null) {
-          const tabs = (await listTabs(windowId)).filter((tab) =>
-            isWithin(model, tab.groupId, scopeId),
+          const tabs = (await listTabs(windowId)).filter(
+            (tab) => !isSavedForLater(tab) && isWithin(model, tab.groupId, scopeId),
           );
           if (tabs.length && !tabs.some((tab) => tab.active)) {
             tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
@@ -1411,6 +1419,24 @@ export function createController(
         if (message.reveal === true) await revealTab(message.id, windowId);
         break;
       }
+      case 'saveForLater': {
+        await checkedTab(message.id, windowId);
+        // Initialise durable placement first; saving changes only the queue membership.
+        const tabs = await listTabs(windowId);
+        const tab = tabs.find((tab) => tab.id === message.id);
+        if (!tab) throw new Error('That tab has closed.');
+        if (!isSavedForLater(tab)) {
+          // Preserve addition order even when multiple saves share a clock tick.
+          const newest = tabs.reduce((time, item) => Math.max(time, item.savedForLaterAt || 0), 0);
+          await updateMembership(tab.id, { savedForLaterAt: Math.max(Date.now(), newest + 1) });
+        }
+        break;
+      }
+      case 'returnFromLater': {
+        await checkedTab(message.id, windowId);
+        await updateMembership(message.id, { savedForLaterAt: null });
+        break;
+      }
       case 'closeTab':
         await checkedTab(message.id, windowId);
         await closeTabs(windowId, message.id);
@@ -1442,7 +1468,12 @@ export function createController(
         // Tabs opened later, moved out, or moved to another window are excluded.
         const confirmed = new Set(message.tabIds);
         const ids = (await listTabs(windowId))
-          .filter((tab) => confirmed.has(tab.id) && isWithin(model, tab.groupId, group.id))
+          .filter(
+            (tab) =>
+              !isSavedForLater(tab) &&
+              confirmed.has(tab.id) &&
+              isWithin(model, tab.groupId, group.id),
+          )
           .map((tab) => tab.id);
         if (ids.length) await closeTabs(windowId, ids);
         break;
@@ -1466,6 +1497,7 @@ export function createController(
           ancestors: [],
           collapsed: false,
           openedAt: openedTimes.get(tab.id) ?? Date.now(),
+          savedForLaterAt: null,
         });
         await moveTab(tab.id, source.groupId, windowId, null, source.parentTabId);
         break;
@@ -1565,7 +1597,10 @@ export function createController(
     const source = context.byId.get(tab.id);
     if (!source) throw new Error('That tab has closed or moved to another window.');
     const candidate = context.byId.get(tab.openerTabId);
-    const opener = candidate && candidate.id !== tab.id && !candidate.pinned ? candidate : null;
+    const opener =
+      candidate && candidate.id !== tab.id && !candidate.pinned && !isSavedForLater(candidate)
+        ? candidate
+        : null;
     const groupId = opener ? opener.groupId : context.view.scopeId;
     const parentTabId = opener?.id ?? null;
     const key = JSON.stringify([groupId, parentTabId]);

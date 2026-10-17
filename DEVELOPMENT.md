@@ -498,6 +498,23 @@ silently leave it outside release QA. Native integration suites and stress share
 sidebar access. Both fixtures create and verify their own temporary Firefox profiles.
 Playwright Chromium and Firefox must be installed before running browser checks.
 
+## Saved for Later
+
+`src/later-view.js` owns the dedicated sidebar view, with `later.css` for its layout.
+`src/later.js` derives content filters from URLs and sorts by the session membership's
+`savedForLaterAt` timestamp. Unknown page types stay available in All; classification
+does not request host access or read pages. The saved list is scoped to the current window.
+
+Saving changes only `savedForLaterAt`. Folder, durable ancestry, order, native pinning
+and containers remain intact. The resolved tree skips saved parents so their children
+remain accessible. Saved tabs are excluded from ordinary tree/domain projections and
+folder bulk actions. Clearing the timestamp restores the original placement where it
+still exists. Session restoration keeps saved membership; duplicated tabs clear it.
+
+`test/later.test.js`, `scripts/test-later-ui.js` and `scripts/test-later-firefox.js`
+cover persistence, restoration, folder deletion, filters, close selection, keyboard
+navigation, narrow layouts, colour modes and real Firefox tab/container behaviour.
+
 ## Refresh and folder indexing
 
 `src/refresh-scheduler.js` coalesces notifications, filters window IDs and skips revisions

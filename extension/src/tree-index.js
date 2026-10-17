@@ -1,5 +1,5 @@
 import { createFolderIndex } from './folder-index.js';
-import { sortTabs, unpinnedTabTree } from './model.js';
+import { isSavedForLater, sortTabs, unpinnedTabTree } from './model.js';
 
 function indexTabs(tabs) {
   const byId = new Map(tabs.map((tab) => [tab.id, tab]));
@@ -30,6 +30,7 @@ function descendantsFirst(roots, children) {
 // All summaries are built once per render. Filtering and individual row updates
 // then use constant-time lookups instead of repeatedly walking whole subtrees.
 export function createTreeIndex(state, query = '') {
+  state = { ...state, tabs: state.tabs.filter((tab) => !isSavedForLater(tab)) };
   const tabs = unpinnedTabTree(state.tabs);
   const visible = indexTabs(tabs);
   const all = indexTabs(state.tabs);

@@ -1,5 +1,12 @@
 import { icon } from './icons.js';
-import { children, groupById, groupContainer, isWithin, tabSubtree } from './model.js';
+import {
+  children,
+  groupById,
+  groupContainer,
+  isWithin,
+  isSavedForLater,
+  tabSubtree,
+} from './model.js';
 import { createContainerManagement } from './container-dialogs.js';
 import { populateContainerPicker } from './container-picker.js';
 import { createGroupCreation } from './group-creation.js';
@@ -377,7 +384,9 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
     const state = getState();
     const group = groupById(state, id);
     if (!group) return;
-    const tabs = state.tabs.filter((tab) => isWithin(state, tab.groupId, id));
+    const tabs = state.tabs.filter(
+      (tab) => !isSavedForLater(tab) && isWithin(state, tab.groupId, id),
+    );
     const pinned = tabs.filter((tab) => tab.pinned).length;
     const count = `${tabs.length} ${tabs.length === 1 ? 'tab' : 'tabs'}`;
     showDialog({

@@ -1,4 +1,5 @@
 import { domainFromUrl, normaliseDomain } from './domain-filter.js';
+import { isSavedForLater } from './model.js';
 
 export function normaliseDomainPins(value) {
   return [...new Set((Array.isArray(value) ? value : []).map(normaliseDomain).filter(Boolean))];
@@ -9,6 +10,7 @@ export function normaliseDomainPins(value) {
 export function listDomains(tabs, pins = []) {
   const hosts = new Map();
   for (const tab of tabs) {
+    if (isSavedForLater(tab)) continue;
     const domain = domainFromUrl(tab.url);
     if (!domain) continue;
     let entry = hosts.get(domain);
