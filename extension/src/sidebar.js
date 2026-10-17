@@ -66,7 +66,11 @@ const siteView = createSiteView({
 });
 
 function siteActive() {
-  return siteMode && state?.siteModes?.[siteMode] !== false ? siteMode : null;
+  return state?.siteEnhancementsEnabled !== false &&
+    siteMode &&
+    state?.siteModes?.[siteMode] !== false
+    ? siteMode
+    : null;
 }
 
 function enrichedSiteTab(tab) {
@@ -90,7 +94,11 @@ const youtubeView = createYouTubeView({
 });
 
 function youtubeActive() {
-  return isYouTubeDomain(domainFilter) && state?.youtubeMode !== false;
+  return (
+    state?.siteEnhancementsEnabled !== false &&
+    isYouTubeDomain(domainFilter) &&
+    state?.youtubeMode !== false
+  );
 }
 
 let searchOrigin;
@@ -1470,7 +1478,8 @@ function render(motionKey = null) {
   $('sidebar-header').classList.toggle('domain-mode', Boolean(domainFilter));
   $('domain-tools').hidden = !domainFilter;
   const site = siteActive();
-  $('site-mode').hidden = !siteMode;
+  const enhancements = state.siteEnhancementsEnabled !== false;
+  $('site-mode').hidden = !enhancements || !siteMode;
   $('site-mode-label').textContent = siteMode ? 'Enhanced' : '';
   $('site-mode').setAttribute('aria-checked', String(Boolean(site)));
   $('site-access').hidden = !site || siteAllowed;
@@ -1478,14 +1487,17 @@ function render(motionKey = null) {
     ? `Allow access for ${SITE_MODES[siteMode].access}.`
     : '';
   const youtube = youtubeActive();
-  $('youtube-mode').hidden = !isYouTubeDomain(domainFilter);
-  $('youtube-mode').setAttribute('aria-checked', String(state.youtubeMode !== false));
+  $('youtube-mode').hidden = !enhancements || !isYouTubeDomain(domainFilter);
+  $('youtube-mode').setAttribute('aria-checked', String(youtube));
   $('youtube-tools').hidden = !youtube;
   $('youtube-access').hidden = !youtube || youtubeAllowed;
-  $('domain-count').hidden = isYouTubeDomain(domainFilter) || Boolean(siteMode);
+  $('domain-count').hidden = enhancements && (isYouTubeDomain(domainFilter) || Boolean(siteMode));
   tree.classList.toggle('youtube-results', youtube);
-  $('domain-tools').classList.toggle('youtube-domain-tools', isYouTubeDomain(domainFilter));
-  $('domain-tools').classList.toggle('site-domain-tools', Boolean(siteMode));
+  $('domain-tools').classList.toggle(
+    'youtube-domain-tools',
+    enhancements && isYouTubeDomain(domainFilter),
+  );
+  $('domain-tools').classList.toggle('site-domain-tools', enhancements && Boolean(siteMode));
   if (domainFilter) {
     const results = domainResults(index, domainFilter, query, domainSort);
     youtubeView.prepare(results, youtube);
@@ -2224,6 +2236,7 @@ $('search-toggle').addEventListener('click', () => showSearch());
 $('search-close').addEventListener('click', () => showSearch(false));
 $('domain-close').addEventListener('click', () => leaveDomain());
 $('youtube-mode').addEventListener('click', async () => {
+  if (state.siteEnhancementsEnabled === false) return;
   const toggle = $('youtube-mode');
   toggle.disabled = true;
   youtubeFilter = 'all';
@@ -2241,7 +2254,7 @@ $('youtube-allow').addEventListener('click', () => {
   youtubeView.allow().catch(() => announce('Could not enable YouTube access. Try again.', true));
 });
 $('site-mode').addEventListener('click', async () => {
-  if (!siteMode) return;
+  if (!siteMode || state.siteEnhancementsEnabled === false) return;
   const toggle = $('site-mode');
   toggle.disabled = true;
   await action('setSiteMode', { mode: siteMode, enabled: !siteActive() });

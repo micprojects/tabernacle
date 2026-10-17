@@ -593,6 +593,7 @@ export function createController(
       pins: pins.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id)),
       containers: identities,
       look: { ...model.look },
+      siteEnhancementsEnabled: model.siteEnhancementsEnabled !== false,
       youtubeMode: model.youtubeMode !== false,
       siteModes: { ...model.siteModes },
       canUndoClose: history.tabs.length > 0,
@@ -1070,6 +1071,9 @@ export function createController(
       case 'getSettings':
         return {
           look: { ...model.look },
+          siteEnhancementsEnabled: model.siteEnhancementsEnabled !== false,
+          youtubeMode: model.youtubeMode !== false,
+          siteModes: { ...model.siteModes },
           newTab: structuredClone(model.newTab),
           generation,
           revision,
@@ -1627,6 +1631,14 @@ export function createController(
         if (tab) await revealTab(tab.id, windowId);
         break;
       }
+      case 'setSiteEnhancementsEnabled': {
+        if (typeof message.enabled !== 'boolean')
+          throw new Error('Choose whether to enable site enhancements.');
+        await changeModel((next) => {
+          next.siteEnhancementsEnabled = message.enabled;
+        });
+        break;
+      }
       case 'setSiteMode': {
         if (!Object.hasOwn(SITE_MODES, message.mode) || typeof message.enabled !== 'boolean')
           throw new Error('Choose a site mode and whether to use it.');
@@ -1670,6 +1682,7 @@ export function createController(
         'setGroupPin',
         'setDomainPin',
         'setLook',
+        'setSiteEnhancementsEnabled',
         'setYouTubeMode',
         'setSiteMode',
       ].includes(type) ||

@@ -21,7 +21,7 @@ export function faviconColour(pixels) {
   return main ? main.rgb.map((value) => Math.round(value / main.weight)) : null;
 }
 
-function paintWash(image, canvas) {
+export function paintFaviconWash(image, canvas) {
   const source = document.createElement('canvas');
   source.width = source.height = 32;
   const sample = source.getContext('2d', { willReadFrequently: true });
@@ -101,7 +101,7 @@ export function createDomainHeader(header) {
       'load',
       () => {
         if (currentImage !== image) return;
-        paintWash(image, wash);
+        paintFaviconWash(image, wash);
       },
       { once: true },
     );
