@@ -3,6 +3,8 @@ import { reconcileChildren } from './dom.js';
 import { domainFromUrl } from './domain-filter.js';
 import { groupById, isSavedForLater } from './model.js';
 import { laterAge, laterCategory, laterFilters, laterResults } from './later.js';
+import { articleUrl } from './article.js';
+import { createArticleService } from './article-service.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -28,6 +30,10 @@ export function createLaterView({
   onReturn,
   onCloseTab,
   onMenu,
+  onRead,
+  onError = () => {},
+  onNotice = () => {},
+  api = globalThis.browser,
 }) {
   const pane = element('section', 'later-view');
   pane.id = 'later-view';
@@ -75,6 +81,16 @@ export function createLaterView({
     sort.append(option);
   }
   tools.append(count, sort);
+  const previewOptions = element('details', 'later-preview-options');
+  previewOptions.hidden = !api?.scripting || !api?.permissions;
+  const previewSummary = element('summary');
+  previewSummary.append(element('span', '', 'Article previews'));
+  const previewStatus = element('span', 'later-preview-status');
+  previewSummary.append(previewStatus);
+  const previewHelp = element('p');
+  const previewAccess = button('Enable previews on all sites', null, 'later-preview-access');
+  previewAccess.disabled = true;
+  previewOptions.append(previewSummary, previewHelp, previewAccess);
   const content = element('div', 'later-content');
   const list = element('ul', 'later-list');
   list.setAttribute('aria-label', 'Saved tabs');
@@ -83,7 +99,7 @@ export function createLaterView({
   const emptyText = element('p');
   empty.append(icon('later'), emptyTitle, emptyText);
   content.append(list, empty);
-  pane.append(heading, searchWrap, filters, tools, content);
+  pane.append(heading, searchWrap, filters, previewOptions, tools, content);
   root.prepend(pane);
   const trigger = button('Saved for Later', 'later');
   trigger.id = 'later-toggle';
@@ -93,12 +109,123 @@ export function createLaterView({
   root.querySelector('#domains-toggle').before(trigger);
   const fold = root.querySelector('#tree-toggle');
   const rows = new Map();
-  let state, savedFocus, timer;
+  const articles = createArticleService({ api });
+  const visible = new Set();
+  let state, savedFocus, timer, articleTimer;
+  let reading = false;
+  let readAgain = false;
+  let visibleIds = [];
+  let allAccess = false;
+  let accessRevision = 0;
+  let changingAccess = false;
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) visible.add(Number(entry.target.dataset.id));
+        else visible.delete(Number(entry.target.dataset.id));
+      }
+      readVisible();
+    },
+    { root: content, rootMargin: '80px 0px' },
+  );
+
+  async function readVisible() {
+    if (pane.hidden || !state || document.hidden) return;
+    if (reading) {
+      readAgain = true;
+      return;
+    }
+    reading = true;
+    const queue = state.tabs.filter(
+      (tab) =>
+        visible.has(tab.id) &&
+        isSavedForLater(tab) &&
+        !['videos', 'documents'].includes(laterCategory(tab)),
+    );
+    try {
+      await Promise.all(
+        [0, 1].map(async () => {
+          while (queue.length && !pane.hidden) await articles.read(queue.shift());
+        }),
+      );
+    } finally {
+      reading = false;
+      render();
+      if (readAgain) {
+        readAgain = false;
+        readVisible();
+      }
+    }
+  }
+
+  async function refreshAccess() {
+    const revision = ++accessRevision;
+    try {
+      const allowed = await articles.hasAllAccess();
+      if (revision !== accessRevision) return;
+      allAccess = allowed;
+      previewStatus.textContent = allowed ? 'All sites' : 'Set up';
+      previewHelp.textContent = allowed
+        ? 'All-site access is enabled for Tabernacle. Article previews are processed on your device. You can remove this access below.'
+        : 'Show excerpts, authors and reading times. Allow access to all websites once; previews are processed on your device.';
+      previewAccess.textContent = allowed ? 'Remove all-site access' : 'Enable on all sites';
+      previewAccess.setAttribute(
+        'aria-label',
+        allowed ? 'Remove all-site access' : 'Enable previews on all sites',
+      );
+      previewAccess.title = previewAccess.getAttribute('aria-label');
+      previewAccess.disabled = changingAccess;
+    } catch {
+      if (revision !== accessRevision) return;
+      previewStatus.textContent = 'Unavailable';
+      previewHelp.textContent = 'Could not check site access. Close Saved for Later and try again.';
+      previewAccess.disabled = true;
+    }
+  }
+
+  previewAccess.addEventListener('click', async () => {
+    if (changingAccess) return;
+    const removing = allAccess;
+    changingAccess = true;
+    previewAccess.disabled = true;
+    try {
+      const changed = await (removing ? articles.removeAllAccess() : articles.allowAll());
+      if (!changed) {
+        if (removing) onError('Could not remove all-site access. Try again.');
+        else onNotice('Previews were not enabled. You can still use Reader View.');
+      } else {
+        onNotice(removing ? 'All-site access removed.' : 'Article previews enabled on all sites.');
+      }
+      previewOptions.open = false;
+      if (!pane.hidden && document.activeElement === previewAccess) previewSummary.focus();
+      render();
+      readVisible();
+    } catch {
+      onError('Could not change site access. Try again.');
+    } finally {
+      changingAccess = false;
+      await refreshAccess();
+    }
+  });
+
+  function refreshPermissions() {
+    articles.refreshPermissions();
+    refreshAccess();
+    render();
+    readVisible();
+  }
+
+  api?.permissions?.onAdded?.addListener(refreshPermissions);
+  api?.permissions?.onRemoved?.addListener(refreshPermissions);
 
   function close({ restoreFocus = true } = {}) {
     if (pane.hidden) return;
     clearInterval(timer);
+    clearInterval(articleTimer);
     pane.hidden = true;
+    articles.configure(state.tabs.filter(isSavedForLater), false);
+    observer.disconnect();
+    visible.clear();
     root.classList.remove('later-open');
     trigger.setAttribute('aria-expanded', 'false');
     onClose();
@@ -114,8 +241,15 @@ export function createLaterView({
     const copy = element('span', 'later-copy');
     const label = element('span', 'later-label');
     const domain = element('span', 'later-domain');
-    copy.append(label, domain);
+    const details = element('span', 'later-article-details');
+    const excerpt = element('span', 'later-excerpt');
+    copy.append(label, domain, details, excerpt);
     open.append(favicon, copy);
+    const main = element('div', 'later-main');
+    const articleActions = element('div', 'later-article-actions');
+    const read = button('Read in Reader View', null, 'later-read');
+    articleActions.append(read);
+    main.append(open, articleActions);
     const side = element('div', 'later-side');
     const actions = element('div', 'later-row-actions');
     const restore = button('Return to original folder', 'group');
@@ -123,8 +257,21 @@ export function createLaterView({
     const time = element('time', 'later-time');
     actions.append(restore, remove);
     side.append(actions, time);
-    row.append(open, side);
-    const item = { row, open, favicon, label, domain, restore, remove, time };
+    row.append(main, side);
+    const item = {
+      row,
+      open,
+      favicon,
+      label,
+      domain,
+      restore,
+      remove,
+      time,
+      read,
+      articleActions,
+      details,
+      excerpt,
+    };
     open.addEventListener('click', () => onActivate(id));
 
     async function run(control, action) {
@@ -132,6 +279,8 @@ export function createLaterView({
       control.setAttribute('aria-disabled', 'true');
       try {
         await action(id);
+      } catch {
+        onError('Could not update this tab. Try again.');
       } finally {
         control.removeAttribute('aria-disabled');
       }
@@ -139,6 +288,15 @@ export function createLaterView({
 
     restore.addEventListener('click', () => run(restore, onReturn));
     remove.addEventListener('click', () => run(remove, onCloseTab));
+    read.addEventListener('click', () =>
+      run(read, async () => {
+        const tab = state.tabs.find((tab) => tab.id === id);
+        if (!tab) return;
+        // Capture permitted details before Firefox replaces the document with Reader View.
+        await articles.read(tab);
+        await onRead(id, !tab.isInReaderMode, articleUrl(tab.url));
+      }),
+    );
     row.addEventListener('mousedown', (event) => {
       if (event.button === 1) event.preventDefault();
     });
@@ -173,7 +331,17 @@ export function createLaterView({
 
   function render() {
     if (pane.hidden || !state) return;
-    const entries = laterResults(state.tabs, { category, query: search.value, sort: sort.value });
+    const saved = state.tabs.filter(isSavedForLater);
+    articles.configure(saved, true);
+    const entries = laterResults(
+      saved.map((tab) => ({ ...tab, articlePreview: articles.peek(tab) })),
+      {
+        category,
+        query: search.value,
+        sort: sort.value,
+      },
+    );
+    visibleIds = entries.map((tab) => tab.id);
     const total = state.tabs.filter(isSavedForLater).length;
     const focused = document.activeElement;
     const oldRows = [...list.children];
@@ -181,22 +349,63 @@ export function createLaterView({
     const alive = new Set();
     for (const tab of entries) {
       alive.add(tab.id);
-      if (!rows.has(tab.id)) rows.set(tab.id, makeRow(tab.id));
+      if (!rows.has(tab.id)) {
+        rows.set(tab.id, makeRow(tab.id));
+        observer.observe(rows.get(tab.id).row);
+      }
       const item = rows.get(tab.id);
-      const label = tab.title || tab.url || 'New tab';
+      const data = tab.articlePreview;
+      const source = articleUrl(tab.url) || tab.url;
+      const label = data?.title || tab.title || source || 'New tab';
       item.label.textContent = label;
       item.open.setAttribute('aria-label', label);
-      item.open.title = tab.url || label;
+      item.open.title = source || label;
       if (tab.active) item.open.setAttribute('aria-current', 'true');
       else item.open.removeAttribute('aria-current');
       item.row.classList.toggle('active', Boolean(tab.active));
-      const kind = laterCategory(tab.url);
+      const kind = laterCategory(tab);
       item.domain.textContent = [
-        domainFromUrl(tab.url) || (tab.url?.startsWith('file:') ? 'Local file' : 'Browser tab'),
+        domainFromUrl(source) || (tab.url?.startsWith('file:') ? 'Local file' : 'Browser tab'),
         kind === 'videos' ? 'Video' : kind === 'documents' ? 'Document' : null,
+        tab.isInReaderMode ? 'Reader View' : null,
       ]
         .filter(Boolean)
         .join(' · ');
+      item.details.textContent = data
+        ? [
+            data.byline,
+            data.published
+              ? new Date(`${data.published}T12:00:00`).toLocaleDateString(undefined, {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })
+              : '',
+            `${data.minutes} min read`,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        : '';
+      item.details.hidden = !data;
+      item.details.title = data
+        ? `Estimated reading time · Preview saved ${new Date(data.readAt).toLocaleString()}`
+        : '';
+      item.excerpt.textContent = data?.excerpt || '';
+      item.excerpt.hidden = !data?.excerpt;
+      item.open.setAttribute(
+        'aria-description',
+        [item.domain.textContent, item.details.textContent, item.excerpt.textContent]
+          .filter(Boolean)
+          .join('. '),
+      );
+      item.read.hidden = !onRead || !(tab.isInReaderMode || tab.isArticle);
+      item.read.disabled = Boolean(tab.discarded || tab.status === 'loading');
+      item.read.textContent = tab.isInReaderMode ? 'View original' : 'Read';
+      item.read.title = tab.isInReaderMode ? 'View original page' : 'Read in Reader View';
+      item.read.setAttribute('aria-label', item.read.title);
+      item.articleActions.hidden = item.read.hidden;
+      item.row.classList.toggle('has-article', Boolean(data) || !item.articleActions.hidden);
+      item.row.classList.toggle('has-article-actions', !item.articleActions.hidden);
       const folder = groupById(state, tab.groupId)?.name || 'Home';
       item.restore.title = `Return to ${tab.pinned ? 'pinned tabs' : folder}`;
       item.restore.setAttribute('aria-label', item.restore.title);
@@ -220,7 +429,12 @@ export function createLaterView({
         item.favicon.replaceChildren(image);
       }
     }
-    for (const id of rows.keys()) if (!alive.has(id)) rows.delete(id);
+    for (const id of rows.keys())
+      if (!alive.has(id)) {
+        observer.unobserve(rows.get(id).row);
+        visible.delete(id);
+        rows.delete(id);
+      }
     reconcileChildren(
       list,
       entries.map((tab) => rows.get(tab.id).row),
@@ -248,8 +462,11 @@ export function createLaterView({
     trigger.setAttribute('aria-expanded', 'true');
     fold.disabled = true;
     render();
+    refreshAccess();
+    for (const { row } of rows.values()) observer.observe(row);
     dismiss.focus({ preventScroll: true });
     timer = setInterval(render, 60_000);
+    articleTimer = setInterval(readVisible, 15_000);
   }
 
   dismiss.addEventListener('click', () => close());
@@ -290,7 +507,18 @@ export function createLaterView({
     },
     true,
   );
-  window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
+  window.addEventListener(
+    'pagehide',
+    () => {
+      clearInterval(timer);
+      clearInterval(articleTimer);
+      articles.configure([], false);
+      observer.disconnect();
+      api?.permissions?.onAdded?.removeListener(refreshPermissions);
+      api?.permissions?.onRemoved?.removeListener(refreshPermissions);
+    },
+    { once: true },
+  );
   return {
     open,
     close,
@@ -300,12 +528,16 @@ export function createLaterView({
     },
 
     closeFilter: () =>
-      pane.hidden ? null : { later: true, category, query: search.value, sort: sort.value },
+      pane.hidden
+        ? null
+        : { later: true, category, query: search.value, sort: sort.value, tabIds: visibleIds },
 
     update(next) {
       state = next;
+      articles.configure(state.tabs.filter(isSavedForLater), !pane.hidden);
       trigger.disabled = false;
       render();
+      readVisible();
       return !pane.hidden;
     },
 

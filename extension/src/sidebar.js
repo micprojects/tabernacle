@@ -195,6 +195,9 @@ const laterView = createLaterView({
   onActivate: (id) => action('activateTab', { id, expandAncestors: false }),
   onReturn: returnSavedTab,
   onCloseTab: (id) => action('closeTab', { id }),
+  onRead: (id, enabled, url) => action('setReaderMode', { id, enabled, url }),
+  onError: (message) => announce(message, true),
+  onNotice: (message) => announce(message),
   onMenu: (id, x, y) => contextMenu('tab', id, x, y),
 });
 

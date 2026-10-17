@@ -16,6 +16,8 @@
   "optional_host_permissions": [
     "https://api.open-meteo.com/*",
     "https://geocoding-api.open-meteo.com/*",
+    "http://*/*",
+    "https://*/*",
     "https://www.youtube.com/*",
     "https://youtube.com/*",
     "https://m.youtube.com/*",

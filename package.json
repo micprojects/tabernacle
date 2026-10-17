@@ -15,7 +15,7 @@
     "test:stress": "node scripts/stress-firefox.js",
     "lint": "npm run lint:js && npm run lint:extension",
     "lint:js": "eslint . --max-warnings 0",
-    "lint:extension": "web-ext lint --source-dir extension --warnings-as-errors",
+    "lint:extension": "node scripts/lint-extension.js",
     "build": "node scripts/build.js",
     "dev": "web-ext run --source-dir extension",
     "preview": "node scripts/preview.js",
