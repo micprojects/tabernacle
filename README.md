@@ -60,25 +60,37 @@ Open a folder to see just its tabs. Use the folder path to move back up.
 
 ## Find tabs in any folder
 
-Search tab titles, URLs and folder names, including in collapsed folders.
+Search tab titles, original URLs and folder names within the current folder and its
+subfolders, including collapsed folders. Home searches the current window. Matching
+saved tabs appear in a separate **Saved for Later** section, newest first, with their
+folder paths. Clicking activates the existing tab and keeps it saved; returning or
+closing an item keeps your search open. Searching does not request page access.
 
 Right-click a tab and choose **Filter by domain** to see that site's tabs from every folder
 in the current window as a flat list, including pinned tabs. A dedicated header shows
 the site's favicon on a softly tinted background. When a site name can be resolved
 from open tab titles, it appears above the smaller domain; otherwise the domain is the heading.
 The result count and sort menu sit above the list. Newest opened comes first by default;
-you can also choose Recently viewed, Oldest opened, Title A–Z or Tree order.
+you can also choose Recently viewed, Least recently viewed, Oldest opened, Title A–Z
+or Tree order. Least recently viewed shows a quiet age label with the exact date in
+its tooltip; unknown dates follow dated tabs. Use the compact domain search to match
+titles and original URLs while retaining the selected sort and site filters.
 Result titles wrap automatically to a maximum of three lines.
 Tabs without a recorded opening time follow dated tabs in tree order.
 The filter stays open as you visit or close tabs; closing a result preserves its nested tabs.
 If Firefox selects a tab outside the filtered list after a close, Tabernacle activates
 the nearest result above, or below when there isn't one above.
-Use the large close button or press Escape to return to your previous folder view.
+Press ⌘/Ctrl K to focus the search for your current view: domain, Saved for Later or
+ordinary search. Escape dismisses an open menu or dialog first, then clears a populated
+domain search when its field is focused; otherwise it returns to folders. The large
+close button also returns to folders. When you opened a site from Domains, **Back to
+Domains** restores your place in that directory. Pinned domains remain listed with
+one matching tab, including a subdomain; at zero they hide but retain their pin.
 
 On YouTube, **Enhanced** replaces the count with a remembered toggle. It starts on
 and shows thumbnails, channels, folders, duplicate indicators and video progress where
 available. Switch it off to use the standard domain list. The All, In progress and
-Duplicates filters keep each tab separate.
+Duplicates filters keep each tab separate. A filtered view shows its matching count.
 Hover over a result (or focus it with the keyboard) for **Show in folder** and
 **Copy video link**. Titles omit YouTube's notification count; known progress is
 shown as a slim bar beneath the thumbnail.
@@ -129,6 +141,26 @@ private document contents, account history or a separate copy of the page.
 
 <img src="assets/screenshots/03-search-ui.png" width="550" alt="Search results for grid, showing matching tabs within their folders.">
 
+## Process tabs together
+
+Right-click a folder to **Save tabs for later**, including tabs in its subfolders and
+pinned tabs. The domain actions menu can save, copy URLs or close the complete current
+result set, including rows below the viewport. Search and YouTube filters define that
+set. Saving offers one **Undo** for the batch. Closing shows the count and any pinned
+tabs before you confirm. Copying retains original article URLs, query parameters and
+fragments in result order.
+
+Choose **Review duplicates…** from Domains, a domain's actions, a folder's context
+menu or Saved for Later's actions. Domains reviews the whole current window, including
+saved tabs; other entry points review their folder or current results. Only identical
+complete HTTP(S) source URLs in the same Firefox container form a group. Reader View
+uses its source URL. Related-file and related-thread labels do not imply exact duplicates.
+
+Review the suggested checkboxes and choose **Close N tabs**. Pinned, current and audible
+tabs start unselected; otherwise the most recently viewed copy is kept. You can adjust
+the choices but must keep at least one copy per group. Changed or closed tabs are skipped,
+and newly opened tabs are never added to an existing review.
+
 ## Save tabs for later
 
 Right-click a tab and choose **Save for later** to move it out of the tree. Open
@@ -156,6 +188,14 @@ Clicking a saved tab activates it and leaves it in the list. Hover or focus a ro
 to return it to its original folder or close it. Saving a parent leaves its children
 in the tree. Returning it restores its previous position and nesting where possible;
 if its folder has been deleted, it returns to Home. Pinned tabs return to the pinned strip.
+Returning keeps your filter, search, sort and scroll position, with focus moving to the
+nearest remaining row. Use **Show in folder** in the confirmation to navigate deliberately.
+
+YouTube videos in All and Videos use the same thumbnails, cleaned titles, channels,
+durations and observed progress as the domain view. They share its YouTube preference
+and the master Site Enhancements switch. **Allow YouTube access** is explicit; changing
+views never requests it. Only the visible view polls loaded videos, and no video is
+started, sought or woken by showing it here.
 
 Saved tabs remain real Firefox tabs in their current window, retaining their containers
 and page state. Membership is kept in Firefox session data across extension reloads
