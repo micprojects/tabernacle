@@ -29,6 +29,62 @@ const closed = async () => {
 };
 
 try {
+  for (const method of ['pointer', 'keyboard']) {
+    await reset();
+    await open('Sprint');
+    const result = row('tab:9');
+
+    const openMenu = async () => {
+      if (method === 'pointer') await result.click({ button: 'right' });
+      else {
+        await result.focus();
+        await page.keyboard.press('Shift+F10');
+      }
+      await expect(page.getByRole('menu')).toBeVisible();
+      await expect(search).toHaveValue('Sprint');
+      await expect(row('tab:1')).toHaveCount(0);
+    };
+
+    await openMenu();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toBeHidden();
+    await expect(search).toHaveValue('Sprint');
+    await expect(result).toBeFocused();
+
+    await openMenu();
+    const mute = page.getByRole('menuitem', { name: 'Mute tab', exact: true });
+    if (method === 'pointer') await mute.click();
+    else {
+      await mute.focus();
+      await page.keyboard.press('Enter');
+    }
+    await expect(page.getByRole('menu')).toBeHidden();
+    await expect(search).toHaveValue('Sprint');
+    await openMenu();
+    await expect(page.getByRole('menuitem', { name: 'Unmute tab', exact: true })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click();
+    await expect(result).toHaveCount(0);
+    await expect(search).toHaveValue('Sprint');
+    await expect(page.locator('.empty-state')).toBeVisible();
+    await expect(row('tab:1')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await closed();
+  }
+  console.log(
+    '✓ Result menus preserve search when opened, dismissed or used by mouse and keyboard',
+  );
+
+  await reset();
+  await open('Sprint');
+  await row('tab:9').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Move tab…', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(search).toHaveValue('Sprint');
+  await expect(row('tab:1')).toHaveCount(0);
+  console.log('✓ Cancelling a result menu dialog keeps the original search');
+
   await reset();
   await open('Sprint');
   await search.click();
