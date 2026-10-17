@@ -122,10 +122,10 @@ navigation, view restoration, favicon colours and narrow-panel/colour-mode check
 `node scripts/test-domain-filter-firefox.js` for native Firefox and window isolation.
 Hostname, colour and ordering checks are included in `npm test`.
 
-### YouTube Mode
+### YouTube enhancement
 
 The model's `youtubeMode` boolean defaults to true when absent. `setYouTubeMode` saves
-it through the existing serialised controller and notifies all windows. The toggle
+it through the existing serialised controller and notifies all windows. The Enhanced toggle
 replaces the count only on supported YouTube domains, including when switched off.
 The accessible status retains the result count. Domain navigation and sorting are unchanged.
 
@@ -137,15 +137,28 @@ access is requested from the explicit Allow access button; without it, ordinary 
 data and thumbnails remain usable. `scripting.executeScript` only reads the isolated
 DOM/video properties. It never activates, seeks, starts or loads a video. Discarded
 tabs are never injected. Ad players and mismatched navigation IDs are rejected.
+Live detection uses the media duration or the player's active live class, never
+the hidden live badge that YouTube also includes in ordinary video players.
 
 Public oEmbed metadata is cached by video ID with a bounded cache, failure backoff,
 an eight-second timeout and credential/referrer-free requests. Observed positions
 are cached separately per tab in `tabernacle.youtube.v1` session values, never shared
-between duplicate tabs. Saved observations are labelled Last seen; unknown remains
-unknown. Cached duration/channel metadata can be shared for the same video. Switching
+between duplicate tabs. Saved observations identify Last seen in their tooltip and
+accessible progress label. Unknown progress and playback-state text are omitted;
+known progress appears along the thumbnail's bottom edge with a position below the
+title. Cached duration/channel metadata can be shared for the same video. Switching
 off stops polling and aborts pending metadata fetches. Late results cannot update a
 different video or the standard tree. The CSP permits metadata connections only to
 `https://www.youtube.com`; no third-party metadata service or API key is used.
+
+Titles omit YouTube's leading notification count and site suffix. Folder paths omit
+the Home prefix, and Home alone stays in the row tooltip. Show in folder and Copy
+link actions appear over the thumbnail on hover or keyboard focus (beneath it on
+touch devices). Firefox 158's native Picture-in-Picture API was tested with a trusted
+sidebar click in an isolated profile: `scripting.executeScript` does not transfer
+user activation, so the player rejects the request. There is no PiP button until
+Firefox supports this route; no browser preferences or privileged API workaround
+are used.
 
 The In progress and Duplicates filters are temporary projections. Their visible IDs
 are passed to close selection, so sidebar and native closes use visible neighbours.
@@ -155,6 +168,49 @@ and sleeping-tab/persistence behaviour in an isolated native Firefox profile. It
 tiny local silent WebM fixture replaces the body of a fresh public YouTube tab; it
 never opens a personal profile. Pure parsing, caching and preference tests run in
 `npm test`.
+
+### Other site modes
+
+`src/site-modes.js` recognises supported hostnames and routes and provides the small amount
+of context available from URLs alone. The shared `src/site-view.js` keeps the existing flat
+domain list, sort order, close behaviour, container/audio labels and folder tooltips. Its
+Enhanced switch is saved per mode in `siteModes` through `setSiteMode`; absent preferences default on.
+Google's shared host only offers Maps enhancement when the source tab is a Maps page. Non-map
+results on that domain retain normal rows. Site families do not silently broaden the domain
+filter to other hosts.
+
+`src/site-reader.js` is a self-contained, isolated-world reader for Reddit (modern and old),
+Hacker News, GitHub, Amazon, eBay, Etsy, Wikipedia, Google Docs/Sheets/Slides, Google Maps,
+IMDb and Letterboxd. It uses targeted DOM fields and structured metadata, never page-world
+application state. There are no account API calls. Detail rows are limited to two text lines
+(each can wrap twice), plus a related-item label only when there are multiple matching tabs.
+Preview images are used for products, articles, films and suitable Reddit posts. Maps use
+the name/category/address; GitHub and documents use their existing favicon. No ratings,
+review snippets, invented reading progress, shipping estimates or recommendation feeds.
+
+`src/site-service.js` requests optional access only from the explicit Allow access button.
+Shopping access is limited to the selected site's country domain; document access is limited
+to docs.google.com; Maps requests the selected Google host and its www equivalent. HN adds
+its official Firebase API as a credential-free, referrer-free fallback, with an eight-second
+timeout. Other providers only read loaded tabs. Images omit referrers. All new host permissions
+are optional. Supported country hosts are listed in `site-modes.js` and mirrored in the manifest.
+
+The view checks visible rows with at most two concurrent reads. Successful reads are throttled
+to 30 seconds. Failures retry after 15 seconds, doubling up to five minutes; switching the mode
+off aborts fetches and invalidates pending results. URL checks before/after injection reject
+navigation races. Permission revocation hides enriched observations. Cached data is per tab
+and exact URL, persisted under `tabernacle.site-details.v1` with the tab's durable tree identity.
+Discarded tabs use their own saved observation without injection; unknown fields remain blank.
+Metadata tooltips include the observation time. Related-item labels never collapse or close tabs.
+
+Run `node scripts/test-site-modes-ui.js` for all provider readers, missing/blocked data,
+images with real favicon elements, 220/320/480px layouts, toggles, dark mode and forced colours.
+Unit tests cover routing, identities, permission declarations, retries, sleeping tabs,
+revocation, navigation races and preferences. `node scripts/check-site-modes-live.js` is an
+opt-in network check in an isolated Firefox profile; it records actual retrieval and sidebar
+screenshots under `test-results/site-modes/`. Pass provider names to narrow a rerun. It reports
+unavailable/challenged pages separately from successful reads; deterministic fixtures are not
+evidence of live website access.
 
 ## Moving tabs and folders
 

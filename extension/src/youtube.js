@@ -49,6 +49,10 @@ export function videoTime(seconds) {
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}` : `${minutes}:${rest}`;
 }
 
+export function youtubeTitle(title) {
+  return (title || 'YouTube').replace(/^\(\d+\)\s+/, '').replace(/\s+[-–—|]\s+YouTube$/i, '');
+}
+
 export function normaliseVideoData(value, videoId) {
   if (!value || value.videoId !== videoId) return null;
   const duration = Number.isFinite(value.duration) && value.duration > 0 ? value.duration : null;
@@ -114,9 +118,11 @@ export function readYouTubePlayer(expectedId) {
     position: video.currentTime,
     paused: video.paused,
     ended: video.ended,
+    // YouTube keeps a hidden live badge in ordinary video players too. Its
+    // presence is not evidence of a live stream and would hide VOD progress.
     live:
       video.duration === Infinity ||
-      Boolean(document.querySelector('.ytp-live-badge:not([disabled])')),
+      Boolean(video.closest('.html5-video-player')?.classList.contains('ytp-live')),
   };
 }
 

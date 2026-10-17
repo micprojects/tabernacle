@@ -8,6 +8,7 @@ import { deserializeModel, serializeModel } from './persistence.js';
 import { normaliseDomain } from './domain-filter.js';
 import { normaliseDomainPins } from './domains.js';
 import { normalizeLook, requireLook } from './look.js';
+import { SITE_MODES } from './site-modes.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
@@ -534,6 +535,7 @@ export function createController(
       containers: identities,
       look: { ...model.look },
       youtubeMode: model.youtubeMode !== false,
+      siteModes: { ...model.siteModes },
       canUndoClose: history.tabs.length > 0,
       recentlyClosed: history.tabs,
       recentlyClosedError: history.error ?? null,
@@ -1473,9 +1475,17 @@ export function createController(
         if (tab) await revealTab(tab.id, windowId);
         break;
       }
+      case 'setSiteMode': {
+        if (!Object.hasOwn(SITE_MODES, message.mode) || typeof message.enabled !== 'boolean')
+          throw new Error('Choose a site mode and whether to use it.');
+        await changeModel((next) => {
+          next.siteModes = { ...next.siteModes, [message.mode]: message.enabled };
+        });
+        break;
+      }
       case 'setYouTubeMode': {
         if (typeof message.enabled !== 'boolean')
-          throw new Error('Choose whether to use YouTube Mode.');
+          throw new Error('Choose whether to enhance YouTube tabs.');
         await changeModel((next) => {
           next.youtubeMode = message.enabled;
         });
@@ -1509,6 +1519,7 @@ export function createController(
         'setDomainPin',
         'setLook',
         'setYouTubeMode',
+        'setSiteMode',
       ].includes(type) ||
         (type === 'moveItem' && message.source?.kind !== 'tab')
         ? undefined

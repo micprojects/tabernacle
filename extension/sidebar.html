@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="sidebar.css" />
     <link rel="stylesheet" href="tree.css" />
     <link rel="stylesheet" href="youtube.css" />
+    <link rel="stylesheet" href="site-modes.css" />
     <link rel="stylesheet" href="picker-dialog.css" />
     <link rel="stylesheet" href="move-dialog.css" />
     <link rel="stylesheet" href="container-picker.css" />
@@ -88,9 +89,20 @@
           hidden
         >
           <span class="youtube-switch" aria-hidden="true"></span>
-          <span>YouTube Mode</span>
+          <span>Enhanced</span>
         </button>
         <label class="sr-only" for="domain-sort">Sort filtered tabs</label>
+        <button
+          id="site-mode"
+          type="button"
+          role="switch"
+          aria-checked="true"
+          aria-controls="tree"
+          hidden
+        >
+          <span class="site-switch" aria-hidden="true"></span>
+          <span id="site-mode-label"></span>
+        </button>
         <select id="domain-sort" aria-controls="tree">
           <option value="newest">Newest opened</option>
           <option value="viewed">Recently viewed</option>
@@ -113,6 +125,10 @@
           <span>Allow YouTube access for channels and progress.</span>
           <button id="youtube-allow" type="button">Allow access</button>
         </div>
+      </div>
+      <div id="site-access" hidden>
+        <span id="site-access-description"></span>
+        <button id="site-allow" type="button">Allow access</button>
       </div>
       <main id="tree" class="tree" role="tree" aria-label="Tabs and folders" tabindex="0">
         <p class="loading">Opening your tabs…</p>

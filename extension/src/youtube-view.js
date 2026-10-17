@@ -5,6 +5,7 @@ import {
   youtubePageLabel,
   videoTime,
   videoInProgress,
+  youtubeTitle,
 } from './youtube.js';
 
 function element(tag, className, text) {
@@ -39,33 +40,27 @@ export function createYouTubeView({ tree, onChange, onPermission }) {
     const id = youtubeVideoId(tab.url);
     if (!id) return;
     const value = service.peek(tab);
-    row.querySelector('.youtube-channel').textContent = value?.channel || 'Channel unavailable';
+    const channel = row.querySelector('.youtube-channel');
+    channel.textContent = value?.channel || '';
+    channel.hidden = !channel.textContent;
     const duration = row.querySelector('.youtube-duration');
-    duration.textContent = value?.live ? 'Live' : videoTime(value?.duration);
+    duration.textContent = value?.live ? '' : videoTime(value?.duration);
     duration.hidden = !duration.textContent;
-    const status = row.querySelector('.youtube-status');
     const position = row.querySelector('.youtube-position');
     const progress = row.querySelector('.youtube-progress');
-    const known = Number.isFinite(value?.position);
+    const known = Number.isFinite(value?.position) && value.position > 0 && !value.live;
     position.textContent = known
-      ? value.live
-        ? 'Live stream'
-        : `${videoTime(value.position)}${value.duration ? ` / ${videoTime(value.duration)}` : ''}`
-      : 'Progress unknown';
-    status.textContent = known
-      ? !value.current
-        ? 'Last seen'
-        : value.ended
-          ? 'Finished'
-          : !value.paused
-            ? 'Playing'
-            : 'Paused'
+      ? `${videoTime(value.position)}${value.duration ? ` / ${videoTime(value.duration)}` : ''}`
       : '';
-    progress.hidden = !known || !value.duration || value.live;
+    position.hidden = !known;
+    position.title = known
+      ? `${value.current ? 'Position' : 'Last seen'}: ${position.textContent}`
+      : '';
+    progress.hidden = !known || !value.duration;
     if (!progress.hidden) {
       progress.max = value.duration;
       progress.value = value.position;
-      progress.setAttribute('aria-label', `Video progress: ${position.textContent}`);
+      progress.setAttribute('aria-label', position.title);
     }
   }
 
@@ -152,13 +147,13 @@ export function createYouTubeView({ tree, onChange, onPermission }) {
 
     content(tab, folder) {
       const id = youtubeVideoId(tab.url);
+      const mediaColumn = element('span', 'youtube-media');
       const media = element('span', 'youtube-thumbnail');
-      media.setAttribute('aria-hidden', 'true');
-      media.append(
-        id
-          ? element('span', 'youtube-play-icon', '▶')
-          : icon(youtubePageLabel(tab.url) === 'Playlist' ? 'list' : 'globe'),
-      );
+      const placeholder = id
+        ? element('span', 'youtube-play-icon', '▶')
+        : icon(youtubePageLabel(tab.url) === 'Playlist' ? 'list' : 'globe');
+      placeholder.setAttribute('aria-hidden', 'true');
+      media.append(placeholder);
       if (id) {
         const image = element('img', '');
         image.alt = '';
@@ -176,37 +171,41 @@ export function createYouTubeView({ tree, onChange, onPermission }) {
         image.addEventListener('error', () => image.remove(), { once: true });
         media.append(image);
         const duration = element('span', 'youtube-duration');
+        duration.setAttribute('aria-label', 'Video duration');
         duration.hidden = true;
         media.append(duration);
+        const progress = element('progress', 'youtube-progress');
+        progress.hidden = true;
+        media.append(progress);
       }
+      mediaColumn.append(media);
       const copy = element('span', 'youtube-copy');
-      copy.append(
-        element('span', 'label', (tab.title || 'YouTube').replace(/\s+[-–—|]\s+YouTube$/i, '')),
-      );
+      copy.append(element('span', 'label', youtubeTitle(tab.title)));
       const meta = element('span', 'youtube-meta');
-      meta.append(
-        element('span', 'youtube-channel', id ? 'Channel unavailable' : youtubePageLabel(tab.url)),
-      );
+      const channel = element('span', 'youtube-channel', id ? '' : youtubePageLabel(tab.url));
+      channel.hidden = Boolean(id);
+      meta.append(channel);
       if ((duplicates.get(id) || 0) > 1) {
         const duplicate = element('span', 'youtube-duplicate', 'Duplicate');
         duplicate.title = `${duplicates.get(id)} tabs show this video`;
         meta.append(duplicate);
       }
       copy.append(meta);
-      const location = element('span', 'youtube-folder', folder.replace('Folder: ', ''));
+      const location = element('span', 'youtube-folder');
+      const path = folder.replace('Folder: ', '');
+      location.hidden = path === 'Home';
+      location.append(
+        icon('group'),
+        element('span', '', path.replace(/^(Pinned · )?Home \/ /, '$1')),
+      );
       location.title = folder;
       copy.append(location);
       if (id) {
-        const playback = element('span', 'youtube-playback');
-        playback.append(
-          element('span', 'youtube-position', 'Progress unknown'),
-          element('span', 'youtube-status'),
-        );
-        const progress = element('progress', 'youtube-progress');
-        progress.hidden = true;
-        copy.append(playback, progress);
+        const position = element('span', 'youtube-position');
+        position.hidden = true;
+        copy.append(position);
       }
-      return [media, copy];
+      return [mediaColumn, copy];
     },
 
     mount() {
