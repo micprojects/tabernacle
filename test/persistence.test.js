@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { memoryBrowser } from '../preview/browser.js';
+import { matchesDomain } from '../extension/src/domain-filter.js';
+import { listDomains } from '../extension/src/domains.js';
 import { deserializeMembership, deserializeModel } from '../extension/src/persistence.js';
 
 async function legacyFixture({ modelField, membershipField }) {
@@ -129,4 +131,69 @@ test('compatibility reads preserve absent membership and explicit Home placement
     version: 1,
     groups: [],
   });
+});
+
+test('retired preferences and Hacker News routing cannot affect restored tabs or new saves', async () => {
+  const url = 'https://example.org/article';
+  const story = {
+    id: '8863',
+    commentsUrl: 'https://news.ycombinator.com/item?id=8863',
+    articleUrl: url,
+    linkUrl: url,
+    title: 'An old submission',
+  };
+  const api = memoryBrowser({ tabs: [{ id: 1, windowId: 1, url, title: 'Article' }] });
+  // Seed raw storage to exercise upgrades from the removed enhancement.
+  await api.storage.local.set({
+    'tabernacle.model.v1': {
+      version: 1,
+      groups: [],
+      siteModes: { hn: true, reddit: true },
+      siteEnhancementsEnabled: false,
+      youtubeMode: false,
+    },
+  });
+  await api.sessions.setTabValue(1, 'tabernacle.membership.v1', {
+    groupId: null,
+    treeId: 'article',
+    ancestors: [],
+    order: 0,
+    hnStory: story,
+  });
+  const controller = createController(api);
+  const send = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
+  try {
+    const state = await send('snapshot');
+    const retired = ['siteModes', 'siteEnhancementsEnabled', 'youtubeMode'];
+    for (const value of [state, await send('getSettings')])
+      for (const key of retired) assert.equal(Object.hasOwn(value, key), false);
+    assert.equal(Object.hasOwn(state.tabs[0], 'hnStory'), false);
+    assert.equal(
+      matchesDomain({ ...state.tabs[0], hnStory: story }, 'news.ycombinator.com'),
+      false,
+    );
+    assert.equal(matchesDomain(state.tabs[0], 'example.org'), true);
+    const domains = listDomains([{ ...state.tabs[0], hnStory: story }], ['example.org']);
+    assert.equal(domains[0].domain, 'example.org');
+    assert.equal(domains[0].source.title, 'Article');
+    for (const type of [
+      'setSiteMode',
+      'setHackerNewsView',
+      'setYouTubeMode',
+      'setSiteEnhancementsEnabled',
+    ])
+      await assert.rejects(
+        send(type, { mode: 'hn', enabled: true, id: 1, view: 'comments', url, story }),
+        /Unknown Tabernacle action/,
+      );
+    await send('setLook', { partial: true, value: { domains: true } });
+    await send('saveForLater', { id: 1 });
+    for (const key of retired)
+      assert.equal(Object.hasOwn(api.testing.saved['tabernacle.model.v1'], key), false);
+    const membership = await api.sessions.getTabValue(1, 'tabernacle.membership.v1');
+    assert.equal(Object.hasOwn(membership, 'hnStory'), false);
+    assert.equal(membership.treeId, 'article');
+  } finally {
+    controller.dispose();
+  }
 });

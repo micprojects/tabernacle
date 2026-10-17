@@ -57,8 +57,6 @@ export function createBrowserCache(api, changed = () => {}) {
     'audible',
     'mutedInfo',
     'discarded',
-    'isArticle',
-    'isInReaderMode',
   ]);
 
   function updateMetadata(id, properties, windowId) {
@@ -94,17 +92,9 @@ export function createBrowserCache(api, changed = () => {}) {
     'cookieStoreId',
     'active',
     'lastAccessed',
-    'isArticle',
-    'isInReaderMode',
   ]);
   watch(api.tabs.onUpdated, (id, properties, tab) => {
-    const metadata = { ...properties };
-    // Firefox reports Reader View changes with load completion, without always
-    // including isInReaderMode in changeInfo.
-    if (properties.status === 'complete')
-      for (const key of ['isArticle', 'isInReaderMode'])
-        if (typeof tab[key] === 'boolean') metadata[key] = tab[key];
-    if (!updateMetadata(id, metadata, tab.windowId)) invalidateTabs(tab.windowId);
+    if (!updateMetadata(id, properties, tab.windowId)) invalidateTabs(tab.windowId);
     // Domain headings can resolve a site name once its page title has settled.
     if (
       properties.status === 'complete' ||

@@ -17,14 +17,7 @@ const functionStatements = {
 
 export default [
   {
-    ignores: [
-      '**/node_modules/**',
-      'dist/**',
-      'test-results/**',
-      'output/**',
-      'firefox/**',
-      'extension/vendor/**',
-    ],
+    ignores: ['**/node_modules/**', 'dist/**', 'test-results/**', 'output/**', 'firefox/**'],
   },
   {
     files: ['extension/src/**/*.js'],

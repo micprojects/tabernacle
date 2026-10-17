@@ -4,8 +4,5 @@ test-results/
 output/
 firefox/
 package-lock.json
-# Keep vendored Mozilla sources byte-for-byte reproducible.
-extension/vendor/readability/
-# Preserve original website favicon bytes used by site enhancements and screenshot fixtures.
-extension/icons/sites/*.svg
+# Preserve original website favicon bytes used by screenshot fixtures.
 assets/screenshots/favicons/*.svg

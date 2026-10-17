@@ -251,9 +251,6 @@ test('settings updates merge only edited fields across windows and reject invali
   const before = (await send('getSettings')).look;
   assert.deepEqual(Object.keys(await send('getSettings')), [
     'look',
-    'siteEnhancementsEnabled',
-    'youtubeMode',
-    'siteModes',
     'newTab',
     'generation',
     'revision',

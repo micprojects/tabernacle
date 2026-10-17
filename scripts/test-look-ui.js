@@ -271,8 +271,6 @@ try {
   ).toEqual([
     'sidebar.css',
     'tree.css',
-    'youtube.css',
-    'site-modes.css',
     'picker-dialog.css',
     'move-dialog.css',
     'container-picker.css',

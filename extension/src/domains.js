@@ -1,5 +1,4 @@
 import { domainForTab, normaliseDomain } from './domain-filter.js';
-import { hackerNewsDisplayTab } from './hacker-news.js';
 import { isSavedForLater } from './model.js';
 
 export function normaliseDomainPins(value) {
@@ -16,12 +15,12 @@ export function listDomains(tabs, pins = []) {
     if (!domain) continue;
     let entry = hosts.get(domain);
     if (!entry) {
-      entry = { domain, count: 0, ownCount: 0, source: hackerNewsDisplayTab(tab) };
+      entry = { domain, count: 0, ownCount: 0, source: tab };
       hosts.set(domain, entry);
     }
     entry.count++;
     entry.ownCount++;
-    if (!entry.source.favIconUrl && tab.favIconUrl) entry.source = hackerNewsDisplayTab(tab);
+    if (!entry.source.favIconUrl && tab.favIconUrl) entry.source = tab;
   }
   for (const entry of hosts.values()) {
     let parent = entry.domain;

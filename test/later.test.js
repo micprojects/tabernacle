@@ -6,7 +6,7 @@ import { TAB_KEY, isSavedForLater } from '../extension/src/model.js';
 import { createTreeIndex } from '../extension/src/tree-index.js';
 import { listDomains } from '../extension/src/domains.js';
 import { domainResults } from '../extension/src/domain-filter.js';
-import { laterCategory, laterResults, laterAge } from '../extension/src/later.js';
+import { laterResults } from '../extension/src/later.js';
 import { closeFallback } from '../extension/src/close-selection.js';
 
 function fixture() {
@@ -193,46 +193,7 @@ test('saving is window scoped and does not affect children or newly opened links
   assert.equal(stored.order, 100);
 });
 
-test('URL filters recognise content, retain unknowns in All, and reject misleading hosts', () => {
-  const examples = {
-    videos: [
-      'https://www.youtube.com/watch?v=abcdefghijk',
-      'https://youtu.be/abcdefghijk',
-      'https://m.youtube.com/shorts/abcdefghijk',
-      'https://vimeo.com/123456',
-      'https://site.test/film.mp4',
-    ],
-    documents: [
-      'https://docs.google.com/document/d/example/edit',
-      'https://docs.google.com/spreadsheets/d/example/edit',
-      'https://drive.google.com/file/d/example/view',
-      'file:///tmp/notes.pdf',
-      'https://site.test/notes.PDF?download=1',
-    ],
-    articles: [
-      'https://en.wikipedia.org/wiki/World_Wide_Web',
-      'https://developer.mozilla.org/en-US/docs/Web/CSS',
-      'https://site.test/blog/a-post',
-      'https://example.substack.com/p/a-post',
-      'https://www.bbc.co.uk/news/articles/example',
-    ],
-    other: [
-      'https://youtube.com/',
-      'https://youtube.com/results?search_query=watch',
-      'https://notyoutube.com/watch?v=abcdefghijk',
-      'https://docs.google.com/',
-      'https://maps.google.com/',
-      'https://example.com/?url=https://youtube.com/watch?v=abcdefghijk',
-      'about:blank',
-      'javascript:alert(1)',
-      'invalid',
-    ],
-  };
-  for (const [category, urls] of Object.entries(examples))
-    for (const url of urls) assert.equal(laterCategory(url), category, url);
-});
-
-test('queue ordering uses added time, combines search and filters, and retains duplicate URLs', () => {
+test('queue ordering uses added time, searches titles and URLs, and retains duplicate URLs', () => {
   const tabs = [
     { id: 1, savedForLaterAt: 100, title: 'First', url: 'https://example.com/blog/post' },
     { id: 2, savedForLaterAt: 300, title: 'Copy', url: 'https://example.com/blog/post' },
@@ -245,14 +206,15 @@ test('queue ordering uses added time, combines search and filters, and retains d
     [2, 3, 1],
   );
   assert.deepEqual(
-    laterResults(tabs, { category: 'articles', query: 'EXAMPLE', sort: 'oldest' }).map(
-      (tab) => tab.id,
-    ),
+    laterResults(tabs, { query: 'EXAMPLE', sort: 'oldest' }).map((tab) => tab.id),
     [1, 2],
   );
-  assert.deepEqual(laterResults(tabs, { category: 'videos', query: 'copy' }), []);
-  assert.equal(laterAge(1000, 1000), 'Just now');
-  assert.equal(laterAge(1000, 1000 + 90 * 60_000), '1h ago');
+  assert.deepEqual(
+    laterResults(tabs, { query: 'copy' }).map((tab) => tab.id),
+    [2],
+  );
+  tabs[2].articlePreview = { title: 'Obsolete preview', byline: 'Old author' };
+  assert.deepEqual(laterResults(tabs, { query: 'Old author' }), []);
 });
 
 test('closing a saved active tab selects the nearest matching saved neighbour', () => {
@@ -272,6 +234,6 @@ test('closing a saved active tab selects the nearest matching saved neighbour', 
       .filter((tab) => tab.id !== 2)
       .map((tab) => ({ ...tab, active: tab.id === 4 })),
   };
-  assert.equal(closeFallback(before, after, 2, { later: true, category: 'articles' }), 1);
-  assert.equal(closeFallback(before, after, 2, { later: true, category: 'videos' }), null);
+  assert.equal(closeFallback(before, after, 2, { later: true, query: 'blog/' }), 1);
+  assert.equal(closeFallback(before, after, 2, { later: true, query: 'missing' }), null);
 });

@@ -5,7 +5,6 @@ import { sortContainers } from './containers.js';
 import { icon } from './icons.js';
 import { createSettingsBackup } from './settings-backup.js';
 import { createNewTabSettings } from './new-tab-settings.js';
-import { createSiteEnhancementsSettings } from './site-enhancements-settings.js';
 
 const $ = (id) => document.getElementById(id);
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
@@ -22,10 +21,6 @@ let settingsState;
 let disposed = false;
 const folderBackup = createSettingsBackup({ request: (...args) => request(...args) });
 const newTabSettings = createNewTabSettings({ request: (...args) => request(...args), demo });
-const siteEnhancements = createSiteEnhancementsSettings({
-  request: (...args) => request(...args),
-  demo,
-});
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -367,15 +362,7 @@ $('shortcut-settings').addEventListener('click', async () => {
 });
 
 function navigate(focus = false) {
-  const sections = [
-    'appearance',
-    'new-tab',
-    'site-enhancements',
-    'containers',
-    'backup',
-    'shortcuts',
-    'about',
-  ];
+  const sections = ['appearance', 'new-tab', 'containers', 'backup', 'shortcuts', 'about'];
   const section = sections.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'appearance';
   for (const id of sections) $(id).hidden = id !== section;
   for (const link of document.querySelectorAll('nav a')) {
@@ -385,7 +372,6 @@ function navigate(focus = false) {
   if (focus) $(`${section}-title`).focus();
   if (section === 'containers' && request) loadContainers();
   if (section === 'backup' && request) folderBackup.refresh();
-  if (section === 'site-enhancements') siteEnhancements.refreshPermissions();
   if (section === 'shortcuts') refreshShortcuts();
 }
 
@@ -402,7 +388,6 @@ const refreshScheduler = createRefreshScheduler({
       settingsState = next;
       acceptLook(next.look);
       newTabSettings.accept(next.newTab);
-      siteEnhancements.accept(next);
       $('appearance-fields').disabled = savingLook;
       errorAt('page-error');
       if (!$('containers').hidden) await loadContainers();
@@ -421,7 +406,6 @@ window.addEventListener(
     disposed = true;
     refreshScheduler.dispose();
     newTabSettings.dispose();
-    siteEnhancements.dispose();
   },
   { once: true },
 );
@@ -430,16 +414,9 @@ window.addEventListener('hashchange', () => navigate(true));
 window.addEventListener('focus', () => {
   scheduleRefresh();
   if (!$('shortcuts').hidden) refreshShortcuts();
-  if (!$('site-enhancements').hidden) siteEnhancements.refreshPermissions();
 });
 window.addEventListener('beforeunload', (event) => {
-  if (
-    dirty.size ||
-    savingContainer ||
-    folderBackup.isBusy() ||
-    newTabSettings.isBusy() ||
-    siteEnhancements.isBusy()
-  )
+  if (dirty.size || savingContainer || folderBackup.isBusy() || newTabSettings.isBusy())
     event.preventDefault();
 });
 for (const link of document.querySelectorAll('nav a')) link.prepend(icon(link.dataset.icon));
@@ -500,7 +477,6 @@ async function start() {
   settingsState = await request('getSettings');
   acceptLook(settingsState.look);
   newTabSettings.accept(settingsState.newTab);
-  siteEnhancements.accept(settingsState);
   $('appearance-fields').disabled = false;
   navigate();
 }

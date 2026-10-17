@@ -164,10 +164,9 @@ keeps Firefox's choice. This temporary context is never stored. No fold or membe
 changes are needed for this view. Dragging and fold
 controls are disabled while filtering; explicit Move tab remains available.
 The header's close button or Escape restores the prior scroll and selection.
-The compact domain search matches titles and source URLs, combined with the current
-YouTube filter and sort. Site headings and related-page counts use the full domain
-collection so typing does not change them. Ctrl/Command K focuses the current view's
-search (domain, Later or ordinary). Escape clears a populated, focused domain field
+The compact domain search matches titles and source URLs with the current sort.
+Site headings use the full domain collection so typing does not change them.
+Ctrl/Command K focuses the current view's search (domain, Later or ordinary). Escape clears a populated, focused domain field
 after dismissing menus/dialogs; the next Escape returns to folders. Domain tokens
 are not parsed in ordinary search. A directory-origin route retains its selected
 footer button and provides Back to Domains, restoring scroll and the selected row or
@@ -179,95 +178,9 @@ navigation, view restoration, favicon colours and narrow-panel/colour-mode check
 `node scripts/test-domain-filter-firefox.js` for native Firefox and window isolation.
 Hostname, colour and ordering checks are included in `npm test`.
 
-### YouTube enhancement
-
-The model's `youtubeMode` boolean defaults to true when absent. `setYouTubeMode` saves
-it through the existing serialised controller and notifies all windows. The Enhanced toggle
-replaces the count only on supported YouTube domains, including when switched off.
-The accessible status retains the result count. Domain navigation and sorting are unchanged.
-
-`src/youtube.js` recognises video IDs from watch, Shorts, live, embed and short-link
-URLs, ignoring tracking and timestamp parameters. `src/youtube-view.js` renders the
-Continue watching layout, using an IntersectionObserver to load visible thumbnails
-and check at most two loaded tabs concurrently every five seconds. Optional host
-access is requested from the explicit Allow access button; without it, ordinary tab
-data and thumbnails remain usable. `scripting.executeScript` only reads the isolated
-DOM/video properties. It never activates, seeks, starts or loads a video. Discarded
-tabs are never injected. Ad players and mismatched navigation IDs are rejected.
-Live detection uses the media duration or the player's active live class, never
-the hidden live badge that YouTube also includes in ordinary video players.
-
-Public oEmbed metadata is cached by video ID with a bounded cache, failure backoff,
-an eight-second timeout and credential/referrer-free requests. Observed positions
-are cached separately per tab in `tabernacle.youtube.v1` session values, never shared
-between duplicate tabs. Saved observations identify Last seen in their tooltip and
-accessible progress label. Unknown progress and playback-state text are omitted;
-known progress appears along the thumbnail's bottom edge with a position below the
-title. Cached duration/channel metadata can be shared for the same video. Switching
-off stops polling and aborts pending metadata fetches. Late results cannot update a
-different video or the standard tree. The CSP permits metadata connections only to
-`https://www.youtube.com`; no third-party metadata service or API key is used.
-
-Titles omit YouTube's leading notification count and site suffix. Folder paths omit
-the Home prefix, and Home alone stays in the row tooltip. Show in folder and Copy
-link actions appear over the thumbnail on hover or keyboard focus (beneath it on
-touch devices). Firefox 158's native Picture-in-Picture API was tested with a trusted
-sidebar click in an isolated profile: `scripting.executeScript` does not transfer
-user activation, so the player rejects the request. There is no PiP button until
-Firefox supports this route; no browser preferences or privileged API workaround
-are used.
-
-The In progress and Duplicates filters are temporary projections. Their visible IDs
-are passed to close selection, so sidebar and native closes use visible neighbours.
-Run `node scripts/test-youtube-ui.js` for permission, layout, filters and persistence;
-`node scripts/test-youtube-firefox.js` checks optional access, real media properties
-and sleeping-tab/persistence behaviour in an isolated native Firefox profile. Its
-tiny local silent WebM fixture replaces the body of a fresh public YouTube tab; it
-never opens a personal profile. Pure parsing, caching and preference tests run in
-`npm test`.
-
-### Other site modes
-
-`src/site-modes.js` recognises supported hostnames and routes and provides the small amount
-of context available from URLs alone. The shared `src/site-view.js` keeps the existing flat
-domain list, sort order, close behaviour, container/audio labels and folder tooltips. Its
-Enhanced switch is saved per mode in `siteModes` through `setSiteMode`; absent preferences default on.
-Google's shared host only offers Maps enhancement when the source tab is a Maps page. Non-map
-results on that domain retain normal rows. Site families do not silently broaden the domain
-filter to other hosts.
-
-`src/site-reader.js` is a self-contained, isolated-world reader for Reddit (modern and old),
-Hacker News, GitHub, Amazon, eBay, Etsy, Wikipedia, Google Docs/Sheets/Slides, Google Maps,
-IMDb and Letterboxd. It uses targeted DOM fields and structured metadata, never page-world
-application state. There are no account API calls. Detail rows are limited to two text lines
-(each can wrap twice), plus a related-item label only when there are multiple matching tabs.
-Preview images are used for products, articles, films and suitable Reddit posts. Maps use
-the name/category/address; GitHub and documents use their existing favicon. No ratings,
-review snippets, invented reading progress, shipping estimates or recommendation feeds.
-
-`src/site-service.js` requests optional access only from the explicit Allow access button.
-Shopping access is limited to the selected site's country domain; document access is limited
-to docs.google.com; Maps requests the selected Google host and its www equivalent. HN adds
-its official Firebase API as a credential-free, referrer-free fallback, with an eight-second
-timeout. Other providers only read loaded tabs. Images omit referrers. All new host permissions
-are optional. Supported country hosts are listed in `site-modes.js` and mirrored in the manifest.
-
-The view checks visible rows with at most two concurrent reads. Successful reads are throttled
-to 30 seconds. Failures retry after 15 seconds, doubling up to five minutes; switching the mode
-off aborts fetches and invalidates pending results. URL checks before/after injection reject
-navigation races. Permission revocation hides enriched observations. Cached data is per tab
-and exact URL, persisted under `tabernacle.site-details.v1` with the tab's durable tree identity.
-Discarded tabs use their own saved observation without injection; unknown fields remain blank.
-Metadata tooltips include the observation time. Related-item labels never collapse or close tabs.
-
-Run `node scripts/test-site-modes-ui.js` for all provider readers, missing/blocked data,
-images with real favicon elements, 220/320/480px layouts, toggles, dark mode and forced colours.
-Unit tests cover routing, identities, permission declarations, retries, sleeping tabs,
-revocation, navigation races and preferences. `node scripts/check-site-modes-live.js` is an
-opt-in network check in an isolated Firefox profile; it records actual retrieval and sidebar
-screenshots under `test-results/site-modes/`. Pass provider names to narrow a rerun. It reports
-unavailable/challenged pages separately from successful reads; deterministic fixtures are not
-evidence of live website access.
+Retired site-enhancement preferences and Hacker News routing are ignored on load
+and omitted on subsequent saves. Every domain uses standard rows and its actual
+source URLs.
 
 ## Moving tabs and folders
 
@@ -568,9 +481,11 @@ Playwright Chromium and Firefox must be installed before running browser checks.
 ## Saved for Later
 
 `src/later-view.js` owns the dedicated sidebar view, with `later.css` for its layout.
-`src/later.js` derives content filters from URLs, native article flags and permitted
-previews, and sorts by the session membership's `savedForLaterAt` timestamp.
-Unknown page types stay available in All. The saved list is scoped to the current window.
+`src/later.js` searches native tab titles and source URLs, then sorts by the session
+membership’s `savedForLaterAt` timestamp. Rows show a favicon and a title capped at
+three lines, with the full title and URL in a tooltip. Search, sorting, keyboard
+navigation and return/close actions operate on the current window’s saved tabs.
+The view does not read page contents, cache previews or request host access.
 
 Saving changes only `savedForLaterAt`. Folder, durable ancestry, order, native pinning
 and containers remain intact. The resolved tree skips saved parents so their children
@@ -579,18 +494,18 @@ folder copy/close actions. Folder duplicate review includes saved items. Clearin
 still exists. Session restoration keeps saved membership; duplicated tabs clear it.
 
 `test/later.test.js`, `scripts/test-later-ui.js` and `scripts/test-later-firefox.js`
-cover persistence, restoration, folder deletion, filters, close selection, keyboard
+cover persistence, restoration, folder deletion, search, close selection, keyboard
 navigation, narrow layouts, colour modes and real Firefox tab/container behaviour.
 
 ### Search and collection actions
 
 `src/tab-source.js` shares original-URL matching across tree search, domain search
-and saved results. `src/tab-collection.js` derives folder-scoped saved search,
+and saved results. It unwraps Firefox’s native `about:reader` addresses for URL
+identity without controlling Reader View or accessing page contents. `src/tab-collection.js` derives folder-scoped saved search,
 duplicate keys, keeper suggestions, reviewed target identities and search close order.
 Saved results stay outside `createTreeIndex`; ordinary search appends a labelled
-projection with folder paths. Search has no article-service or permission side effects.
-Returning a saved item retains its view and query, and Later retains scroll, category
-and sort. The confirmation's Show in folder action is the explicit navigation route.
+projection with folder paths. Returning a saved item retains its view and query,
+and Later retains scroll and sort. The confirmation's Show in folder action is the explicit navigation route.
 
 `src/tab-batch.js` runs inside the controller's serialised request queue. The internal
 `saveTabsForLater`, `undoSaveTabsForLater`, `closeTabSet` and `closeDuplicateTabs`
@@ -598,14 +513,12 @@ actions return a refreshed snapshot with `batchResult.completed`, `skipped`, `fa
 and guarded `undo` targets. Every reviewed target captures the native ID, durable
 identity, source URL, folder, container and saved timestamp. Membership/window/URL
 and collection scope are rechecked before each write; domain closes also validate
-after collecting close-selection state. Query changes, filtered video observations
-and missing duplicate keepers can skip stale targets. Metadata validation only reads
-existing session values and never requests page access or runs extraction.
+after collecting close-selection state. Query changes and missing duplicate keepers
+can skip stale targets. Validation uses native tabs and saved memberships.
 
 Batch timestamps descend in displayed order, newer than prior saves. Undo clears
 only the recorded saved memberships and timestamps; native tabs, containers, pins,
-page state and placement stay intact. Batches never discover new targets. Earlier
-mutations in the same batch do not shrink its reviewed YouTube duplicate-filter set.
+page state and placement stay intact. Batches never discover new targets.
 Unselected descendants survive closure; ordinary single-tab promotion is unchanged.
 
 `src/collection-dialogs.js` reuses the existing modal shell. Exact duplicate groups
@@ -616,70 +529,11 @@ candidates during refresh, never gain new tabs. The submit action requires a kee
 per group, and the controller revalidates a reviewed keeper before each close.
 All queries, directory origins and review selections remain temporary.
 
-Later instantiates `createYouTubeView` with its own list and scroll root. The visible
-host alone polls; both hosts reuse the existing service, session observations,
-permission handling and two-read concurrency limit. All/Videos rows retain saved age,
-return and close actions. Shared master/YouTube preferences stop reads and restore
-ordinary rows. Sleeping tabs remain asleep and rendering cannot seek or start playback.
-
 `test/tab-collection.test.js` covers projection ordering, Reader URLs, exact duplicate
 keys, protected keepers, stale targets, partial failure and guarded undo. The registered
 `scripts/test-tab-collection-ui.js` covers combined flows, stable review, keyboard
 focus, all colour modes at 220/320/480px and offscreen batches. Its Firefox counterpart
 covers native saved-result close selection, containers and session restoration.
-The YouTube UI/native suites include Later observations, visibility and reloads.
-
-### Reader View and article previews
-
-`setReaderMode` checks the saved membership, window and source URL before activating
-the existing tab and calling Firefox's `tabs.toggleReaderMode`. It sets the intended
-state instead of blindly toggling a stale snapshot. Availability comes from native
-`isArticle` / `isInReaderMode` flags. Load completion refreshes these fields even when
-Firefox omits them from changeInfo. Opening Reader View needs no host permission.
-`articleUrl` unwraps `about:reader` URLs for previews, source labels and filtering.
-Close selection receives the actual visible IDs, including rows matched by extracted
-article titles or authors that are unavailable to the background controller.
-
-`src/article-service.js` checks optional access to the exact HTTP(S) host. The manifest
-declares optional web origins. A collapsed **Article previews** control explicitly
-requests both `http://*/*` and `https://*/*` once, within the click gesture. Opening
-the view, adding tabs and declining never request permissions automatically.
-Granting access clears cached denials for every host. Firefox retains the grant
-across sidebar reloads; the control reads actual permissions, not a stored UI flag.
-Removal targets only those two broad patterns, preserving separately granted sites.
-Per-host checks continue to support existing narrow grants (including all ports).
-Only visible saved rows and their immediate scroll margin are checked, with two
-automatic reads at a time. Videos and documents are skipped. No article fetches or
-account APIs are used. Discarded, loading and native Reader View documents are never
-injected. Closing the view or changing permissions invalidates pending results.
-Navigation checks reject stale results. Successful reads are throttled to five minutes;
-failed reads retry after 30 seconds, doubling up to five minutes.
-
-Readability 0.6.0 is vendored unchanged under `extension/vendor/readability/`, with
-the upstream package integrity, file hashes and Apache 2.0 licence. The two scripts
-are injected on demand in the isolated world and parse a cloned document, bounded
-to 50,000 elements. Only plain title/byline/excerpt/date fields and a word count return
-to the sidebar. Article HTML is never rendered or persisted. Reading time is an
-estimate at 220 words per minute. Records in `tabernacle.article.v1` are bound to the
-source URL and durable tree identity; copied session values do not enrich duplicates.
-Removing site access hides cached data until access is granted again.
-
-`scripts/lint-extension.js` scans every shipped file and verifies the pinned source.
-It recognises only two reviewed `UNSAFE_VAR_ASSIGNMENT` diagnostics at lines 1549
-and 1928 of that exact Readability file: restoration of a detached cloned document
-and parsing of a detached noscript image. Upstream already marks these assignments
-with ESLint exemptions, which Mozilla's extension scanner ignores. All other errors
-and warnings fail the check. Updating the library requires reviewing those diagnostics
-and updating the pinned checksums; project lint/format rules preserve vendor bytes.
-
-`test/article.test.js` covers permissions, retries, stale results, cache identity,
-source URL handling and controller behaviour. `scripts/test-reader-ui.js` runs the
-real vendored parser against an original local article, checks that its DOM is
-unchanged, and tests all-site permission denial/grant/removal, new sites without
-further prompts, filtering, keyboard controls and narrow
-layouts. `scripts/test-reader-firefox.js` exercises actual Reader View, extraction,
-containers, cached previews after sidebar reload, revocation and discarded tabs in
-an isolated profile with a local HTTP fixture. Both are registered in release QA.
 
 ## Refresh and folder indexing
 

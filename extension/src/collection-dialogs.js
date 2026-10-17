@@ -56,7 +56,6 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
   function reviewDuplicates(scope, tabs) {
     const groups = duplicateGroups(tabs);
     const initial = groups.flat().map(captureTarget);
-    const previews = new Map(tabs.map((tab) => [tab.id, tab.articlePreview]));
     const selected = new Set(groups.flatMap(suggestedDuplicates));
     const automatic = new Set(selected);
     const nodes = new Map();
@@ -70,9 +69,7 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
     const update = () => {
       if (busy) return;
       const state = getState();
-      const byId = new Map(
-        state.tabs.map((tab) => [tab.id, { ...tab, articlePreview: previews.get(tab.id) }]),
-      );
+      const byId = new Map(state.tabs.map((tab) => [tab.id, tab]));
       const candidates = initial
         .filter(
           (target) =>

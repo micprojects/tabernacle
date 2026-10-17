@@ -7,8 +7,6 @@
     <link rel="icon" href="icons/tabernacle.svg" type="image/svg+xml" sizes="any" />
     <link rel="stylesheet" href="sidebar.css" />
     <link rel="stylesheet" href="tree.css" />
-    <link rel="stylesheet" href="youtube.css" />
-    <link rel="stylesheet" href="site-modes.css" />
     <link rel="stylesheet" href="picker-dialog.css" />
     <link rel="stylesheet" href="move-dialog.css" />
     <link rel="stylesheet" href="container-picker.css" />
@@ -101,29 +99,7 @@
       </div>
       <div id="domain-tools" class="domain-tools" hidden>
         <span id="domain-count"></span>
-        <button
-          id="youtube-mode"
-          type="button"
-          role="switch"
-          aria-checked="true"
-          aria-controls="tree"
-          hidden
-        >
-          <span class="youtube-switch" aria-hidden="true"></span>
-          <span>Enhanced</span>
-        </button>
         <label class="sr-only" for="domain-sort">Sort filtered tabs</label>
-        <button
-          id="site-mode"
-          type="button"
-          role="switch"
-          aria-checked="true"
-          aria-controls="tree"
-          hidden
-        >
-          <span class="site-switch" aria-hidden="true"></span>
-          <span id="site-mode-label"></span>
-        </button>
         <select id="domain-sort" aria-controls="tree">
           <option value="newest">Newest opened</option>
           <option value="viewed">Recently viewed</option>
@@ -132,25 +108,6 @@
           <option value="title">Title A–Z</option>
           <option value="tree">Tree order</option>
         </select>
-      </div>
-      <div id="youtube-tools" hidden>
-        <div class="youtube-filters" role="group" aria-label="Filter YouTube tabs">
-          <button type="button" data-youtube-filter="all" aria-pressed="true">All</button>
-          <button type="button" data-youtube-filter="progress" aria-pressed="false">
-            In progress
-          </button>
-          <button type="button" data-youtube-filter="duplicates" aria-pressed="false">
-            Duplicates
-          </button>
-        </div>
-        <div id="youtube-access" hidden>
-          <span>Allow YouTube access for channels and progress.</span>
-          <button id="youtube-allow" type="button">Allow access</button>
-        </div>
-      </div>
-      <div id="site-access" hidden>
-        <span id="site-access-description"></span>
-        <button id="site-allow" type="button">Allow access</button>
       </div>
       <main id="tree" class="tree" role="tree" aria-label="Tabs and folders" tabindex="0">
         <p class="loading">Opening your tabs…</p>

@@ -1,9 +1,0 @@
-Website favicons used to identify supported sites in Site Enhancements.
-
-These are the sites’ original favicon files. Their respective owners retain all
-rights to their logos and marks; they are not Tabernacle artwork. Sources and
-retrieval details are recorded in sources.json.
-
-The icons are bundled with the extension so the settings page does not need
-network requests or site-data permissions to display them. The GitHub favicon
-is its official light version, shown on a white badge in either colour mode.

@@ -119,15 +119,27 @@ try {
     fixture.container,
   );
   assert(snapshot.tabs.find((tab) => tab.id === fixture.parent).savedForLaterAt > 0);
-  await browser.evaluate(() =>
-    [...document.querySelectorAll('.later-filters button')]
-      .find((button) => button.textContent === 'Articles')
-      .click(),
-  );
   assert.equal(
-    await browser.evaluate(() => document.querySelectorAll('#later-view .later-row').length),
-    2,
+    await browser.evaluate(
+      () =>
+        document.querySelectorAll(
+          '#later-view .later-preview-options, #later-view .later-read, #later-view .later-filters, #later-view .later-domain, #later-view .later-time',
+        ).length,
+    ),
+    0,
   );
+  await browser.evaluate(() => {
+    const search = document.getElementById('later-search');
+    search.value = 'parent';
+    search.dispatchEvent(new Event('input'));
+  });
+  await wait(() => document.querySelectorAll('#later-view .later-row').length === 1);
+  await browser.evaluate(() => {
+    const search = document.getElementById('later-search');
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+  });
+  await wait(() => document.querySelectorAll('#later-view .later-row').length === 2);
   // Reload the real sidebar; the queue belongs to tab sessions, not the page.
   await browser.evaluate(() => {
     window.laterReloadMarker = true;
@@ -196,7 +208,7 @@ try {
     false,
   );
   console.log(
-    '✓ Native Firefox: save, child promotion, containers, filters, sidebar reload, return and close',
+    '✓ Native Firefox: save, child promotion, containers, plain rows, search, sidebar reload, return and close',
   );
 } finally {
   await browser.close();
