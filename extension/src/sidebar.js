@@ -7,6 +7,8 @@ import { createDomainHeader } from './domain-header.js';
 import { createDomainsView } from './domains-view.js';
 import { isYouTubeDomain, youtubeVideoId } from './youtube.js';
 import { createYouTubeView } from './youtube-view.js';
+import { SITE_MODES, siteModeForDomain, sitePage } from './site-modes.js';
+import { createSiteView } from './site-view.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
 import { createFaviconTints } from './favicon-tint.js';
@@ -43,6 +45,25 @@ let domainSourceId;
 let youtubeFilter = 'all';
 let youtubeAllowed = false;
 let youtubeVisibleIds = [];
+let siteMode = null;
+let siteAllowed = false;
+const siteView = createSiteView({
+  tree,
+
+  onPermission: (allowed) => {
+    siteAllowed = allowed;
+    $('site-access').hidden = !siteActive() || allowed;
+  },
+});
+
+function siteActive() {
+  return siteMode && state?.siteModes?.[siteMode] !== false ? siteMode : null;
+}
+
+function enrichedSiteTab(tab) {
+  return siteActive() && sitePage(tab.url)?.mode === siteMode;
+}
+
 const youtubeView = createYouTubeView({
   tree,
 
@@ -881,6 +902,19 @@ function createTabRow(tab, expanded, stats) {
     const videoId = youtubeVideoId(tab.url);
     if (videoId) row.dataset.videoId = videoId;
     row.append(...youtubeView.content(tab, tabFolderLabel(tab)));
+    const actions = el('span', 'youtube-actions');
+    actions.append(
+      button('Show in folder', 'group', () => showTabInFolder(tab.id)),
+      button(videoId ? 'Copy video link' : 'Copy link', 'copy', () => copyUrls('tab', tab.id)),
+    );
+    row.querySelector('.youtube-media').append(actions);
+  } else if (enrichedSiteTab(tab)) {
+    row.classList.add('site-row');
+    row.dataset.folder = tabFolderLabel(tab);
+    row.dataset.siteAriaSuffix = row
+      .getAttribute('aria-label')
+      .slice((tab.title || 'New tab').length);
+    row.append(...siteView.content(tab, tabFolderLabel(tab), favicon));
   } else if (stats.descendants) {
     row.setAttribute('aria-expanded', String(expanded));
     const count = `${stats.descendants} nested ${stats.descendants === 1 ? 'tab' : 'tabs'}`;
@@ -907,7 +941,7 @@ function createTabRow(tab, expanded, stats) {
     slot.append(favicon);
     row.append(slot);
   }
-  if (!youtubeActive()) row.append(tabLabel(tab));
+  if (!youtubeActive() && !enrichedSiteTab(tab)) row.append(tabLabel(tab));
   if (childAudioCount(tab) && !playsAudio(tab))
     row.append(audioIndicator(playingLabel(childAudioCount(tab), 'in this tab’s children')));
   if (tab.audible || tab.mutedInfo?.muted)
@@ -963,6 +997,8 @@ function tabRow(tab, expanded, stats) {
         domainFilter ? tabFolderLabel(tab) : null,
         youtubeActive(),
         youtubeActive() ? youtubeView.duplicateCount(tab) : 0,
+        enrichedSiteTab(tab),
+        enrichedSiteTab(tab) ? siteView.duplicateCount(tab) : 0,
       ],
       () => createTabRow(tab, expanded, stats),
     ),
@@ -1369,17 +1405,27 @@ function render(motionKey = null) {
   $('navigation-capsule').hidden = Boolean(domainFilter);
   $('sidebar-header').classList.toggle('domain-mode', Boolean(domainFilter));
   $('domain-tools').hidden = !domainFilter;
+  const site = siteActive();
+  $('site-mode').hidden = !siteMode;
+  $('site-mode-label').textContent = siteMode ? 'Enhanced' : '';
+  $('site-mode').setAttribute('aria-checked', String(Boolean(site)));
+  $('site-access').hidden = !site || siteAllowed;
+  $('site-access-description').textContent = siteMode
+    ? `Allow access for ${SITE_MODES[siteMode].access}.`
+    : '';
   const youtube = youtubeActive();
   $('youtube-mode').hidden = !isYouTubeDomain(domainFilter);
   $('youtube-mode').setAttribute('aria-checked', String(state.youtubeMode !== false));
   $('youtube-tools').hidden = !youtube;
   $('youtube-access').hidden = !youtube || youtubeAllowed;
-  $('domain-count').hidden = isYouTubeDomain(domainFilter);
+  $('domain-count').hidden = isYouTubeDomain(domainFilter) || Boolean(siteMode);
   tree.classList.toggle('youtube-results', youtube);
   $('domain-tools').classList.toggle('youtube-domain-tools', isYouTubeDomain(domainFilter));
+  $('domain-tools').classList.toggle('site-domain-tools', Boolean(siteMode));
   if (domainFilter) {
     const results = domainResults(index, domainFilter, query, domainSort);
     youtubeView.prepare(results, youtube);
+    siteView.prepare(results, domainFilter, site);
     const visibleResults = youtube
       ? results.filter((tab) => youtubeView.matches(tab, youtubeFilter))
       : results;
@@ -1394,9 +1440,11 @@ function render(motionKey = null) {
     const status = `${youtube && youtubeFilter !== 'all' ? `${visibleResults.length} of ` : ''}${count} from ${domainFilter} in this window`;
     if ($('domain-status').textContent !== status) $('domain-status').textContent = status;
     $('youtube-mode').title = `${count} · Show video thumbnails, duration and observed progress`;
+    $('site-mode').title = `${count} · Show details for these tabs`;
     for (const button of document.querySelectorAll('[data-youtube-filter]'))
       button.setAttribute('aria-pressed', String(button.dataset.youtubeFilter === youtubeFilter));
     youtubeView.mount();
+    siteView.mount();
     $('domain-sort').title =
       ['newest', 'oldest'].includes(domainSort) &&
       results.some((tab) => !(Number.isFinite(tab.openedAt) && tab.openedAt > 0))
@@ -1404,6 +1452,7 @@ function render(motionKey = null) {
         : 'Sort filtered tabs';
   } else {
     youtubeView.prepare([], false);
+    siteView.prepare([], null, null);
     renderDomainHeader(null);
     fillChildren(tree, state.view.scopeId, query);
     $('domain-status').textContent = '';
@@ -1498,6 +1547,10 @@ function filterByDomain(domain, sourceId) {
     if (searchOpen) showSearch(false, { restoreFocus: false });
   }
   domainFilter = domain;
+  siteMode = siteModeForDomain(
+    domain,
+    state.tabs.filter((tab) => tab.id === sourceId),
+  );
   youtubeFilter = 'all';
   domainSourceId = sourceId;
   searchScroll = 0;
@@ -1510,6 +1563,7 @@ function leaveDomain({ restoreFocus = true } = {}) {
   cancelGroupClick();
   closeMenu();
   domainFilter = null;
+  siteMode = null;
   domainSourceId = null;
   selected = domainOrigin?.selected;
   searchScroll = domainOrigin?.scroll ?? 0;
@@ -2092,6 +2146,18 @@ $('youtube-tools').addEventListener('click', (event) => {
 $('youtube-allow').addEventListener('click', () => {
   youtubeView.allow().catch(() => announce('Could not enable YouTube access. Try again.', true));
 });
+$('site-mode').addEventListener('click', async () => {
+  if (!siteMode) return;
+  const toggle = $('site-mode');
+  toggle.disabled = true;
+  await action('setSiteMode', { mode: siteMode, enabled: !siteActive() });
+  toggle.disabled = false;
+});
+$('site-allow').addEventListener('click', () => {
+  siteView.allow().catch(() => announce('Could not enable site access. Try again.', true));
+});
+globalThis.browser?.permissions?.onAdded?.addListener(() => siteView.refreshPermission());
+globalThis.browser?.permissions?.onRemoved?.addListener(() => siteView.refreshPermission());
 globalThis.browser?.permissions?.onAdded?.addListener(() => youtubeView.refreshPermission());
 globalThis.browser?.permissions?.onRemoved?.addListener(() => youtubeView.refreshPermission());
 $('domain-sort').addEventListener('change', () => {

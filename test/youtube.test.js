@@ -6,6 +6,7 @@ import {
   normaliseVideoData,
   videoTime,
   videoInProgress,
+  youtubeTitle,
 } from '../extension/src/youtube.js';
 import { createController } from '../extension/src/controller.js';
 import { memoryBrowser } from '../preview/browser.js';
@@ -13,6 +14,12 @@ import { closeFallback } from '../extension/src/close-selection.js';
 
 const videoId = 'OakDesk0001';
 const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+test('video titles omit YouTube’s notification count and site suffix', () => {
+  assert.equal(youtubeTitle('(196) A video - YouTube'), 'A video');
+  assert.equal(youtubeTitle('A (196) video | YouTube'), 'A (196) video');
+  assert.equal(youtubeTitle('(Part 2) A video'), '(Part 2) A video');
+});
 
 test('YouTube IDs match supported video routes, ignoring timestamps but rejecting lookalikes', () => {
   for (const value of [

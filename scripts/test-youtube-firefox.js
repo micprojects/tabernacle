@@ -77,7 +77,13 @@ try {
           video.muted = true;
           const bytes = Uint8Array.from(atob(clip), (value) => value.charCodeAt(0));
           video.src = URL.createObjectURL(new Blob([bytes], { type: 'video/webm' }));
-          document.body.append(owner, video);
+          const player = document.createElement('div');
+          player.className = 'html5-video-player';
+          const liveBadge = document.createElement('button');
+          liveBadge.className = 'ytp-live-badge';
+          liveBadge.hidden = true;
+          player.append(video, liveBadge);
+          document.body.append(owner, player);
           await new Promise((resolve, reject) => {
             video.addEventListener('loadedmetadata', resolve, { once: true });
             video.addEventListener('error', () => reject(new Error('Fixture video failed')), {
@@ -112,22 +118,35 @@ try {
   );
   assert.equal(
     await browser.evaluate(
-      (id) => document.querySelector(`[data-key="tab:${id}"] .youtube-status`).textContent,
+      (id) => document.querySelector(`[data-key="tab:${id}"] .youtube-progress`).hidden,
       fixture.loaded,
     ),
-    'Paused',
+    false,
   );
   assert.equal(
     await browser.evaluate(
-      (id) => document.querySelector(`[data-key="tab:${id}"] .youtube-position`).textContent,
+      (id) => document.querySelector(`[data-key="tab:${id}"] .youtube-position`).hidden,
       fixture.sleeping,
     ),
-    'Progress unknown',
+    true,
   );
   assert.equal(
     await browser.evaluate(async (id) => (await browser.tabs.get(id)).discarded, fixture.sleeping),
     true,
   );
+  await browser.evaluate(async (id) => {
+    await browser.scripting.executeScript({
+      target: { tabId: id },
+
+      func: () => {
+        document.querySelector('video').currentTime = 10;
+      },
+    });
+  }, fixture.loaded);
+  await wait((id) => {
+    const progress = document.querySelector(`[data-key="tab:${id}"] .youtube-progress`);
+    return progress && !progress.hidden && progress.value === 10 && progress.max === 20;
+  }, fixture.loaded);
   await writeFile(
     'test-results/youtube-mode-firefox.png',
     await browser.screenshot({ sourceSize: size, scale: 2 }),
@@ -159,7 +178,7 @@ try {
   await wait(
     (id) =>
       document.querySelector(`[data-key="tab:${id}"] .youtube-position`)?.textContent ===
-      '0:05 / 0:20',
+      '0:10 / 0:20',
     fixture.loaded,
   );
   console.log(

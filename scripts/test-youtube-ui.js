@@ -71,6 +71,11 @@ await page.addInitScript(() => {
       },
     },
   };
+  Object.defineProperty(navigator.clipboard, 'writeText', {
+    value: async (text) => {
+      ytFixture.copied = text;
+    },
+  });
 });
 const demo = await readFile('preview/demo.js', 'utf8');
 await page.route('**/preview/demo.js', (route) =>
@@ -81,7 +86,7 @@ await page.route('**/preview/demo.js', (route) =>
       .replace(
         'const memberships = {};',
         `
-      entries[0] = ['Building a small oak writing desk - YouTube', 'design', 'https://www.youtube.com/watch?v=OakDesk0001'];
+      entries[0] = ['(196) Building a small oak writing desk - YouTube', 'design', 'https://www.youtube.com/watch?v=OakDesk0001'];
       entries[2] = ['Choosing your first hand plane - YouTube', 'design', 'https://youtube.com/watch?v=HandPlane01'];
       entries[4] = ['Painting a quiet landscape - YouTube', 'research', 'https://youtube.com/watch?v=Landscape01'];
       entries[9] = ['Music for working - YouTube', 'personal', 'https://youtube.com/watch?v=MusicWork01'];
@@ -111,7 +116,7 @@ await page.route('**/preview/demo.js', (route) =>
   }),
 );
 const row = (id) => page.locator(`#tree [data-key="tab:${id}"]`);
-const toggle = page.getByRole('switch', { name: 'YouTube Mode' });
+const toggle = page.getByRole('switch', { name: 'Enhanced' });
 
 const filter = async () => {
   await row(1).click({ button: 'right' });
@@ -135,21 +140,39 @@ try {
   await page.getByRole('button', { name: 'Allow access', exact: true }).click();
   await expect(page.locator('#youtube-access')).toBeHidden();
   await expect(row(1).locator('.youtube-position')).toHaveText('12:30 / 18:42', { timeout: 10000 });
-  await expect(row(10).locator('.youtube-status')).toHaveText('Playing');
-  await expect(row(14).locator('.youtube-position')).toHaveText('Progress unknown');
+  await expect(page.locator('.youtube-status')).toHaveCount(0);
+  await expect(row(1).locator('.label')).toHaveText('Building a small oak writing desk');
+  await expect(row(1).locator('.youtube-progress')).toBeVisible();
+  await expect(row(1).locator('.youtube-progress')).toHaveAttribute('value', '750');
+  await expect(row(1).locator('.youtube-progress')).toHaveAttribute('max', '1122');
+  await expect(row(14).locator('.youtube-position')).toBeHidden();
+  await expect(row(14).locator('.youtube-progress')).toBeHidden();
   await expect(row(14).locator('.youtube-channel')).toHaveText('Bench Notes');
   await expect(row(13).locator('.youtube-channel')).toHaveText('Playlist');
   await expect(row(13).locator('.youtube-progress')).toHaveCount(0);
   await expect(row(1).locator('.youtube-duplicate')).toBeVisible();
   await expect(row(14).locator('.youtube-duplicate')).toBeVisible();
   expect(await page.evaluate(() => ytFixture.scripts.includes(14))).toBe(false);
-  await expect(row(1).locator('.youtube-folder')).toHaveText('Home / Work / Design');
-  console.log(
-    '✓ YouTube Mode defaults on, requests scoped access and shows per-tab progress without waking discarded tabs',
+  await expect(row(1).locator('.youtube-folder')).toHaveText('Work / Design');
+  await row(1).hover();
+  await expect(row(1).locator('.youtube-actions')).toHaveCSS('opacity', '1');
+  await row(1).getByRole('button', { name: 'Copy video link' }).click();
+  expect(await page.evaluate(() => ytFixture.copied)).toBe(
+    'https://www.youtube.com/watch?v=OakDesk0001',
   );
+  const folderAction = row(1).getByRole('button', { name: 'Show in folder', exact: true });
+  await page.mouse.move(0, 0);
+  await folderAction.focus();
+  await expect(row(1).locator('.youtube-actions')).toHaveCSS('opacity', '1');
+  console.log(
+    '✓ Enhanced defaults on for YouTube, requests scoped access and shows per-tab progress without waking discarded tabs',
+  );
+  await expect(page.locator('#toast')).toBeHidden();
+  await toggle.focus();
 
   for (const width of [220, 320, 480]) {
     await page.setViewportSize({ width, height: 760 });
+    await row(14).hover();
     expect(
       await page.locator('.sidebar').evaluate((node) => node.scrollWidth <= node.clientWidth),
     ).toBe(true);
@@ -163,6 +186,11 @@ try {
     await page.screenshot({ path: `test-results/youtube-mode-${width}.png` });
   }
   await page.setViewportSize({ width: 320, height: 760 });
+  await folderAction.press('Enter');
+  await expect(toggle).toBeHidden();
+  await expect(row(1)).toHaveAttribute('aria-selected', 'true');
+  await filter();
+  console.log('✓ Hover and keyboard actions copy the link and reveal the original folder');
   await page.getByRole('button', { name: 'In progress', exact: true }).click();
   await expect.poll(ids).toEqual([10, 3, 1]);
   await page.getByRole('button', { name: 'Duplicates', exact: true }).click();
@@ -201,6 +229,7 @@ try {
   await page.evaluate(() =>
     domainTest.send('setLook', { partial: true, value: { colorScheme: 'dark' } }),
   );
+  await row(1).hover();
   await page.screenshot({ path: 'test-results/youtube-mode-dark.png' });
   await page.emulateMedia({ forcedColors: 'active' });
   await expect(toggle).toBeVisible();
@@ -216,14 +245,14 @@ try {
   await player.route('https://www.youtube.com/watch?**', (route) =>
     route.fulfill({
       contentType: 'text/html',
-      body: '<!doctype html><div id="owner"><ytd-channel-name><a>Bench Notes</a></ytd-channel-name></div><ytd-watch-flexy video-id="OakDesk0001"><video class="html5-main-video"></video></ytd-watch-flexy>',
+      body: '<!doctype html><div id="owner"><ytd-channel-name><a>Bench Notes</a></ytd-channel-name></div><ytd-watch-flexy video-id="OakDesk0001"><div class="html5-video-player"><video class="html5-main-video"></video><button class="ytp-live-badge" hidden>Live</button></div></ytd-watch-flexy>',
     }),
   );
   await player.goto('https://www.youtube.com/watch?v=OakDesk0001');
   await player.evaluate(() =>
     Object.defineProperties(document.querySelector('video'), {
       readyState: { value: 4 },
-      duration: { value: 100 },
+      duration: { value: 100, configurable: true },
       currentTime: { value: 25 },
       paused: { value: true },
     }),
@@ -232,7 +261,17 @@ try {
     channel: 'Bench Notes',
     position: 25,
     duration: 100,
+    live: false,
   });
+  await player.evaluate(() =>
+    document.querySelector('.html5-video-player').classList.add('ytp-live'),
+  );
+  expect((await player.evaluate(readYouTubePlayer, 'OakDesk0001')).live).toBe(true);
+  await player.evaluate(() => {
+    document.querySelector('.html5-video-player').classList.remove('ytp-live');
+    Object.defineProperty(document.querySelector('video'), 'duration', { value: Infinity });
+  });
+  expect((await player.evaluate(readYouTubePlayer, 'OakDesk0001')).live).toBe(true);
   await player.evaluate(() =>
     document.querySelector('ytd-watch-flexy').classList.add('ad-showing'),
   );
@@ -242,7 +281,9 @@ try {
   );
   expect(await player.evaluate(readYouTubePlayer, 'OakDesk0001')).toBeNull();
   await player.close();
-  console.log('✓ Player reads ignore ads and stale YouTube navigation');
+  console.log(
+    '✓ Hidden live badges do not suppress ordinary progress; real live media, ads and stale navigation are handled',
+  );
 } finally {
   await close();
 }

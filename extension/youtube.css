@@ -81,11 +81,15 @@
 }
 .youtube-results .youtube-row {
   padding-block: 8px;
-  gap: 7px;
+  gap: 8px;
 }
-.youtube-thumbnail {
+.youtube-media {
   flex: 0 0 80px;
   width: 80px;
+  position: relative;
+}
+.youtube-thumbnail {
+  width: 100%;
   height: 45px;
   position: relative;
   overflow: hidden;
@@ -105,7 +109,7 @@
 .youtube-duration {
   position: absolute;
   right: 3px;
-  bottom: 3px;
+  bottom: 6px;
   max-width: calc(100% - 6px);
   padding: 1px 3px;
   border-radius: 3px;
@@ -134,19 +138,32 @@
   gap: 3px 5px;
   align-items: center;
 }
+.youtube-meta:not(:has(:not([hidden]))) {
+  display: none;
+}
 .youtube-channel,
 .youtube-folder,
-.youtube-playback {
+.youtube-position {
   color: var(--muted);
   font-size: 11px;
   line-height: 15px;
 }
 .youtube-channel,
-.youtube-folder {
+.youtube-folder > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.youtube-folder {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.youtube-folder svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 .youtube-duplicate {
   padding: 0 5px;
@@ -156,22 +173,21 @@
   font-size: 10px;
   line-height: 15px;
 }
-.youtube-playback {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0 5px;
+.youtube-position {
   font-variant-numeric: tabular-nums;
 }
 .youtube-progress {
   display: block;
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
   appearance: none;
   width: 100%;
   height: 3px;
   border: 0;
   border-radius: 3px;
   overflow: hidden;
-  background: var(--line);
+  background: #ffffff80;
   accent-color: #da3535;
 }
 .youtube-progress::-moz-progress-bar {
@@ -179,17 +195,62 @@
   border-radius: 3px;
 }
 .youtube-progress::-webkit-progress-bar {
-  background: var(--line);
+  background: #ffffff80;
 }
 .youtube-progress::-webkit-progress-value {
   background: #da3535;
   border-radius: 3px;
 }
+.youtube-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #000b;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+}
+.youtube-actions .icon-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: white;
+}
+.youtube-actions .icon-button:hover {
+  background: #ffffff40;
+}
+.youtube-actions .icon-button:focus-visible {
+  outline: 2px solid white;
+  outline-offset: -2px;
+}
+.youtube-row:is(:hover, :focus-within) .youtube-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.youtube-row:is(:hover, :focus-within) .youtube-duration {
+  opacity: 0;
+}
+@media (hover: none) {
+  .youtube-actions {
+    position: static;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .youtube-actions .icon-button {
+    color: var(--text);
+  }
+}
 @media (max-width: 280px) {
+  .youtube-media {
+    flex-basis: 72px;
+    width: 72px;
+  }
   .youtube-thumbnail {
-    flex-basis: 60px;
-    width: 60px;
-    height: 34px;
+    height: 40.5px;
   }
   .youtube-results .youtube-row {
     gap: 5px;
@@ -204,7 +265,26 @@
   #youtube-mode[aria-checked='true'] .youtube-switch {
     background: Highlight;
   }
+  .youtube-filters button[aria-pressed='true'] {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
   .youtube-progress::-moz-progress-bar {
     background: Highlight;
+  }
+  .youtube-progress::-webkit-progress-value {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+  .youtube-actions {
+    background: Canvas;
+    border: 1px solid ButtonText;
+  }
+  .youtube-actions .icon-button {
+    color: ButtonText;
+  }
+  .youtube-actions .icon-button:focus-visible {
+    outline-color: Highlight;
   }
 }
