@@ -1,0 +1,213 @@
+import { icon } from './icons.js';
+import { reconcileChildren } from './dom.js';
+import { listDomains } from './domains.js';
+
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function button(label, iconName, className) {
+  const node = element('button', className);
+  node.type = 'button';
+  node.title = label;
+  node.setAttribute('aria-label', label);
+  if (iconName) node.append(icon(iconName));
+  return node;
+}
+
+export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
+  const pane = element('section', 'domains-view');
+  pane.id = 'domains-view';
+  pane.hidden = true;
+  pane.setAttribute('aria-labelledby', 'domains-title');
+  const heading = element('div', 'domains-heading');
+  const title = element('h1', '', 'Domains');
+  title.id = 'domains-title';
+  const dismiss = button('Close domains view', 'close', 'domains-close');
+  heading.append(icon('globe'), title, dismiss);
+  const tools = element('div', 'domains-tools');
+  const count = element('span');
+  count.setAttribute('role', 'status');
+  tools.append(count, element('span', '', 'Most tabs'));
+  const content = element('div', 'domains-content');
+  const pinnedHeading = element('h2', '', 'Pinned');
+  const otherHeading = element('h2', '', 'Other domains');
+  const pinnedList = element('ul');
+  pinnedList.setAttribute('aria-label', 'Pinned domains');
+  const otherList = element('ul');
+  otherList.setAttribute('aria-label', 'Other domains');
+  const empty = element('div', 'domains-empty');
+  empty.append(
+    icon('globe'),
+    element('h2', '', 'No domains with multiple tabs'),
+    element('p', '', 'Domains appear here when two or more tabs match.'),
+  );
+  const note = element('p', 'domains-note', 'Domains with 2 or more tabs');
+  content.append(pinnedHeading, pinnedList, otherHeading, otherList, empty, note);
+  pane.append(heading, tools, content);
+  root.prepend(pane);
+  const trigger = button('Domains', 'globe');
+  trigger.id = 'domains-toggle';
+  trigger.disabled = true;
+  trigger.setAttribute('aria-controls', pane.id);
+  trigger.setAttribute('aria-expanded', 'false');
+  root.querySelector('#recently-closed-toggle').before(trigger);
+  const fold = root.querySelector('#tree-toggle');
+  const rows = new Map();
+  let state;
+  let savedFocus;
+  let foldDisabled;
+
+  function close({ restoreFocus = true } = {}) {
+    if (pane.hidden) return;
+    pane.hidden = true;
+    root.classList.remove('domains-open');
+    trigger.setAttribute('aria-expanded', 'false');
+    fold.disabled = foldDisabled;
+    onClose();
+    if (restoreFocus)
+      (savedFocus?.isConnected ? savedFocus : trigger).focus({ preventScroll: true });
+  }
+
+  function makeRow(domain) {
+    const row = element('li', 'domains-row');
+    row.dataset.domain = domain;
+    const open = button(domain, null, 'domains-open-domain');
+    const favicon = element('span', 'domains-favicon');
+    const label = element('span', 'domains-label', domain);
+    const total = element('span', 'domains-tab-count');
+    open.append(favicon, label, total);
+    const pin = button(`Pin ${domain}`, 'pin', 'domains-pin');
+    row.append(open, pin);
+    const item = { row, open, favicon, total, pin };
+    open.addEventListener('click', () => {
+      close({ restoreFocus: false });
+      onSelect(domain, item.entry.source.id);
+    });
+    pin.addEventListener('click', async () => {
+      if (pin.getAttribute('aria-disabled') === 'true') return;
+      pin.setAttribute('aria-disabled', 'true');
+      try {
+        await onPin(domain, !item.entry.pinned);
+      } finally {
+        pin.removeAttribute('aria-disabled');
+      }
+    });
+    return item;
+  }
+
+  function render() {
+    if (pane.hidden || !state) return;
+    const entries = listDomains(state.tabs, state.domainPins);
+    const focused = document.activeElement;
+    const oldButtons = [...content.querySelectorAll('.domains-open-domain')];
+    const focusedIndex = oldButtons.findIndex((node) => node.closest('li').contains(focused));
+    const alive = new Set();
+    for (const entry of entries) {
+      alive.add(entry.domain);
+      if (!rows.has(entry.domain)) rows.set(entry.domain, makeRow(entry.domain));
+      const item = rows.get(entry.domain);
+      item.entry = entry;
+      item.open.setAttribute('aria-label', `${entry.domain}, ${entry.count} tabs`);
+      item.total.textContent = entry.count;
+      item.pin.setAttribute('aria-pressed', String(entry.pinned));
+      item.pin.title = `${entry.pinned ? 'Unpin' : 'Pin'} ${entry.domain}`;
+      item.pin.setAttribute('aria-label', item.pin.title);
+      const url = entry.source.favIconUrl;
+      if (item.url !== url || !item.favicon.childNodes.length) {
+        item.url = url;
+        let image = icon('globe');
+        if (typeof url === 'string' && /^(https?:|data:image\/|moz-extension:)/i.test(url)) {
+          image = element('img');
+          image.alt = '';
+          image.draggable = false;
+          image.referrerPolicy = 'no-referrer';
+          image.src = url;
+          image.addEventListener('error', () => image.replaceWith(icon('globe')), { once: true });
+        }
+        item.favicon.replaceChildren(image);
+      }
+    }
+    for (const domain of rows.keys()) if (!alive.has(domain)) rows.delete(domain);
+    const pinned = entries.filter((entry) => entry.pinned);
+    const others = entries.filter((entry) => !entry.pinned);
+    reconcileChildren(
+      pinnedList,
+      pinned.map((entry) => rows.get(entry.domain).row),
+    );
+    reconcileChildren(
+      otherList,
+      others.map((entry) => rows.get(entry.domain).row),
+    );
+    pinnedHeading.hidden = pinnedList.hidden = !pinned.length;
+    otherHeading.hidden = !pinned.length || !others.length;
+    otherList.hidden = !others.length;
+    empty.hidden = Boolean(entries.length);
+    note.hidden = !entries.length;
+    count.textContent = `${entries.length} ${entries.length === 1 ? 'domain' : 'domains'}`;
+    if (focusedIndex >= 0) {
+      const nextButtons = [...content.querySelectorAll('.domains-open-domain')];
+      const target = focused.isConnected
+        ? focused
+        : nextButtons[Math.min(focusedIndex, nextButtons.length - 1)] || dismiss;
+      target.focus({ preventScroll: true });
+    }
+  }
+
+  function open() {
+    if (!state || !pane.hidden) return;
+    savedFocus = document.activeElement;
+    onOpen();
+    foldDisabled = fold.disabled;
+    fold.disabled = true;
+    pane.hidden = false;
+    root.classList.add('domains-open');
+    trigger.setAttribute('aria-expanded', 'true');
+    render();
+    dismiss.focus({ preventScroll: true });
+  }
+
+  dismiss.addEventListener('click', () => close());
+  trigger.addEventListener('click', () => (pane.hidden ? open() : close()));
+  pane.addEventListener('keydown', (event) => {
+    if (event.altKey || event.metaKey || event.ctrlKey) return;
+    const buttons = [...content.querySelectorAll('.domains-open-domain')];
+    const current = event.target.closest('.domains-row');
+    const index = buttons.findIndex((node) => node.closest('li') === current);
+    let target;
+    if (event.key === 'ArrowDown') target = buttons[Math.min(index + 1, buttons.length - 1)];
+    else if (event.key === 'ArrowUp') target = buttons[Math.max(index - 1, 0)];
+    else if (event.key === 'Home') target = buttons[0];
+    else if (event.key === 'End') target = buttons.at(-1);
+    if (target) {
+      event.preventDefault();
+      target.focus();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || pane.hidden || document.querySelector('dialog[open]')) return;
+    event.preventDefault();
+    close();
+  });
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (!trigger.contains(event.target) && event.target.closest('footer'))
+        close({ restoreFocus: false });
+    },
+    true,
+  );
+  return {
+    close,
+
+    update(next) {
+      state = next;
+      trigger.disabled = false;
+      render();
+      return !pane.hidden;
+    },
+  };
+}
