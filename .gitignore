@@ -1,12 +1,13 @@
 node_modules/
 dist/
 test-results/
+# Local mockups, scratch work and generated previews; see AGENTS.md.
 /output/
 /firefox/
 .DS_Store
 *.log
 
-# Local credentials, agent state and retired design material.
+# Local credentials, agent state and legacy design locations.
 .env
 .env.*
 *.pem
@@ -17,6 +18,7 @@ test-results/
 /.agents/
 /mockups/
 /assets/mockups/
+/design/mockups/
 /plans/
 
 # Share editor defaults and recommendations; ignore other local VS Code files.

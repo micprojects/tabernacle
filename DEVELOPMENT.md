@@ -374,8 +374,10 @@ Run `npm run icons:generate` to regenerate the default toolbar SVG, PNG exports 
 [`assets/tabernacle-1024.png`](assets/tabernacle-1024.png), which the screenshot exporter uses,
 and the large [`assets/tabernacle-4096.png`](assets/tabernacle-4096.png) master.
 Use the SVG for the product website; keep the PNGs for raster-only consumers.
-Build packages (`dist/`), test output (`test-results/`) and
-design experiments (`output/`) are local, ignored files.
+Build packages (`dist/`), test output (`test-results/`) and design experiments
+(`output/`) are local, ignored files. Put mockups and their supporting files in
+`output/mockups/<topic-date>/`, and one-off scripts, notes and references in
+`output/scratch/<task>/`. See [`AGENTS.md`](AGENTS.md) for repository housekeeping.
 
 ## Refreshing screenshots
 
