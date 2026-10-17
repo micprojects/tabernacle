@@ -2310,7 +2310,7 @@ $('tree-toggle').addEventListener('click', async () => {
 });
 $('settings').addEventListener('click', openSettings);
 document.addEventListener('pointerdown', (event) => {
-  const dismissSearch = shouldDismissSearch(event.target);
+  const dismissSearch = shouldDismissSearch(event);
   const dismissDomain = domainFilter && event.target.closest('footer');
   // Clearing the filter must not move or replace a target before its click.
   if (
@@ -2337,18 +2337,27 @@ document.addEventListener(
   'click',
   (event) => {
     if (domainFilter && event.target.closest('footer')) leaveDomain({ restoreFocus: false });
-    if (!shouldDismissSearch(event.target)) return;
+    if (!shouldDismissSearch(event)) return;
     // Keyboard and assistive clicks have no pointerdown. Let the control act
     // before rendering the unfiltered tree, including buttons that stop bubbling.
     setTimeout(() => {
-      if (shouldDismissSearch(event.target)) showSearch(false, { restoreFocus: false });
+      if (shouldDismissSearch(event)) showSearch(false, { restoreFocus: false });
     }, 0);
   },
   true,
 );
 
-function shouldDismissSearch(target) {
-  return searchOpen && !$('navigation-capsule').contains(target);
+function shouldDismissSearch({ target, button, ctrlKey }) {
+  // Right-click and macOS Control-click inspect a result without leaving search.
+  // Its menu and dialogs remain part of that interaction until an action navigates.
+  const contextPress = button === 2 || (button === 0 && ctrlKey);
+  return (
+    searchOpen &&
+    !contextPress &&
+    !$('navigation-capsule').contains(target) &&
+    !$('menu').contains(target) &&
+    !$('dialog').contains(target)
+  );
 }
 
 for (const type of ['pointerup', 'pointercancel']) {

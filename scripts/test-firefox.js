@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { Button, By, until } from 'selenium-webdriver';
+import { Button, By, Key, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { startFirefox } from './firefox-session.js';
 import { resolve } from 'node:path';
@@ -255,6 +255,29 @@ try {
   assert((await send('snapshot')).tabs.find((item) => item.id === tab.id).collapsed);
   await send('toggleTab', { id: tab.id });
   console.log('✓ Firefox opener tabs create persistent child and grandchild trees');
+  await driver.findElement(By.id('search-toggle')).click();
+  const search = await driver.findElement(By.id('search'));
+  await search.sendKeys('127.0.0.1');
+  const searchResult = await driver.wait(
+    until.elementLocated(By.css(`[data-key="tab:${child.id}"] .label`)),
+    5000,
+  );
+  await driver
+    .actions()
+    .move({ origin: searchResult })
+    .press(Button.RIGHT)
+    .release(Button.RIGHT)
+    .perform();
+  await driver.wait(until.elementIsVisible(await driver.findElement(By.id('menu'))), 5000);
+  assert.equal(await search.isDisplayed(), true);
+  assert.equal(await search.getAttribute('value'), '127.0.0.1');
+  await driver.actions().sendKeys(Key.ESCAPE).perform();
+  assert.equal(await driver.findElement(By.id('menu')).isDisplayed(), false);
+  assert.equal(await search.getAttribute('value'), '127.0.0.1');
+  await driver.findElement(By.id('search-close')).click();
+  console.log(
+    '✓ Right-clicking a Firefox search result and dismissing its menu preserves the search',
+  );
   await driver.wait(until.elementLocated(By.css(`[data-key="group:${design}"]`)), 5000);
   await driver
     .actions()
