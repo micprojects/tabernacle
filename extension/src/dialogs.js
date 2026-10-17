@@ -1,3 +1,4 @@
+import { createCollectionDialogs } from './collection-dialogs.js';
 import { icon } from './icons.js';
 import {
   children,
@@ -25,7 +26,15 @@ function el(tag, className, text) {
 }
 
 // Own modal state here; the sidebar owns the current snapshot and rendering.
-export function createDialogs({ getState, request, closeMenu, onChange, onMove, favicon }) {
+export function createDialogs({
+  getState,
+  request,
+  closeMenu,
+  onChange,
+  onMove,
+  favicon,
+  onNotice = () => {},
+}) {
   let dialogAction, dialogContext, dialogCancel, dialogComplete, dialogCleanup;
   let dialogBusy = false;
 
@@ -109,6 +118,14 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
     else $('dialog-back').focus();
     return dialogContext;
   }
+
+  const collections = createCollectionDialogs({
+    showDialog,
+    getState,
+    request,
+    onChange,
+    onNotice,
+  });
 
   const { createContainerDialog, draftContainerDialog, manageContainersDialog } =
     createContainerManagement({
@@ -567,6 +584,7 @@ export function createDialogs({ getState, request, closeMenu, onChange, onMove, 
   });
 
   return {
+    ...collections,
     createDialog,
     renameDialog,
     appearanceDialog,

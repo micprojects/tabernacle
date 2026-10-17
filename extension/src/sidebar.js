@@ -1,3 +1,12 @@
+import { batchSummary } from './collection-dialogs.js';
+import {
+  savedSearchResults,
+  folderCollection,
+  sourceUrl,
+  viewedAge,
+  matchesText,
+  captureTarget,
+} from './tab-collection.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
@@ -52,9 +61,11 @@ let domainFilter = null;
 let domainSort = 'newest';
 let domainOrigin;
 let domainSourceId;
+let domainFromDirectory = false;
+let domainVisibleTabs = [];
+let searchVisibleIds = [];
 let youtubeFilter = 'all';
 let youtubeAllowed = false;
-let youtubeVisibleIds = [];
 let siteMode = null;
 let siteAllowed = false;
 const siteView = createSiteView({
@@ -179,12 +190,15 @@ const domainsView = createDomainsView({
     closeMenu();
     recentlyClosed?.close();
     treeMotion.finishAll();
+    youtubeView.prepare([], false);
+    siteView.prepare([], null, null);
     if (domainFilter) leaveDomain({ restoreFocus: false });
     if (searchOpen) showSearch(false, { restoreFocus: false });
   },
 
   onClose: () => render(),
-  onSelect: (domain, sourceId) => filterByDomain(domain, sourceId),
+  onSelect: (domain, sourceId) => filterByDomain(domain, sourceId, true),
+  onMenu: (event) => collectionMenu(event, { kind: 'window' }, state.tabs, false),
   onPin: (domain, pinned) => action('setDomainPin', { domain, pinned }),
 });
 
@@ -196,6 +210,8 @@ const laterView = createLaterView({
     closeMenu();
     recentlyClosed?.close();
     treeMotion.finishAll();
+    youtubeView.prepare([], false);
+    siteView.prepare([], null, null);
     domainsView.close({ restoreFocus: false });
     if (domainFilter) leaveDomain({ restoreFocus: false });
     if (searchOpen) showSearch(false, { restoreFocus: false });
@@ -209,6 +225,7 @@ const laterView = createLaterView({
   onError: (message) => announce(message, true),
   onNotice: (message) => announce(message),
   onMenu: (id, x, y) => contextMenu('tab', id, x, y),
+  onActions: (event, tabs, scope) => collectionMenu(event, scope, tabs, false),
 });
 
 async function saveTabForLater(id) {
@@ -229,8 +246,10 @@ async function saveTabForLater(id) {
 
 async function returnSavedTab(id) {
   if (!(await action('returnFromLater', { id }))) return;
-  laterView.close({ restoreFocus: false });
-  await showTabInFolder(id);
+  announce('Returned to the original folder.');
+  const show = button('Show in folder', null, () => showTabInFolder(id), 'toast-action');
+  show.textContent = 'Show in folder';
+  $('toast').append(' ', show);
 }
 
 function acceptState(next) {
@@ -350,6 +369,9 @@ const {
   removeDialog,
   closeGroupTabsDialog,
   closeTabTreeDialog,
+  closeCollection,
+  reviewDuplicates,
+  refresh: refreshCollectionDialog,
   moveDialog,
   containerDialog,
   newContainerDialog,
@@ -359,6 +381,7 @@ const {
   request: (...args) => (args[0] === 'moveItem' ? requestMove(args[1]) : request(...args)),
   closeMenu,
   onMove: moveFeedback,
+  onNotice: announce,
   favicon: tabFavicon,
 
   onChange(next, key) {
@@ -821,18 +844,31 @@ function closeTab(id) {
 }
 
 function activateTab(id) {
-  return action('activateTab', { id, ...(domainFilter ? { expandAncestors: false } : {}) });
+  return action('activateTab', {
+    id,
+    ...(domainFilter || isSavedForLater(state.tabs.find((tab) => tab.id === id))
+      ? { expandAncestors: false }
+      : {}),
+  });
 }
 
 function closeFilter() {
   if (laterView.isOpen) return laterView.closeFilter();
-  return domainFilter
-    ? {
-        domain: domainFilter,
-        sort: domainSort,
-        ...(youtubeActive() && youtubeFilter !== 'all' ? { tabIds: youtubeVisibleIds } : {}),
-      }
-    : null;
+  if (domainFilter)
+    return {
+      domain: domainFilter,
+      query: $('domain-search').value,
+      sort: domainSort,
+      tabIds: domainVisibleTabs.map((tab) => tab.id),
+    };
+  if (searchOpen && $('search').value.trim())
+    return {
+      search: true,
+      query: $('search').value,
+      scopeId: state.view.scopeId,
+      tabIds: searchVisibleIds,
+    };
+  return null;
 }
 
 function closeOnMiddleClick(node, id) {
@@ -958,7 +994,7 @@ function createTabRow(tab, expanded, stats) {
   row.classList.toggle('discarded', Boolean(tab.discarded));
   row.setAttribute('aria-selected', String(Boolean(tab.active)));
   row.setAttribute('aria-label', tab.title || 'New tab');
-  if (domainFilter) {
+  if (domainFilter || isSavedForLater(tab)) {
     const location = tabFolderLabel(tab);
     row.title = `${tab.title || 'New tab'}\n${tab.url}\n${location}`;
     row.setAttribute('aria-description', location);
@@ -1010,6 +1046,16 @@ function createTabRow(tab, expanded, stats) {
     row.append(slot);
   }
   if (!youtubeActive() && !enrichedSiteTab(tab)) row.append(tabLabel(tab));
+  if (domainFilter && domainSort === 'least-viewed' && viewedAge(tab.lastAccessed)) {
+    const age = el('span', 'viewed-age', viewedAge(tab.lastAccessed));
+    age.title = `Last viewed ${new Date(tab.lastAccessed).toLocaleString()}`;
+    row.append(age);
+  }
+  if (isSavedForLater(tab)) {
+    row.classList.add('saved-search-row');
+    row.append(el('span', 'saved-search-folder', tabFolderLabel(tab)));
+    row.append(button('Return to original folder', 'group', () => returnSavedTab(tab.id)));
+  }
   if (childAudioCount(tab) && !playsAudio(tab))
     row.append(audioIndicator(playingLabel(childAudioCount(tab), 'in this tab’s children')));
   if (tab.audible || tab.mutedInfo?.muted)
@@ -1034,7 +1080,7 @@ function createTabRow(tab, expanded, stats) {
   });
   row.addEventListener('click', (event) => {
     if (!event.target.closest('button')) {
-      if (domainFilter) {
+      if (domainFilter || isSavedForLater(state.tabs.find((item) => item.id === tab.id))) {
         toggleOnClick = undefined;
         activateTab(tab.id);
         return;
@@ -1062,7 +1108,10 @@ function tabRow(tab, expanded, stats) {
         expanded,
         stats.descendants,
         stats.active,
-        domainFilter ? tabFolderLabel(tab) : null,
+        domainFilter || isSavedForLater(tab) ? tabFolderLabel(tab) : null,
+        isSavedForLater(tab),
+        domainSort === 'least-viewed' ? viewedAge(tab.lastAccessed) : null,
+        domainSort === 'least-viewed' ? tab.lastAccessed : null,
         youtubeActive(),
         youtubeActive() ? youtubeView.duplicateCount(tab) : 0,
         enrichedSiteTab(tab),
@@ -1373,6 +1422,7 @@ function restoreRowFocus(key) {
 function render(motionKey = null) {
   if (!state) return;
   renderAppearance();
+  refreshCollectionDialog();
   $('new-tab').disabled = false;
   $('new-group').disabled = false;
   $('recently-closed-toggle').disabled = false;
@@ -1399,7 +1449,7 @@ function render(motionKey = null) {
   const focusedKey = document.activeElement?.closest('[data-key]')?.dataset.key;
   const scroll = tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
-  const query = domainFilter ? '' : $('search').value.trim().toLowerCase();
+  const query = (domainFilter ? $('domain-search').value : $('search').value).trim().toLowerCase();
   const filtering = Boolean(query || domainFilter);
   const context = renderContext();
   rowCache.begin();
@@ -1479,6 +1529,9 @@ function render(motionKey = null) {
   $('navigation-capsule').hidden = Boolean(domainFilter);
   $('sidebar-header').classList.toggle('domain-mode', Boolean(domainFilter));
   $('domain-tools').hidden = !domainFilter;
+  $('domain-search-tools').hidden = !domainFilter;
+  $('domain-back').hidden = !domainFromDirectory;
+  domainsView.detail(domainFromDirectory && Boolean(domainFilter));
   const site = siteActive();
   const enhancements = state.siteEnhancementsEnabled !== false;
   $('site-mode').hidden = !enhancements || !siteMode;
@@ -1501,21 +1554,25 @@ function render(motionKey = null) {
   );
   $('domain-tools').classList.toggle('site-domain-tools', enhancements && Boolean(siteMode));
   if (domainFilter) {
-    const results = domainResults(index, domainFilter, query, domainSort);
+    const results = domainResults(index, domainFilter, '', domainSort);
     youtubeView.prepare(results, youtube);
     siteView.prepare(results, domainFilter, site);
-    const visibleResults = youtube
-      ? results.filter((tab) => youtubeView.matches(tab, youtubeFilter))
-      : results;
-    youtubeVisibleIds = visibleResults.map((tab) => tab.id);
+    const visibleResults = results.filter(
+      (tab) => matchesText(tab, query) && (!youtube || youtubeView.matches(tab, youtubeFilter)),
+    );
+    domainVisibleTabs = visibleResults;
     renderDomainHeader(domainFilter, results.map(hackerNewsDisplayTab), domainSourceId);
     reconcileChildren(
       tree,
       visibleResults.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
     );
     const count = `${results.length} ${results.length === 1 ? 'tab' : 'tabs'}`;
-    $('domain-count').textContent = count;
-    const status = `${youtube && youtubeFilter !== 'all' ? `${visibleResults.length} of ` : ''}${count} from ${domainFilter} in this window`;
+    $('domain-count').textContent =
+      query || (youtube && youtubeFilter !== 'all')
+        ? `${visibleResults.length} of ${count}`
+        : count;
+    if (query || (youtube && youtubeFilter !== 'all')) $('domain-count').hidden = false;
+    const status = `${query || (youtube && youtubeFilter !== 'all') ? `${visibleResults.length} of ` : ''}${count} from ${domainFilter} in this window`;
     if ($('domain-status').textContent !== status) $('domain-status').textContent = status;
     $('youtube-mode').title = `${count} · Show video thumbnails, duration and observed progress`;
     $('site-mode').title = `${count} · Show details for these tabs`;
@@ -1533,6 +1590,20 @@ function render(motionKey = null) {
     siteView.prepare([], null, null);
     renderDomainHeader(null);
     fillChildren(tree, state.view.scopeId, query);
+    const saved = savedSearchResults(state, query);
+    if (saved.length) {
+      const section = el('div', 'saved-search-results');
+      section.setAttribute('role', 'group');
+      section.setAttribute('aria-label', 'Saved for Later');
+      const heading = el('h2', '', 'Saved for Later');
+      heading.setAttribute('role', 'presentation');
+      section.append(
+        heading,
+        ...saved.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
+      );
+      tree.append(section);
+    }
+    searchVisibleIds = [...tree.querySelectorAll('.tab-row')].map((row) => Number(row.dataset.id));
     $('domain-status').textContent = '';
   }
   treeMotion.finish();
@@ -1577,7 +1648,10 @@ function render(motionKey = null) {
     const kind = key.slice(0, separator);
     const id = key.slice(separator + 1);
     if (kind === 'tab' || kind === 'pin' || kind === 'new-child-tab')
-      return index.byId.has(Number(id));
+      return (
+        index.byId.has(Number(id)) ||
+        (kind === 'tab' && state.tabs.some((tab) => tab.id === Number(id) && isSavedForLater(tab)))
+      );
     return (kind === 'new-tab' && id === 'null') || index.groups.has(id);
   });
   // Native closes or another sidebar can remove the row owning an open menu.
@@ -1617,7 +1691,7 @@ function showSearch(show = true, { restoreFocus = true } = {}) {
   }
 }
 
-function filterByDomain(domain, sourceId) {
+function filterByDomain(domain, sourceId, fromDirectory = false) {
   if (!domain) return;
   cancelGroupClick();
   closeMenu();
@@ -1625,6 +1699,8 @@ function filterByDomain(domain, sourceId) {
     domainOrigin = searchOpen ? searchOrigin : { scroll: tree.scrollTop, selected };
     if (searchOpen) showSearch(false, { restoreFocus: false });
   }
+  domainFromDirectory = fromDirectory;
+  $('domain-search').value = '';
   domainFilter = domain;
   siteMode = siteModeForDomain(
     domain,
@@ -1642,6 +1718,10 @@ function leaveDomain({ restoreFocus = true } = {}) {
   cancelGroupClick();
   closeMenu();
   domainFilter = null;
+  domainFromDirectory = false;
+  domainVisibleTabs = [];
+  $('domain-search').value = '';
+  domainsView.detail(false);
   siteMode = null;
   domainSourceId = null;
   selected = domainOrigin?.selected;
@@ -1688,9 +1768,11 @@ function rowKey(event, row, kind, id) {
   if (event.target !== row || moveTreeFocus(event, row)) return;
   const rows = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')];
   const index = rows.indexOf(row);
-  const tab =
-    kind === 'tab' ? (domainFilter ? state.tabs : treeTabs).find((tab) => tab.id === id) : null;
-  const hasChildren = !domainFilter && (kind === 'group' || tabChildren(treeTabs, id).length > 0);
+  const tab = kind === 'tab' ? state.tabs.find((tab) => tab.id === id) : null;
+  const hasChildren =
+    !domainFilter &&
+    !isSavedForLater(tab) &&
+    (kind === 'group' || tabChildren(treeTabs, id).length > 0);
   const collapsed = kind === 'group' ? state.view.collapsed.includes(id) : tab?.collapsed;
   const toggle = () => action(kind === 'group' ? 'toggleGroup' : 'toggleTab', { id });
   if (event.key === 'Enter') {
@@ -1809,6 +1891,7 @@ function menu(
 }
 
 async function blankAreaAction(type, args = {}) {
+  if (searchOpen) showSearch(false, { restoreFocus: false });
   $('search').value = '';
   const next = await action(type, args);
   const id = next?.createdTabId ?? next?.restoredTabId ?? next?.tabs.find((tab) => tab.active)?.id;
@@ -1932,20 +2015,73 @@ tree.addEventListener('keydown', (event) => {
   }
 });
 
-async function copyUrls(kind, id) {
-  const tabs =
-    kind === 'group'
-      ? sortTabs(
-          state.tabs.filter((tab) => !isSavedForLater(tab) && isWithin(state, tab.groupId, id)),
-        )
-      : state.tabs.filter((tab) => tab.id === id);
-  const urls = tabs.map((tab) => tab.url).filter((url) => typeof url === 'string' && url.trim());
+function collectionMenu(event, scope, tabs, bulk) {
+  const count = `${tabs.length} ${tabs.length === 1 ? 'tab' : 'tabs'}`;
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu(
+    [
+      ...(bulk
+        ? [
+            {
+              label: `Save ${count} for later`,
+              icon: 'later',
+              disabled: !tabs.length,
+              run: () => saveCollection(scope, tabs),
+            },
+            {
+              label: `Copy ${tabs.length} ${tabs.length === 1 ? 'URL' : 'URLs'}`,
+              icon: 'copy',
+              disabled: !tabs.length,
+              run: () => copyTabUrls(tabs),
+            },
+            {
+              label: `Close ${count}…`,
+              icon: 'close',
+              disabled: !tabs.length,
+              run: () => closeCollection(scope, tabs),
+              danger: true,
+            },
+            null,
+          ]
+        : []),
+      { label: 'Review duplicates…', icon: 'copy', run: () => reviewDuplicates(scope, tabs) },
+    ],
+    rect.left,
+    rect.bottom,
+  );
+}
+
+async function saveCollection(scope, tabs) {
+  const next = await action('saveTabsForLater', { scope, targets: tabs.map(captureTarget) });
+  if (!next) return;
+  const result = next.batchResult;
+  announce(batchSummary(result, 'Saved'), Boolean(result.failed.length));
+  if (result.undo.length) {
+    const undo = button(
+      'Undo',
+      null,
+      async () => {
+        const undone = await action('undoSaveTabsForLater', { targets: result.undo });
+        if (undone)
+          announce(
+            batchSummary(undone.batchResult, 'Returned'),
+            Boolean(undone.batchResult.failed.length),
+          );
+      },
+      'toast-action',
+    );
+    undo.textContent = 'Undo';
+    $('toast').append(' ', undo);
+  }
+}
+
+async function copyTabUrls(tabs, emptyMessage = 'No URLs to copy.') {
+  const urls = tabs.map(sourceUrl).filter((url) => typeof url === 'string' && url.trim());
   if (!urls.length) {
-    announce(kind === 'group' ? 'No URLs to copy in this folder.' : 'This tab has no URL to copy.');
+    announce(emptyMessage);
     return;
   }
   try {
-    // Keep this call in the menu's user gesture; no clipboard permissions or reads are needed.
     await navigator.clipboard.writeText(urls.join('\n'));
     announce(urls.length === 1 ? 'URL copied.' : `${urls.length} URLs copied.`);
   } catch {
@@ -1953,8 +2089,20 @@ async function copyUrls(kind, id) {
   }
 }
 
+async function copyUrls(kind, id) {
+  const tabs =
+    kind === 'group'
+      ? sortTabs(
+          state.tabs.filter((tab) => !isSavedForLater(tab) && isWithin(state, tab.groupId, id)),
+        )
+      : state.tabs.filter((tab) => tab.id === id);
+  return copyTabUrls(tabs, kind === 'group' ? 'No URLs to copy in this folder.' : undefined);
+}
+
 function contextMenu(kind, id, x, y) {
   if (movingItem) return;
+  const folderTabs = kind === 'group' ? folderCollection(state, id) : [];
+  const unsavedFolderTabs = folderTabs.filter((tab) => !isSavedForLater(tab));
   if (kind === 'group')
     menu(
       [
@@ -1982,6 +2130,17 @@ function contextMenu(kind, id, x, y) {
           run: () => createDialog(id),
         },
         null,
+        {
+          label: `Save tabs for later (${unsavedFolderTabs.length})`,
+          icon: 'later',
+          disabled: !unsavedFolderTabs.length,
+          run: () => saveCollection({ kind: 'folder', id }, unsavedFolderTabs),
+        },
+        {
+          label: 'Review duplicates…',
+          icon: 'copy',
+          run: () => reviewDuplicates({ kind: 'folder', id }, folderTabs),
+        },
         { label: 'Copy URLs', icon: 'copy', run: () => copyUrls(kind, id) },
         { label: 'Rename folder', icon: 'rename', run: () => renameDialog(id) },
         { label: 'Icon and colour…', icon: 'rename', run: () => appearanceDialog(id) },
@@ -2237,6 +2396,34 @@ $('home').addEventListener('click', () => enter(null));
 $('search-toggle').addEventListener('click', () => showSearch());
 $('search-close').addEventListener('click', () => showSearch(false));
 $('domain-close').addEventListener('click', () => leaveDomain());
+$('domain-search').addEventListener('input', () => {
+  searchScroll = 0;
+  render();
+});
+$('domain-back').prepend(icon('back'));
+$('domain-back').addEventListener('click', () => {
+  leaveDomain({ restoreFocus: false });
+  domainsView.open({ restore: true });
+});
+$('domain-actions').append(icon('more'));
+$('domain-actions').addEventListener('click', (event) =>
+  collectionMenu(
+    event,
+    {
+      kind: 'domain',
+      domain: domainFilter,
+      query: $('domain-search').value,
+      youtubeFilter:
+        isYouTubeDomain(domainFilter) &&
+        state.siteEnhancementsEnabled !== false &&
+        state.youtubeMode !== false
+          ? youtubeFilter
+          : 'all',
+    },
+    domainVisibleTabs,
+    true,
+  ),
+);
 $('youtube-mode').addEventListener('click', async () => {
   if (state.siteEnhancementsEnabled === false) return;
   const toggle = $('youtube-mode');
@@ -2371,7 +2558,8 @@ function shouldDismissSearch({ target, button, ctrlKey }) {
     !contextPress &&
     !$('navigation-capsule').contains(target) &&
     !$('menu').contains(target) &&
-    !$('dialog').contains(target)
+    !$('dialog').contains(target) &&
+    !target.closest('.saved-search-results, #toast')
   );
 }
 
@@ -2410,11 +2598,18 @@ document.addEventListener('keydown', (event) => {
   }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
-    showSearch();
+    if (domainFilter) {
+      $('domain-search').focus();
+      $('domain-search').select();
+    } else if (laterView.isOpen) laterView.focusSearch();
+    else showSearch();
   }
   if (event.key === 'Escape' && domainFilter) {
     event.preventDefault();
-    leaveDomain();
+    if (event.target === $('domain-search') && $('domain-search').value) {
+      $('domain-search').value = '';
+      render();
+    } else leaveDomain();
   } else if (event.key === 'Escape' && searchOpen) {
     event.preventDefault();
     showSearch(false);

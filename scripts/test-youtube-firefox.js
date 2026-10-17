@@ -181,8 +181,61 @@ try {
       '0:10 / 0:20',
     fixture.loaded,
   );
+  await browser.evaluate(
+    async (ids) => {
+      const { id: windowId } = await browser.windows.getCurrent();
+      for (const id of ids) {
+        const response = await browser.runtime.sendMessage({
+          type: 'tabernacle:saveForLater',
+          windowId,
+          id,
+        });
+        if (!response.ok) throw new Error(response.error);
+      }
+      document.getElementById('later-toggle').click();
+    },
+    [fixture.loaded, fixture.sleeping],
+  );
+  await wait(
+    (id) =>
+      document.querySelector(`#later-view .later-row[data-id="${id}"] .youtube-position`)
+        ?.textContent === '0:10 / 0:20',
+    fixture.loaded,
+  );
+  assert.equal(
+    await browser.evaluate(async (id) => (await browser.tabs.get(id)).discarded, fixture.sleeping),
+    true,
+  );
+  await browser.evaluate(() => {
+    setTimeout(() => location.reload(), 0);
+  });
+  await wait(() => document.getElementById('later-toggle')?.disabled === false);
+  await browser.evaluate(() => document.getElementById('later-toggle').click());
+  await wait(
+    (id) =>
+      document.querySelector(`#later-view .later-row[data-id="${id}"] .youtube-position`)
+        ?.textContent === '0:10 / 0:20',
+    fixture.loaded,
+  );
+  await writeFile(
+    'test-results/later-youtube-firefox.png',
+    await browser.screenshot({ sourceSize: size, scale: 2 }),
+  );
+  await browser.evaluate(async () => {
+    const { id: windowId } = await browser.windows.getCurrent();
+    await browser.runtime.sendMessage({
+      type: 'tabernacle:setSiteEnhancementsEnabled',
+      windowId,
+      enabled: false,
+    });
+  });
+  await wait(() => document.querySelectorAll('#later-view .youtube-row').length === 0);
+  assert.equal(
+    await browser.evaluate(async (id) => (await browser.tabs.get(id)).discarded, fixture.sleeping),
+    true,
+  );
   console.log(
-    '✓ Native Firefox: optional site access, real media properties, unknown sleeping-tab progress, and persisted YouTube Mode',
+    '✓ Native Firefox: optional site access, real media properties, unknown sleeping-tab progress, persisted YouTube Mode, and saved-video observations across sidebar reloads',
   );
 } finally {
   await browser.close();

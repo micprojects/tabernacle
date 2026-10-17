@@ -193,6 +193,21 @@ try {
   console.log('✓ Hover and keyboard actions copy the link and reveal the original folder');
   await page.getByRole('button', { name: 'In progress', exact: true }).click();
   await expect.poll(ids).toEqual([10, 3, 1]);
+  await page.locator('#domain-search').fill('oak');
+  await expect.poll(ids).toEqual([1]);
+  await expect(page.locator('#domain-count')).toHaveText('1 of 6 tabs');
+  await expect(row(1).locator('.youtube-duplicate')).toHaveAttribute(
+    'title',
+    '2 tabs show this video',
+  );
+  await page.locator('#domain-sort').selectOption('least-viewed');
+  await page.locator('#domain-actions').click();
+  await page.getByRole('menuitem', { name: 'Copy 1 URL', exact: true }).click();
+  expect(await page.evaluate(() => ytFixture.copied)).toBe(
+    'https://www.youtube.com/watch?v=OakDesk0001',
+  );
+  await page.locator('#domain-search').fill('');
+  await page.locator('#domain-sort').selectOption('newest');
   await page.getByRole('button', { name: 'Duplicates', exact: true }).click();
   await expect.poll(ids).toEqual([14, 1]);
   await page.getByRole('button', { name: 'All', exact: true }).click();
@@ -240,6 +255,65 @@ try {
   expect(errors).toEqual([]);
   console.log(
     '✓ Filters preserve close-neighbour behaviour; empty, dark, forced-colour and ordinary tree views remain usable',
+  );
+  await page.emulateMedia({ forcedColors: 'none' });
+  await page.reload();
+  await expect(row(1)).toBeVisible();
+  await page.evaluate(async () => {
+    await domainTest.send('saveForLater', { id: 1 });
+    await domainTest.send('saveForLater', { id: 14 });
+  });
+  await page.locator('#later-toggle').click();
+  const later = page.locator('#later-view');
+  const savedVideo = (id) => later.locator(`.later-row[data-id="${id}"]`);
+  await expect(savedVideo(1).locator('.youtube-position')).toHaveText('12:30 / 18:42');
+  await expect(later.locator('.later-video-access')).toBeVisible();
+  expect(await page.evaluate(() => ytFixture.scripts)).toEqual([]);
+  await later.getByRole('button', { name: 'Allow YouTube access', exact: true }).click();
+  await expect(later.locator('.later-video-access')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => ytFixture.scripts.includes(1))).toBe(true);
+  expect(await page.evaluate(() => ytFixture.scripts.includes(14))).toBe(false);
+  await later.getByRole('button', { name: 'Videos', exact: true }).click();
+  await expect(later.locator('.youtube-row')).toHaveCount(2);
+  for (const mode of ['light', 'dark', 'forced']) {
+    await page.emulateMedia({
+      colorScheme: mode === 'dark' ? 'dark' : 'light',
+      forcedColors: mode === 'forced' ? 'active' : 'none',
+    });
+    for (const width of [220, 320, 480]) {
+      await page.setViewportSize({ width, height: 760 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      expect(await later.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      if (mode === 'forced') {
+        const active = later.locator('.later-row.active');
+        const text = await active
+          .locator('.label')
+          .evaluate((node) => getComputedStyle(node).color);
+        for (const selector of ['.youtube-channel', '.youtube-folder', '.youtube-position'])
+          await expect(active.locator(selector)).toHaveCSS('color', text);
+      }
+      await page.screenshot({ path: `test-results/later-youtube-${mode}-${width}.png` });
+    }
+  }
+  await page.emulateMedia({ colorScheme: 'light', forcedColors: 'none' });
+  await page.evaluate(() => domainTest.send('setSiteEnhancementsEnabled', { enabled: false }));
+  await expect(later.locator('.youtube-row')).toHaveCount(0);
+  await page.evaluate(() => domainTest.send('setSiteEnhancementsEnabled', { enabled: true }));
+  await expect(later.locator('.youtube-row')).toHaveCount(2);
+  // Returning keeps the list and its Videos filter; hidden hosts must stop polling.
+  await savedVideo(1).getByRole('button', { name: 'Return to Design', exact: true }).click();
+  await expect(later).toBeVisible();
+  await expect(later.getByRole('button', { name: 'Videos', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.locator('#later-close').click();
+  const countAfterClose = await page.evaluate(() => ytFixture.scripts.length);
+  await page.waitForTimeout(5200);
+  expect(await page.evaluate(() => ytFixture.scripts.length)).toBe(countAfterClose);
+  expect(errors).toEqual([]);
+  console.log(
+    '✓ Later reuses YouTube observations, explicit access and enhancement settings; sleeping tabs and hidden views stay idle',
   );
   const player = page;
   await player.route('https://www.youtube.com/watch?**', (route) =>

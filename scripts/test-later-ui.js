@@ -119,11 +119,10 @@ try {
   await page.keyboard.press('Escape');
   await expect(pane).toBeVisible();
   await row(1).getByRole('button', { name: 'Return to Design', exact: true }).click();
-  await expect(pane).toBeHidden();
-  await expect(page.locator('#tree .tab-row[data-id="1"]')).toBeVisible();
+  await expect(pane).toBeVisible();
+  await expect(row(1)).toHaveCount(0);
   expect((await send('snapshot')).tabs.find((tab) => tab.id === 1).savedForLaterAt).toBeUndefined();
 
-  await trigger.click();
   await expect(pane.locator('.later-row')).toHaveCount(6);
   await page.getByRole('button', { name: 'Domains', exact: true }).click();
   await expect(pane).toBeHidden();
@@ -132,9 +131,8 @@ try {
   await expect(page.locator('#domains-view')).toBeHidden();
   await expect(pane).toBeVisible();
   await page.keyboard.press('Control+k');
-  await expect(pane).toBeHidden();
-  await expect(page.locator('#search')).toBeFocused();
-  await trigger.click();
+  await expect(pane).toBeVisible();
+  await expect(search).toBeFocused();
   await expect(search).toBeVisible();
 
   await send('setLook', { value: { colorScheme: 'dark' }, partial: true });

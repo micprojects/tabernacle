@@ -1473,3 +1473,120 @@ input::placeholder {
   color: color-mix(in srgb, var(--field-text) 65%, var(--field));
   opacity: 1;
 }
+
+/* Shared compact tools for filtered collections. */
+.domain-search-tools {
+  padding: 6px 12px;
+}
+.domain-search-field {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.domain-search-field input {
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--field-line);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: var(--field);
+  color: var(--field-text);
+}
+#domain-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+#domain-actions {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+}
+.saved-search-results h2 {
+  margin: 14px 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.saved-search-row {
+  flex-wrap: wrap;
+}
+.saved-search-folder {
+  order: 10;
+  flex-basis: 100%;
+  padding-left: 24px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.viewed-age {
+  order: 10;
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 11px;
+}
+.domain-results .tab-row:has(.viewed-age) {
+  flex-wrap: wrap;
+}
+
+.duplicate-review {
+  max-height: min(60vh, 540px);
+  overflow: auto;
+  font-size: 12px;
+}
+.duplicate-group {
+  min-width: 0;
+  padding: 8px;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.duplicate-group legend {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  color: var(--muted);
+}
+.duplicate-copy {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 8px 0;
+}
+.duplicate-copy input {
+  flex: 0 0 auto;
+  width: auto;
+  margin-top: 3px;
+}
+.duplicate-copy > span {
+  min-width: 0;
+}
+.duplicate-title,
+.duplicate-details {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.duplicate-details,
+.duplicate-note {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+@media (forced-colors: active) {
+  .dialog-actions .primary,
+  .dialog-actions .primary:hover:not(:disabled) {
+    forced-color-adjust: none;
+    background: Highlight;
+    border-color: Highlight;
+    color: HighlightText;
+  }
+  .dialog-actions .primary:disabled {
+    background: ButtonFace;
+    border-color: GrayText;
+    color: GrayText;
+  }
+}

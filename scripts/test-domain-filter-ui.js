@@ -44,7 +44,7 @@ await page.route('**/preview/demo.js', (route) =>
 const row = (id) => page.locator(`#tree [data-key="tab:${id}"]`);
 const header = page.locator('#domain-header');
 const exit = page.getByRole('button', { name: 'Close domain view', exact: true });
-const search = page.getByRole('searchbox');
+const search = page.locator('#search');
 const results = page.locator('#tree .tab-row');
 const sort = page.getByRole('combobox', { name: 'Sort filtered tabs' });
 const send = (type, args = {}) =>
@@ -262,18 +262,22 @@ try {
   await expect(page.locator('#breadcrumbs')).toBeVisible();
   await filter();
   await page.keyboard.press('Control+k');
-  await expect(header).toBeHidden();
-  await expect(search).toBeFocused();
-  await search.fill('domain:youtube.com');
-  await search.press('Enter');
-  await expect(header).toBeHidden();
-  await expect(search).toHaveValue('domain:youtube.com');
+  await expect(header).toBeVisible();
+  const domainSearch = page.locator('#domain-search');
+  await expect(domainSearch).toBeFocused();
+  await domainSearch.fill('Woodworking');
+  await expect(results).toHaveCount(2);
+  await expect(page.locator('#domain-count')).toHaveText('2 of 6 tabs');
   await page.keyboard.press('Escape');
+  await expect(domainSearch).toHaveValue('');
+  await expect(results).toHaveCount(6);
+  await page.keyboard.press('Escape');
+  await expect(header).toBeHidden();
   await filter();
   await page.locator('#new-tab').click();
   await expect(header).toBeHidden();
   console.log(
-    '✓ Dedicated domain view stays separate from search; close, Escape, search shortcut and folder actions return to the main interface',
+    '✓ Dedicated domain view stays separate from search; domain search stays scoped; close, Escape and folder actions return to the main interface',
   );
 
   // Returning from a short result list must restore the original long tree's scroll.
