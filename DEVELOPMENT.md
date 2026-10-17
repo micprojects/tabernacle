@@ -147,7 +147,7 @@ directly into a display-only canvas; no pixel data is extracted and no host perm
 or third-party favicon service is needed. Missing/broken icons use a globe and neutral
 background. Late image events cannot recolour another domain. The wash adapts to dark
 mode and is hidden in forced colours. The results toolbar shows a live count
-and offers newest opened (default), recently viewed, oldest opened, natural title and
+and offers newest opened (default), recently viewed, least recently viewed, oldest opened, natural title and
 full tree order (pins first). Sorting changes only the projection; equal sort keys
 retain tree order. The choice lasts for the sidebar session.
 `openedAt` is captured at `onCreated` and persisted with tab membership. Existing tabs
@@ -164,8 +164,15 @@ keeps Firefox's choice. This temporary context is never stored. No fold or membe
 changes are needed for this view. Dragging and fold
 controls are disabled while filtering; explicit Move tab remains available.
 The header's close button or Escape restores the prior scroll and selection.
-Search remains a separate mode; Ctrl/Command K exits the domain view and opens ordinary
-search. Domain tokens are no longer parsed in the search field.
+The compact domain search matches titles and source URLs, combined with the current
+YouTube filter and sort. Site headings and related-page counts use the full domain
+collection so typing does not change them. Ctrl/Command K focuses the current view's
+search (domain, Later or ordinary). Escape clears a populated, focused domain field
+after dismissing menus/dialogs; the next Escape returns to folders. Domain tokens
+are not parsed in ordinary search. A directory-origin route retains its selected
+footer button and provides Back to Domains, restoring scroll and the selected row or
+nearest survivor. Pins remain listed at one matching tab, including child hosts;
+zero tabs hide the entry without clearing the pin.
 
 Run `node scripts/test-domain-filter-ui.js` for live updates, safe closing, keyboard
 navigation, view restoration, favicon colours and narrow-panel/colour-mode checks, and
@@ -568,12 +575,59 @@ Unknown page types stay available in All. The saved list is scoped to the curren
 Saving changes only `savedForLaterAt`. Folder, durable ancestry, order, native pinning
 and containers remain intact. The resolved tree skips saved parents so their children
 remain accessible. Saved tabs are excluded from ordinary tree/domain projections and
-folder bulk actions. Clearing the timestamp restores the original placement where it
+folder copy/close actions. Folder duplicate review includes saved items. Clearing the timestamp restores the original placement where it
 still exists. Session restoration keeps saved membership; duplicated tabs clear it.
 
 `test/later.test.js`, `scripts/test-later-ui.js` and `scripts/test-later-firefox.js`
 cover persistence, restoration, folder deletion, filters, close selection, keyboard
 navigation, narrow layouts, colour modes and real Firefox tab/container behaviour.
+
+### Search and collection actions
+
+`src/tab-source.js` shares original-URL matching across tree search, domain search
+and saved results. `src/tab-collection.js` derives folder-scoped saved search,
+duplicate keys, keeper suggestions, reviewed target identities and search close order.
+Saved results stay outside `createTreeIndex`; ordinary search appends a labelled
+projection with folder paths. Search has no article-service or permission side effects.
+Returning a saved item retains its view and query, and Later retains scroll, category
+and sort. The confirmation's Show in folder action is the explicit navigation route.
+
+`src/tab-batch.js` runs inside the controller's serialised request queue. The internal
+`saveTabsForLater`, `undoSaveTabsForLater`, `closeTabSet` and `closeDuplicateTabs`
+actions return a refreshed snapshot with `batchResult.completed`, `skipped`, `failed`
+and guarded `undo` targets. Every reviewed target captures the native ID, durable
+identity, source URL, folder, container and saved timestamp. Membership/window/URL
+and collection scope are rechecked before each write; domain closes also validate
+after collecting close-selection state. Query changes, filtered video observations
+and missing duplicate keepers can skip stale targets. Metadata validation only reads
+existing session values and never requests page access or runs extraction.
+
+Batch timestamps descend in displayed order, newer than prior saves. Undo clears
+only the recorded saved memberships and timestamps; native tabs, containers, pins,
+page state and placement stay intact. Batches never discover new targets. Earlier
+mutations in the same batch do not shrink its reviewed YouTube duplicate-filter set.
+Unselected descendants survive closure; ordinary single-tab promotion is unchanged.
+
+`src/collection-dialogs.js` reuses the existing modal shell. Exact duplicate groups
+use the full HTTP(S) source URL plus container, keeping parameters and fragments.
+Protected copies start unselected; other groups retain the newest viewed copy, with
+native order resolving ties and missing times. Review selections only lose invalid
+candidates during refresh, never gain new tabs. The submit action requires a keeper
+per group, and the controller revalidates a reviewed keeper before each close.
+All queries, directory origins and review selections remain temporary.
+
+Later instantiates `createYouTubeView` with its own list and scroll root. The visible
+host alone polls; both hosts reuse the existing service, session observations,
+permission handling and two-read concurrency limit. All/Videos rows retain saved age,
+return and close actions. Shared master/YouTube preferences stop reads and restore
+ordinary rows. Sleeping tabs remain asleep and rendering cannot seek or start playback.
+
+`test/tab-collection.test.js` covers projection ordering, Reader URLs, exact duplicate
+keys, protected keepers, stale targets, partial failure and guarded undo. The registered
+`scripts/test-tab-collection-ui.js` covers combined flows, stable review, keyboard
+focus, all colour modes at 220/320/480px and offscreen batches. Its Firefox counterpart
+covers native saved-result close selection, containers and session restoration.
+The YouTube UI/native suites include Later observations, visibility and reloads.
 
 ### Reader View and article previews
 
