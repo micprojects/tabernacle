@@ -91,6 +91,25 @@ private document contents, account history or a separate copy of the page.
 
 <img src="assets/screenshots/03-search-ui.png" width="550" alt="Search results for grid, showing matching tabs within their folders.">
 
+## Save tabs for later
+
+Right-click a tab and choose **Save for later** to move it out of the tree. Open
+**Saved for Later** from the bookmark-and-clock button before Domains in the bottom
+bar. The newest saved tabs appear first; search titles and URLs, switch to oldest
+first, or use the **Articles**, **Videos** and **Documents** filters. The filters
+recognise common page URLs; other pages remain in **All**.
+
+Clicking a saved tab activates it and leaves it in the list. Hover or focus a row
+to return it to its original folder or close it. Saving a parent leaves its children
+in the tree. Returning it restores its previous position and nesting where possible;
+if its folder has been deleted, it returns to Home. Pinned tabs return to the pinned strip.
+
+Saved tabs remain real Firefox tabs in their current window, retaining their containers
+and page state. Membership is kept in Firefox session data across extension reloads
+and session restoration. Closing a saved tab removes it from the list; restoring that
+closed tab also restores its saved status. This feature does not save offline copies
+or synchronise tabs between devices.
+
 ## Keep sign-ins separate
 
 Choose a Firefox container for new tabs, or set a default container for each folder.
