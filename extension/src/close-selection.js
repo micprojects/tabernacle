@@ -39,7 +39,9 @@ export function closeFallback(before, after, closedId, filter = null) {
   const included = Array.isArray(filter?.tabIds) ? new Set([...filter.tabIds, closedId]) : null;
   const orderFor = (state) =>
     filter?.later
-      ? laterResults(state.tabs, filter).map((tab) => tab.id)
+      ? laterResults(state.tabs, { ...filter, ...(included ? { tabIds: [...included] } : {}) }).map(
+          (tab) => tab.id,
+        )
       : domain
         ? domainResults(createTreeIndex(state), domain, query, filter.sort)
             .filter((tab) => !included || included.has(tab.id))

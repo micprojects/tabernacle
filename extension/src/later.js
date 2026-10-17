@@ -1,4 +1,5 @@
 import { isSavedForLater } from './model.js';
+import { articleUrl } from './article.js';
 
 export const laterFilters = {
   all: 'All',
@@ -7,11 +8,14 @@ export const laterFilters = {
   documents: 'Documents',
 };
 
-// Conservative URL hints: unknown pages remain in All. No page reads or network requests.
+// Native detection and permitted previews supplement conservative URL hints.
 export function laterCategory(value) {
+  const tab = typeof value === 'object' && value ? value : null;
+  if (tab?.isArticle || tab?.isInReaderMode || tab?.articlePreview) return 'articles';
+  value = tab ? tab.url : value;
   let url;
   try {
-    url = new URL(value);
+    url = new URL(articleUrl(value) || value);
   } catch {
     return 'other';
   }
@@ -52,14 +56,19 @@ export function laterCategory(value) {
   return 'other';
 }
 
-export function laterResults(tabs, { category = 'all', query = '', sort = 'newest' } = {}) {
+export function laterResults(tabs, { category = 'all', query = '', sort = 'newest', tabIds } = {}) {
   const search = query.trim().toLowerCase();
+  const included = Array.isArray(tabIds) ? new Set(tabIds) : null;
   return tabs
     .filter(
       (tab) =>
         isSavedForLater(tab) &&
-        (category === 'all' || laterCategory(tab.url) === category) &&
-        `${tab.title || ''} ${tab.url || ''}`.toLowerCase().includes(search),
+        (included
+          ? included.has(tab.id)
+          : (category === 'all' || laterCategory(tab) === category) &&
+            `${tab.title || ''} ${articleUrl(tab.url) || tab.url || ''} ${tab.articlePreview?.title || ''} ${tab.articlePreview?.byline || ''}`
+              .toLowerCase()
+              .includes(search)),
     )
     .sort(
       (a, b) =>

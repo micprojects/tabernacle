@@ -123,8 +123,23 @@ private document contents, account history or a separate copy of the page.
 Right-click a tab and choose **Save for later** to move it out of the tree. Open
 **Saved for Later** from the bookmark-and-clock button before Domains in the bottom
 bar. The newest saved tabs appear first; search titles and URLs, switch to oldest
-first, or use the **Articles**, **Videos** and **Documents** filters. The filters
-recognise common page URLs; other pages remain in **All**.
+first, or use the **Articles**, **Videos** and **Documents** filters. Articles use
+Firefox's detection, available previews and common page URLs; other pages remain in **All**.
+
+Choose **Read** on an eligible article to open the same tab in Firefox's Reader View.
+**View original** switches back. The tab stays saved, and these controls do not need
+access to the page's contents.
+
+Open **Article previews** and choose **Enable on all sites** to approve website access
+once. New sites then work without further permission prompts. The control stays
+collapsed until opened; declining does not trigger another prompt. Where available,
+the row shows an excerpt, author, publication date and estimated reading time. Search
+also finds preview titles and authors. Previews are extracted locally with Mozilla
+Readability from loaded pages; sleeping tabs stay asleep. Only the small preview is
+kept in that tab's Firefox session data, so it remains available in Reader View and
+after reopening the sidebar. Page access is optional. **Remove all-site access** in
+the same control revokes the broad grant; any access granted separately to individual
+sites remains. Firefox's extension settings can also manage site access.
 
 Clicking a saved tab activates it and leaves it in the list. Hover or focus a row
 to return it to its original folder or close it. Saving a parent leaves its children

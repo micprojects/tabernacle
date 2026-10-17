@@ -551,9 +551,9 @@ Playwright Chromium and Firefox must be installed before running browser checks.
 ## Saved for Later
 
 `src/later-view.js` owns the dedicated sidebar view, with `later.css` for its layout.
-`src/later.js` derives content filters from URLs and sorts by the session membership's
-`savedForLaterAt` timestamp. Unknown page types stay available in All; classification
-does not request host access or read pages. The saved list is scoped to the current window.
+`src/later.js` derives content filters from URLs, native article flags and permitted
+previews, and sorts by the session membership's `savedForLaterAt` timestamp.
+Unknown page types stay available in All. The saved list is scoped to the current window.
 
 Saving changes only `savedForLaterAt`. Folder, durable ancestry, order, native pinning
 and containers remain intact. The resolved tree skips saved parents so their children
@@ -564,6 +564,58 @@ still exists. Session restoration keeps saved membership; duplicated tabs clear 
 `test/later.test.js`, `scripts/test-later-ui.js` and `scripts/test-later-firefox.js`
 cover persistence, restoration, folder deletion, filters, close selection, keyboard
 navigation, narrow layouts, colour modes and real Firefox tab/container behaviour.
+
+### Reader View and article previews
+
+`setReaderMode` checks the saved membership, window and source URL before activating
+the existing tab and calling Firefox's `tabs.toggleReaderMode`. It sets the intended
+state instead of blindly toggling a stale snapshot. Availability comes from native
+`isArticle` / `isInReaderMode` flags. Load completion refreshes these fields even when
+Firefox omits them from changeInfo. Opening Reader View needs no host permission.
+`articleUrl` unwraps `about:reader` URLs for previews, source labels and filtering.
+Close selection receives the actual visible IDs, including rows matched by extracted
+article titles or authors that are unavailable to the background controller.
+
+`src/article-service.js` checks optional access to the exact HTTP(S) host. The manifest
+declares optional web origins. A collapsed **Article previews** control explicitly
+requests both `http://*/*` and `https://*/*` once, within the click gesture. Opening
+the view, adding tabs and declining never request permissions automatically.
+Granting access clears cached denials for every host. Firefox retains the grant
+across sidebar reloads; the control reads actual permissions, not a stored UI flag.
+Removal targets only those two broad patterns, preserving separately granted sites.
+Per-host checks continue to support existing narrow grants (including all ports).
+Only visible saved rows and their immediate scroll margin are checked, with two
+automatic reads at a time. Videos and documents are skipped. No article fetches or
+account APIs are used. Discarded, loading and native Reader View documents are never
+injected. Closing the view or changing permissions invalidates pending results.
+Navigation checks reject stale results. Successful reads are throttled to five minutes;
+failed reads retry after 30 seconds, doubling up to five minutes.
+
+Readability 0.6.0 is vendored unchanged under `extension/vendor/readability/`, with
+the upstream package integrity, file hashes and Apache 2.0 licence. The two scripts
+are injected on demand in the isolated world and parse a cloned document, bounded
+to 50,000 elements. Only plain title/byline/excerpt/date fields and a word count return
+to the sidebar. Article HTML is never rendered or persisted. Reading time is an
+estimate at 220 words per minute. Records in `tabernacle.article.v1` are bound to the
+source URL and durable tree identity; copied session values do not enrich duplicates.
+Removing site access hides cached data until access is granted again.
+
+`scripts/lint-extension.js` scans every shipped file and verifies the pinned source.
+It recognises only two reviewed `UNSAFE_VAR_ASSIGNMENT` diagnostics at lines 1549
+and 1928 of that exact Readability file: restoration of a detached cloned document
+and parsing of a detached noscript image. Upstream already marks these assignments
+with ESLint exemptions, which Mozilla's extension scanner ignores. All other errors
+and warnings fail the check. Updating the library requires reviewing those diagnostics
+and updating the pinned checksums; project lint/format rules preserve vendor bytes.
+
+`test/article.test.js` covers permissions, retries, stale results, cache identity,
+source URL handling and controller behaviour. `scripts/test-reader-ui.js` runs the
+real vendored parser against an original local article, checks that its DOM is
+unchanged, and tests all-site permission denial/grant/removal, new sites without
+further prompts, filtering, keyboard controls and narrow
+layouts. `scripts/test-reader-firefox.js` exercises actual Reader View, extraction,
+containers, cached previews after sidebar reload, revocation and discarded tabs in
+an isolated profile with a local HTTP fixture. Both are registered in release QA.
 
 ## Refresh and folder indexing
 

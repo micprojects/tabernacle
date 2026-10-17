@@ -10,6 +10,7 @@ import { normaliseDomainPins } from './domains.js';
 import { normalizeLook, requireLook } from './look.js';
 import { normalizeNewTab, requireNewTab, isNewTabPage } from './new-tab-preferences.js';
 import { SITE_MODES } from './site-modes.js';
+import { articleUrl } from './article.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
@@ -1459,6 +1460,30 @@ export function createController(
           if (!window.focused) await api.windows.update(windowId, { focused: true });
         }
         if (message.reveal === true) await revealTab(message.id, windowId);
+        break;
+      }
+      case 'setReaderMode': {
+        if (typeof message.enabled !== 'boolean' || !articleUrl(message.url))
+          throw new Error('Choose an article and a reading view.');
+        let tab = await checkedTab(message.id, windowId);
+        if (!isSavedForLater(await membership(tab.id)))
+          throw new Error('That tab is no longer saved for later.');
+        if (articleUrl(tab.url) !== message.url)
+          throw new Error('That page has changed. Try again.');
+        if (message.enabled && !tab.isInReaderMode && !tab.isArticle)
+          throw new Error('Reader View is not available for this page.');
+        await writeTab(windowId, 'update', tab.id, { active: true });
+        if (!window.focused) await api.windows.update(windowId, { focused: true });
+        tab = await checkedTab(tab.id, windowId);
+        if (articleUrl(tab.url) !== message.url)
+          throw new Error('That page has changed. Try again.');
+        if (Boolean(tab.isInReaderMode) !== message.enabled) {
+          try {
+            await writeTab(windowId, 'toggleReaderMode', tab.id);
+          } catch {
+            throw new Error('Reader View is not available yet. Open the page and try again.');
+          }
+        }
         break;
       }
       case 'saveForLater': {
