@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { domainFromUrl, domainResults } from './domain-filter.js';
 import { createDomainHeader } from './domain-header.js';
+import { createDomainsView } from './domains-view.js';
 import { isYouTubeDomain, youtubeVideoId } from './youtube.js';
 import { createYouTubeView } from './youtube-view.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
@@ -129,6 +130,22 @@ let movingItem = false;
 let actionQueue = Promise.resolve();
 let activeActions = 0;
 const pendingViewActions = [];
+const domainsView = createDomainsView({
+  root: document.querySelector('.sidebar'),
+
+  onOpen() {
+    cancelGroupClick();
+    closeMenu();
+    recentlyClosed?.close();
+    treeMotion.finishAll();
+    if (domainFilter) leaveDomain({ restoreFocus: false });
+    if (searchOpen) showSearch(false, { restoreFocus: false });
+  },
+
+  onClose: () => render(),
+  onSelect: (domain, sourceId) => filterByDomain(domain, sourceId),
+  onPin: (domain, pinned) => action('setDomainPin', { domain, pinned }),
+});
 
 function acceptState(next) {
   confirmedState = next;
@@ -420,6 +437,7 @@ const refresh = refreshScheduler.now;
 window.addEventListener('pagehide', refreshScheduler.dispose, { once: true });
 
 function enter(id, collapsed) {
+  domainsView.close({ restoreFocus: false });
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
   if (searchOpen) showSearch(false, { restoreFocus: false });
@@ -428,6 +446,7 @@ function enter(id, collapsed) {
 }
 
 async function revealFolder(id) {
+  domainsView.close({ restoreFocus: false });
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
   if (searchOpen) showSearch(false, { restoreFocus: false });
@@ -1262,6 +1281,7 @@ function render(motionKey = null) {
   renderPending = false;
   state = pointerMoves?.project(state) || state;
   recentlyClosed?.render();
+  if (domainsView.update(state)) return;
   tree.classList.toggle('show-connecting-lines', state.look.connectingLines);
   tree.classList.toggle('show-domains', state.look.domains);
   tree.classList.toggle('show-folder-counts', state.look.folderCounts);
@@ -1446,6 +1466,7 @@ function render(motionKey = null) {
 }
 
 function showSearch(show = true, { restoreFocus = true } = {}) {
+  if (show) domainsView.close({ restoreFocus: false });
   if (show && domainFilter) leaveDomain({ restoreFocus: false });
   if (show || restoreFocus) cancelGroupClick();
   if (show) closeMenu();
@@ -2132,7 +2153,7 @@ document.addEventListener('pointerdown', (event) => {
   const dismissDomain = domainFilter && event.target.closest('footer');
   // Clearing the filter must not move or replace a target before its click.
   if (
-    event.target.closest('.row, .pinned-tab, .recently-closed-row') ||
+    event.target.closest('.row, .pinned-tab, .recently-closed-row, .domains-row') ||
     dismissSearch ||
     dismissDomain
   )

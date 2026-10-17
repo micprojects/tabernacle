@@ -5,6 +5,8 @@ import { closeFallback, createCloseSelection } from './close-selection.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { containerChoices, containerDetails } from './containers.js';
 import { deserializeModel, serializeModel } from './persistence.js';
+import { normaliseDomain } from './domain-filter.js';
+import { normaliseDomainPins } from './domains.js';
 import { normalizeLook, requireLook } from './look.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
@@ -211,6 +213,7 @@ export function createController(
         );
       next.look = normalizeLook(next.look);
       next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
+      next.domainPins = normaliseDomainPins(next.domainPins);
       await moves.load();
       model = next;
     })().catch((error) => {
@@ -526,6 +529,7 @@ export function createController(
       revision: snapshotRevision,
       groups: structuredClone(model.groups),
       folderPins: structuredClone(model.folderPins),
+      domainPins: [...model.domainPins],
       pins: pins.items,
       containers: identities,
       look: { ...model.look },
@@ -1221,6 +1225,18 @@ export function createController(
         await saveView(windowId, view);
         break;
       }
+      case 'setDomainPin': {
+        const domain = normaliseDomain(message.domain);
+        if (!domain || typeof message.pinned !== 'boolean')
+          throw new Error('Choose a domain and whether to pin it.');
+        await changeModel((next) => {
+          const pins = new Set(next.domainPins);
+          if (message.pinned) pins.add(domain);
+          else pins.delete(domain);
+          next.domainPins = [...pins];
+        });
+        break;
+      }
       case 'setGroupPin': {
         const group = groupById(model, requireGroup(model, message.id));
         if (!group) throw new Error('Choose a folder to pin.');
@@ -1490,6 +1506,7 @@ export function createController(
         'moveGroupContents',
         'removeGroup',
         'setGroupPin',
+        'setDomainPin',
         'setLook',
         'setYouTubeMode',
       ].includes(type) ||

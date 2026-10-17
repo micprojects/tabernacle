@@ -3,6 +3,7 @@ export const uiSuites = [
   'test-navigation-ui',
   'test-search-dismiss-ui',
   'test-domain-filter-ui',
+  'test-domains-ui',
   'test-youtube-ui',
   'test-breadcrumbs-ui',
   'test-folder-picker-ui',
