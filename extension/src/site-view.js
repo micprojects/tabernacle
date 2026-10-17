@@ -1,5 +1,6 @@
-import { sitePage, cleanSiteTitle, siteDetails } from './site-modes.js';
+import { cleanSiteTitle, siteDetails } from './site-modes.js';
 import { createSiteService } from './site-service.js';
+import { hackerNewsStory, normaliseHackerNewsStory, siteTabPage } from './hacker-news.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -8,10 +9,11 @@ function element(tag, className, text) {
   return node;
 }
 
-export function createSiteView({ tree, onPermission, api = globalThis.browser }) {
+export function createSiteView({ tree, onPermission, onNavigate, api = globalThis.browser }) {
   const service = createSiteService({ api });
   const visible = new Set();
   const watched = new Set();
+  const navigating = new Set();
   let tabs = new Map();
   let duplicates = new Map();
   let active = null;
@@ -30,16 +32,90 @@ export function createSiteView({ tree, onPermission, api = globalThis.browser })
     { root: tree, rootMargin: '100px 0px' },
   );
 
+  function storyFor(tab, data) {
+    if (!data?.articleUrl) return null;
+    const saved = hackerNewsStory(tab);
+    return normaliseHackerNewsStory({
+      ...saved,
+      ...data,
+      commentsUrl: saved?.commentsUrl || tab.url,
+      title: data.title || saved?.title || tab.title,
+    });
+  }
+
+  function paintSwitch(row, tab, data) {
+    const story = active === 'hn' && onNavigate && storyFor(tab, data);
+    let control = row.querySelector('.hn-view-switch');
+    if (!story) {
+      control?.remove();
+      return false;
+    }
+    if (!control) {
+      control = element('span', 'hn-view-switch');
+      control.setAttribute('role', 'group');
+      for (const view of ['comments', 'article']) {
+        const button = element('button', 'hn-view-button');
+        button.type = 'button';
+        button.dataset.hnView = view;
+        button.append(element('span', '', view === 'comments' ? 'Comments' : 'Article'));
+        if (view === 'comments') button.append(element('span', 'hn-comment-count'));
+        button.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          const current = tabs.get(tab.id);
+          const story = current && storyFor(current, service.peek(current));
+          if (!story || navigating.has(tab.id)) return;
+          navigating.add(tab.id);
+          paint(row, current);
+          try {
+            await onNavigate(tab.id, view, current.url, story);
+          } finally {
+            navigating.delete(tab.id);
+            const nextRow = tree.querySelector(`.site-row[data-id="${tab.id}"]`);
+            const nextTab = tabs.get(tab.id);
+            if (nextRow && nextTab) paint(nextRow, nextTab);
+            // Keep keyboard focus on the control when navigation replaces its row.
+            if (
+              document.activeElement === document.body ||
+              document.activeElement === nextRow ||
+              control.contains(document.activeElement)
+            )
+              nextRow?.querySelector(`[data-hn-view="${view}"]`)?.focus({ preventScroll: true });
+          }
+        });
+        control.append(button);
+      }
+      row.querySelector('.site-copy').append(control);
+    }
+    control.setAttribute('aria-label', `View for ${story.title}`);
+    const view = hackerNewsStory(tab)?.view || 'comments';
+    for (const button of control.querySelectorAll('button')) {
+      const target = button.dataset.hnView;
+      button.setAttribute('aria-pressed', String(view === target));
+      button.setAttribute('aria-label', `Show ${target} for ${story.title}`);
+      button.setAttribute('aria-description', target === 'comments' ? story.comments : '');
+      button.title =
+        target === 'article'
+          ? `Show ${story.articleUrl} in this tab`
+          : 'Show Hacker News comments in this tab';
+      button.disabled = navigating.has(tab.id);
+    }
+    const count = control.querySelector('.hn-comment-count');
+    count.textContent = story.comments.replace(/\s+comments?$/, '');
+    count.hidden = !story.comments;
+    return true;
+  }
+
   function paint(row, tab) {
-    const page = sitePage(tab.url);
+    const page = siteTabPage(tab);
     if (!page || page.mode !== active) return;
     const data = service.peek(tab);
     const title = cleanSiteTitle(data?.title || tab.title, page);
     row.querySelector('.label').textContent = title;
     const lines = siteDetails(page, data || {}).filter(Boolean);
+    const hasSwitch = paintSwitch(row, tab, data);
     for (const [index, node] of [...row.querySelectorAll('.site-detail')].entries()) {
       node.textContent = lines[index] || '';
-      node.hidden = !node.textContent;
+      node.hidden = !node.textContent || (hasSwitch && node.textContent === data.comments);
       node.title = `${node.textContent}${data?.readAt ? `\nLast read ${new Date(data.readAt).toLocaleString()}` : ''}`;
     }
     row.setAttribute('aria-label', title + (row.dataset.siteAriaSuffix || ''));
@@ -97,7 +173,7 @@ export function createSiteView({ tree, onPermission, api = globalThis.browser })
       tabs = new Map(nextTabs.map((tab) => [tab.id, tab]));
       duplicates = new Map();
       for (const tab of nextTabs) {
-        const identity = sitePage(tab.url)?.identity;
+        const identity = siteTabPage(tab)?.identity;
         if (identity) duplicates.set(identity, (duplicates.get(identity) || 0) + 1);
       }
       service.configure(nextDomain, mode, nextTabs);
@@ -120,11 +196,11 @@ export function createSiteView({ tree, onPermission, api = globalThis.browser })
     },
 
     duplicateCount(tab) {
-      return duplicates.get(sitePage(tab.url)?.identity) || 0;
+      return duplicates.get(siteTabPage(tab)?.identity) || 0;
     },
 
     content(tab, folder, favicon) {
-      const page = sitePage(tab.url);
+      const page = siteTabPage(tab);
       const media = element('span', `site-media site-media-${page.mode}`);
       media.append(favicon);
       const image = element('img', 'site-image');

@@ -2,14 +2,15 @@ import { createRefreshScheduler } from './refresh-scheduler.js';
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
-import { domainFromUrl, domainResults } from './domain-filter.js';
+import { domainForTab, domainResults } from './domain-filter.js';
 import { createDomainHeader } from './domain-header.js';
 import { createDomainsView } from './domains-view.js';
 import { createLaterView } from './later-view.js';
 import { isYouTubeDomain, youtubeVideoId } from './youtube.js';
 import { createYouTubeView } from './youtube-view.js';
-import { SITE_MODES, siteModeForDomain, sitePage } from './site-modes.js';
+import { SITE_MODES, siteModeForDomain } from './site-modes.js';
 import { createSiteView } from './site-view.js';
+import { hackerNewsDisplayTab, siteTabPage } from './hacker-news.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
 import { createFaviconTints } from './favicon-tint.js';
@@ -58,6 +59,7 @@ let siteMode = null;
 let siteAllowed = false;
 const siteView = createSiteView({
   tree,
+  onNavigate: (id, view, url, story) => action('setHackerNewsView', { id, view, url, story }),
 
   onPermission: (allowed) => {
     siteAllowed = allowed;
@@ -74,7 +76,7 @@ function siteActive() {
 }
 
 function enrichedSiteTab(tab) {
-  return siteActive() && sitePage(tab.url)?.mode === siteMode;
+  return siteActive() && siteTabPage(tab)?.mode === siteMode;
 }
 
 const youtubeView = createYouTubeView({
@@ -949,7 +951,7 @@ function pinnedTab(tab) {
 }
 
 function createTabRow(tab, expanded, stats) {
-  const favicon = tabFavicon(tab);
+  const favicon = tabFavicon(enrichedSiteTab(tab) ? hackerNewsDisplayTab(tab) : tab);
   const row = rowBase('tab', tab.id);
   row.classList.toggle('active', Boolean(tab.active));
   row.classList.toggle('contains-active', !expanded && stats.active);
@@ -1506,7 +1508,7 @@ function render(motionKey = null) {
       ? results.filter((tab) => youtubeView.matches(tab, youtubeFilter))
       : results;
     youtubeVisibleIds = visibleResults.map((tab) => tab.id);
-    renderDomainHeader(domainFilter, results, domainSourceId);
+    renderDomainHeader(domainFilter, results.map(hackerNewsDisplayTab), domainSourceId);
     reconcileChildren(
       tree,
       visibleResults.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
@@ -2035,7 +2037,7 @@ function contextMenu(kind, id, x, y) {
       );
       return;
     }
-    const domain = domainFromUrl(tab.url);
+    const domain = domainForTab(tab);
     menu(
       [
         { label: 'Save for later', icon: 'later', run: () => saveTabForLater(id) },

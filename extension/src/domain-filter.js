@@ -1,3 +1,5 @@
+import { hackerNewsStory, HACKER_NEWS_DOMAIN } from './hacker-news.js';
+
 // Match hostnames, never a domain mentioned in a title, path or query string.
 export function normaliseDomain(value) {
   if (typeof value !== 'string' || !value || /[\s/@?#\\]/u.test(value)) return null;
@@ -30,8 +32,12 @@ export function domainFromUrl(value) {
   }
 }
 
+export function domainForTab(tab) {
+  return hackerNewsStory(tab) ? HACKER_NEWS_DOMAIN : domainFromUrl(tab.url);
+}
+
 export function matchesDomain(tab, domain, query = '') {
-  const host = domainFromUrl(tab.url);
+  const host = domainForTab(tab);
   return Boolean(
     host &&
     (host === domain || host.endsWith(`.${domain}`)) &&

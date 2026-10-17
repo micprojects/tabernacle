@@ -158,6 +158,10 @@ try {
     await row(id).scrollIntoViewIfNeeded();
     for (const [field, value] of Object.entries(f.fields)) {
       if (field === 'title') await expect(row(id).locator('.label')).toHaveText(value);
+      else if (f.site === 'hn' && field === 'comments')
+        await expect(row(id).locator('.hn-comment-count')).toHaveText(
+          value.replace(/\s+comments?$/, ''),
+        );
       else await expect(row(id)).toContainText(value);
     }
     if (values[id].image) await expect(row(id).locator('.site-media')).toHaveClass(/has-image/);
