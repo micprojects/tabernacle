@@ -45,6 +45,11 @@ the weather grants and switches the widget off.
 
 Organise tabs into folders, subfolders and nested trees in your Firefox sidebar.
 
+Use a tab's close button or middle-click to close just that tab. Its first child
+takes its place, with the other children nested beneath it. Undo restores the
+original tree. To close the whole branch, right-click and choose **Close tab and
+nested tabs…**, then confirm.
+
 <img src="assets/screenshots/01-folders-and-tabs-ui.png" width="520" alt="Tabernacle sidebar showing folders, subfolders and nested tabs.">
 
 ## Focus on one folder

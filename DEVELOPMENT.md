@@ -396,6 +396,16 @@ GeckoDriver when needed. Both the Firefox integration and Chromium UI suites use
 real pointer sequences through the shared drag controller, including on macOS.
 Set `FIREFOX_BINARY` or `GECKODRIVER_BINARY` to use a specific local executable.
 
+The close button, middle-click and Close tab menu item use `closeTab` with
+`promoteFirstChild`: the first child takes the parent's order and the remaining
+children use it as their fallback parent. Saved
+ancestry keeps the closed parent's identity ahead of that fallback, so Undo
+reconnects the original tree. A shared preorder preserves sibling order after
+promotion and restoration. Membership changes use the existing move recovery;
+failed closes roll them back when the parent is still open. A separate Close tab
+and nested tabs context-menu action confirms before closing the whole branch.
+Native closes keep their existing behaviour.
+
 `node scripts/test-tab-close-firefox.js` checks the native Command+W/Ctrl+W close
 path with animations enabled, alongside the sidebar close button, undo and immediate
 Settings reopening. Firefox
