@@ -8,9 +8,8 @@
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <path d="M3.25 1.5h9.5v13L8 11.75 3.25 14.5Z" />
-      <circle cx="8" cy="6.25" r="2.75" />
-      <path d="M8 4.75v1.75l1 .5" />
+      <path d="M1.5 8.5 4 3.5h8l2.5 5v4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1Z" />
+      <path d="M1.5 8.5H5L6.25 10h3.5L11 8.5h3.5" />
     </g>
   </symbol>
 </svg>
