@@ -34,7 +34,7 @@ test('directory counts agree with domain filters, including child hosts and www 
   assert.deepEqual(tabs, before);
 });
 
-test('pins lead, each section is sorted by count, and dormant pins reappear at two tabs', () => {
+test('pins lead, each section is sorted by count, and pinned domains remain at one tab', () => {
   const tabs = ['a.test', 'a.test', 'a.test', 'b.test', 'b.test', 'c.test'].map((host, id) => ({
     id,
     url: `https://${host}/${id}`,
@@ -45,6 +45,7 @@ test('pins lead, each section is sorted by count, and dormant pins reappear at t
     entries.map(({ domain, pinned }) => [domain, pinned]),
     [
       ['b.test', true],
+      ['c.test', true],
       ['a.test', false],
     ],
   );

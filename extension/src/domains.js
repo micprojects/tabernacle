@@ -32,8 +32,14 @@ export function listDomains(tabs, pins = []) {
     }
   }
   const pinned = new Set(pins);
+  for (const domain of pinned) {
+    if (hosts.has(domain)) continue;
+    const matches = [...hosts.values()].filter((entry) => entry.domain.endsWith(`.${domain}`));
+    const count = matches.reduce((total, entry) => total + entry.ownCount, 0);
+    if (count) hosts.set(domain, { domain, count, ownCount: 0, source: matches[0].source });
+  }
   return [...hosts.values()]
-    .filter(({ count }) => count > 1)
+    .filter(({ domain, count }) => count > 1 || (count > 0 && pinned.has(domain)))
     .map(({ ownCount, ...entry }) => ({ ...entry, pinned: pinned.has(entry.domain) }))
     .sort(
       (a, b) =>

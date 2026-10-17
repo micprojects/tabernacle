@@ -1,3 +1,4 @@
+import { applyTabBatch } from './tab-batch.js';
 import { createMoveRecovery } from './move-recovery.js';
 import { resolveMove } from './move-plan.js';
 import { createBrowserCache } from './browser-cache.js';
@@ -11,7 +12,15 @@ import { normalizeLook, requireLook } from './look.js';
 import { normalizeNewTab, requireNewTab, isNewTabPage } from './new-tab-preferences.js';
 import { SITE_MODES } from './site-modes.js';
 import { hackerNewsArticle, hackerNewsStory, normaliseHackerNewsStory } from './hacker-news.js';
-import { articleUrl } from './article.js';
+import { articleUrl, normaliseArticle } from './article.js';
+import { ARTICLE_SESSION_KEY } from './article-service.js';
+import {
+  YOUTUBE_SESSION_KEY,
+  youtubeVideoId,
+  normaliseVideoData,
+  videoInProgress,
+} from './youtube.js';
+import { inCollection } from './tab-collection.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
@@ -330,11 +339,12 @@ export function createController(
     }
   }
 
-  async function closeTabs(windowId, ids) {
+  async function closeTabs(windowId, ids, validate) {
     const before = await selectionState(windowId);
     const closing = Array.isArray(ids) ? ids : [ids];
     const active = before.tabs.find((tab) => tab.active && closing.includes(tab.id));
     const current = closeSelection.guard(windowId, closing);
+    if (validate && !(await validate())) return false;
     await writeTab(windowId, 'remove', ids);
     if (active) await settleClose(windowId, before, active.id, current);
   }
@@ -1596,6 +1606,70 @@ export function createController(
             throw new Error('Reader View is not available yet. Open the page and try again.');
           }
         }
+        break;
+      }
+      case 'saveTabsForLater':
+      case 'undoSaveTabsForLater':
+      case 'closeTabSet':
+      case 'closeDuplicateTabs': {
+        const tabs = await listTabs(windowId);
+        const initial = new Map(tabs.map((tab) => [tab.id, tab]));
+
+        const freshTab = async (id) => {
+          const original = initial.get(id);
+          if (!original) return null;
+          const current = await membership(id);
+          if (!current || current.treeId !== original.treeId) return null;
+          let articlePreview;
+          if (message.scope?.kind === 'later') {
+            const saved = await api.sessions.getTabValue(id, ARTICLE_SESSION_KEY).catch(() => null);
+            if (saved?.treeId === current.treeId)
+              articlePreview = normaliseArticle(saved, articleUrl(original.url));
+          }
+          const native = await findOpenTab(id);
+          if (!native || native.windowId !== windowId) return null;
+          return { ...original, ...native, ...current, articlePreview };
+        };
+
+        const state = { groups: model.groups, tabs };
+        extra.batchResult = await applyTabBatch(message, {
+          state,
+          freshTab,
+          isClosed: async (id) => !(await findOpenTab(id)),
+
+          inScope: async (tab, scope, completed) => {
+            if (scope?.kind !== 'domain') return true;
+            const videoId = youtubeVideoId(tab.url);
+            if (scope.youtubeFilter === 'progress') {
+              const saved = await api.sessions.getTabValue(tab.id, YOUTUBE_SESSION_KEY);
+              return (
+                saved?.treeId === tab.treeId && videoInProgress(normaliseVideoData(saved, videoId))
+              );
+            }
+            if (scope.youtubeFilter === 'duplicates') {
+              if (!videoId) return false;
+              // Earlier mutations in this same batch must not shrink its reviewed
+              // duplicate scope. External changes still remove invalid companions.
+              if (completed.some((id) => youtubeVideoId(initial.get(id)?.url) === videoId))
+                return true;
+              for (const other of await api.tabs.query({ windowId })) {
+                if (other.id === tab.id || youtubeVideoId(other.url) !== videoId) continue;
+                const candidate = await freshTab(other.id);
+                if (candidate && inCollection(state, candidate, { ...scope, query: '' }))
+                  return true;
+              }
+              return false;
+            }
+            return true;
+          },
+
+          save: async (id, savedForLaterAt, validate) => {
+            if (!(await validate())) return false;
+            await updateMembership(id, { savedForLaterAt });
+          },
+
+          close: (id, validate) => closeTabs(windowId, id, validate),
+        });
         break;
       }
       case 'saveForLater': {

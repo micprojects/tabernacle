@@ -352,7 +352,16 @@
     outline: 1px solid Highlight;
   }
   .later-row.active
-    :is(.later-domain, .later-time, .later-article-details, .later-excerpt, button) {
+    :is(
+      .later-domain,
+      .later-time,
+      .later-article-details,
+      .later-excerpt,
+      .youtube-channel,
+      .youtube-folder,
+      .youtube-position,
+      button
+    ) {
     color: HighlightText;
   }
   .later-row.active .later-article-actions button {
@@ -362,5 +371,53 @@
   }
   .later-row.active svg.folder-icon {
     color: HighlightText !important;
+  }
+}
+
+.later-video-access {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.later-video-access button {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+}
+.later-row.youtube-row .later-open-tab {
+  gap: 8px;
+}
+.later-row.youtube-row .label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+.later-row.youtube-row .youtube-media {
+  flex-basis: 72px;
+  width: 72px;
+}
+.later-row.youtube-row .youtube-thumbnail {
+  height: 40.5px;
+}
+.later-row.youtube-row {
+  position: relative;
+}
+@media (max-width: 280px) {
+  .later-row.youtube-row {
+    display: block;
+  }
+  .later-row.youtube-row .later-side {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 0 8px 6px;
   }
 }

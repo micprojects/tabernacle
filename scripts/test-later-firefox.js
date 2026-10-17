@@ -164,11 +164,10 @@ try {
         .click(),
     fixture.parent,
   );
-  await wait(() => document.getElementById('later-view').hidden);
+  await wait(() => document.querySelectorAll('#later-view .later-row').length === 1);
   snapshot = await browser.evaluate(() => laterSend('snapshot'));
   assert.equal(snapshot.tabs.find((tab) => tab.id === fixture.child).parentTabId, fixture.parent);
   assert.equal(snapshot.tabs.find((tab) => tab.id === fixture.parent).savedForLaterAt, undefined);
-  await browser.evaluate(() => document.getElementById('later-toggle').click());
   await wait(() => document.querySelectorAll('#later-view .later-row').length === 1);
   await browser.evaluate(
     async (saved, parent, outside) => {

@@ -15,8 +15,14 @@ function element(tag, className, text) {
   return node;
 }
 
-export function createYouTubeView({ tree, onChange, onPermission }) {
-  const service = createYouTubeService({ api: globalThis.browser });
+export function createYouTubeView({
+  tree,
+  scrollRoot = tree,
+  onChange,
+  onPermission,
+  api = globalThis.browser,
+}) {
+  const service = createYouTubeService({ api });
   let active = false;
   let tabs = [];
   let duplicates = new Map();
@@ -33,7 +39,7 @@ export function createYouTubeView({ tree, onChange, onPermission }) {
       }
       tick();
     },
-    { root: tree, rootMargin: '100px 0px' },
+    { root: scrollRoot, rootMargin: '100px 0px' },
   );
 
   function paint(row, tab) {

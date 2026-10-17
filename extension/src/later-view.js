@@ -1,3 +1,6 @@
+import { createYouTubeView } from './youtube-view.js';
+import { youtubeVideoId, youtubeTitle } from './youtube.js';
+import { groupPath } from './model.js';
 import { icon } from './icons.js';
 import { reconcileChildren } from './dom.js';
 import { domainFromUrl } from './domain-filter.js';
@@ -30,6 +33,7 @@ export function createLaterView({
   onReturn,
   onCloseTab,
   onMenu,
+  onActions,
   onRead,
   onError = () => {},
   onNotice = () => {},
@@ -80,7 +84,19 @@ export function createLaterView({
     option.value = value;
     sort.append(option);
   }
-  tools.append(count, sort);
+  const actions = button('Saved tabs actions', 'more', 'icon-button');
+  actions.setAttribute('aria-haspopup', 'menu');
+  actions.addEventListener('click', (event) =>
+    onActions?.(
+      event,
+      visibleIds
+        .map((id) => state.tabs.find((tab) => tab.id === id))
+        .filter(Boolean)
+        .map((tab) => ({ ...tab, articlePreview: articles.peek(tab) })),
+      { kind: 'later', category, query: search.value },
+    ),
+  );
+  tools.append(count, sort, actions);
   const previewOptions = element('details', 'later-preview-options');
   previewOptions.hidden = !api?.scripting || !api?.permissions;
   const previewSummary = element('summary');
@@ -98,8 +114,13 @@ export function createLaterView({
   const emptyTitle = element('h2');
   const emptyText = element('p');
   empty.append(icon('later'), emptyTitle, emptyText);
+  const videoAccess = element('div', 'later-video-access');
+  const videoAllow = button('Allow YouTube access');
+  videoAllow.textContent = 'Allow YouTube access';
+  videoAccess.append(element('span', '', 'Show channels and observed progress.'), videoAllow);
+  videoAccess.hidden = true;
   content.append(list, empty);
-  pane.append(heading, searchWrap, filters, previewOptions, tools, content);
+  pane.append(heading, searchWrap, filters, previewOptions, videoAccess, tools, content);
   root.prepend(pane);
   const trigger = button('Saved for Later', 'later');
   trigger.id = 'later-toggle';
@@ -110,6 +131,33 @@ export function createLaterView({
   const fold = root.querySelector('#tree-toggle');
   const rows = new Map();
   const articles = createArticleService({ api });
+  let videoAllowed = false;
+  const youtube = createYouTubeView({
+    tree: list,
+    scrollRoot: content,
+    api,
+    onChange: () => youtube.mount(),
+
+    onPermission: (allowed) => {
+      videoAllowed = allowed;
+      updateVideoAccess();
+    },
+  });
+
+  function videoEnabled() {
+    return !pane.hidden && state?.siteEnhancementsEnabled !== false && state?.youtubeMode !== false;
+  }
+
+  function updateVideoAccess() {
+    videoAccess.hidden =
+      !videoEnabled() ||
+      videoAllowed ||
+      !visibleIds.some((id) => youtubeVideoId(state.tabs.find((tab) => tab.id === id)?.url));
+  }
+
+  videoAllow.addEventListener('click', () =>
+    youtube.allow().catch(() => onError('Could not enable YouTube access. Try again.')),
+  );
   const visible = new Set();
   let state, savedFocus, timer, articleTimer;
   let reading = false;
@@ -210,6 +258,7 @@ export function createLaterView({
 
   function refreshPermissions() {
     articles.refreshPermissions();
+    youtube.refreshPermission();
     refreshAccess();
     render();
     readVisible();
@@ -222,6 +271,7 @@ export function createLaterView({
     if (pane.hidden) return;
     clearInterval(timer);
     clearInterval(articleTimer);
+    youtube.prepare([], false);
     pane.hidden = true;
     articles.configure(state.tabs.filter(isSavedForLater), false);
     observer.disconnect();
@@ -261,6 +311,7 @@ export function createLaterView({
     const item = {
       row,
       open,
+      copy,
       favicon,
       label,
       domain,
@@ -333,6 +384,10 @@ export function createLaterView({
     if (pane.hidden || !state) return;
     const saved = state.tabs.filter(isSavedForLater);
     articles.configure(saved, true);
+    youtube.prepare(
+      saved.filter((tab) => youtubeVideoId(tab.url)),
+      videoEnabled(),
+    );
     const entries = laterResults(
       saved.map((tab) => ({ ...tab, articlePreview: articles.peek(tab) })),
       {
@@ -342,6 +397,7 @@ export function createLaterView({
       },
     );
     visibleIds = entries.map((tab) => tab.id);
+    updateVideoAccess();
     const total = state.tabs.filter(isSavedForLater).length;
     const focused = document.activeElement;
     const oldRows = [...list.children];
@@ -356,7 +412,10 @@ export function createLaterView({
       const item = rows.get(tab.id);
       const data = tab.articlePreview;
       const source = articleUrl(tab.url) || tab.url;
-      const label = data?.title || tab.title || source || 'New tab';
+      const video = videoEnabled() && youtubeVideoId(tab.url);
+      const label = video
+        ? youtubeTitle(tab.title)
+        : data?.title || tab.title || source || 'New tab';
       item.label.textContent = label;
       item.open.setAttribute('aria-label', label);
       item.open.title = source || label;
@@ -412,6 +471,23 @@ export function createLaterView({
       item.time.textContent = laterAge(tab.savedForLaterAt);
       item.time.dateTime = new Date(tab.savedForLaterAt).toISOString();
       item.time.title = `Added ${new Date(tab.savedForLaterAt).toLocaleString()}`;
+      const folderPath = ['Home', ...groupPath(state, tab.groupId).map((group) => group.name)].join(
+        ' / ',
+      );
+      const videoKey = video
+        ? JSON.stringify([video, tab.title, folderPath, youtube.duplicateCount(tab)])
+        : null;
+      if (videoKey !== item.videoKey) {
+        item.videoKey = videoKey;
+        item.row.classList.toggle('youtube-row', Boolean(video));
+        if (video) {
+          item.row.dataset.videoId = video;
+          item.open.replaceChildren(...youtube.content(tab, `Folder: ${folderPath}`));
+        } else {
+          delete item.row.dataset.videoId;
+          item.open.replaceChildren(item.favicon, item.copy);
+        }
+      }
       if (item.url !== tab.favIconUrl || !item.favicon.childNodes.length) {
         item.url = tab.favIconUrl;
         let image = icon('globe');
@@ -439,6 +515,7 @@ export function createLaterView({
       list,
       entries.map((tab) => rows.get(tab.id).row),
     );
+    youtube.mount();
     for (const [key, control] of filterButtons)
       control.setAttribute('aria-pressed', String(key === category));
     count.textContent = `${entries.length === total ? total : `${entries.length} of ${total}`} ${total === 1 ? 'tab' : 'tabs'}`;
@@ -513,6 +590,7 @@ export function createLaterView({
       clearInterval(timer);
       clearInterval(articleTimer);
       articles.configure([], false);
+      youtube.prepare([], false);
       observer.disconnect();
       api?.permissions?.onAdded?.removeListener(refreshPermissions);
       api?.permissions?.onRemoved?.removeListener(refreshPermissions);
@@ -522,6 +600,11 @@ export function createLaterView({
   return {
     open,
     close,
+
+    focusSearch() {
+      search.focus();
+      search.select();
+    },
 
     get isOpen() {
       return !pane.hidden;

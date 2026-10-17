@@ -102,7 +102,8 @@ try {
           },
         },
         scripting: {
-          executeScript: async ({ target, files }) => {
+          executeScript: async ({ target, files, func }) => {
+            if (func?.name === 'readYouTubePlayer') return [{ result: null }];
             articleTest.calls.push({ id: target.tabId, files: Boolean(files) });
             return files
               ? []

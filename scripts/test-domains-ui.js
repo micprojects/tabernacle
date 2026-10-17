@@ -64,7 +64,7 @@ try {
   expect(after.view).toEqual(before.view);
   expect(after.pins).toEqual(before.pins);
 
-  // Directory navigation uses the existing filter untouched: no added back/pin UI.
+  // Directory navigation preserves its origin and adds a direct back action.
   await row('example.com').locator('.domains-open-domain').click();
   await expect(pane).toBeHidden();
   await expect(page.locator('#domain-name')).toHaveText('example.com');
@@ -72,7 +72,11 @@ try {
   await expect(page.locator('#tree .tab-row')).toHaveCount(4);
   await expect(page.locator('#domain-close')).toBeFocused();
   await expect(page.locator('#domain-header button')).toHaveCount(1);
-  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#domain-back')).toBeVisible();
+  await page.locator('#domain-back').click();
+  await expect(row('example.com').locator('.domains-open-domain')).toBeFocused();
+  await row('example.com').locator('.domains-open-domain').click();
   await page.keyboard.press('Escape');
   await expect(page.locator('#scope-heading')).toHaveText('Design');
   expect((await send('snapshot')).view).toEqual(before.view);
@@ -90,17 +94,17 @@ try {
   await trigger.press('Enter');
   await page.keyboard.press('Control+k');
   await expect(pane).toBeHidden();
-  await expect(page.getByRole('searchbox')).toBeFocused();
-  await page.getByRole('searchbox').fill('missing result');
+  await expect(page.locator('#search')).toBeFocused();
+  await page.locator('#search').fill('missing result');
   await trigger.click();
   await expect(pane).toBeVisible();
   expect(await ordered()).toEqual(['other.test', 'example.com']);
 
-  // A navigation below the two-tab threshold removes the row but retains its pin.
+  // A pinned domain remains available with one tab.
   await row('other.test').locator('.domains-open-domain').focus();
   await page.evaluate(() => domainsTest.api.tabs.update(6, { url: 'https://single-new.test/' }));
-  await expect(row('other.test')).toHaveCount(0);
-  await expect(row('example.com').locator('.domains-open-domain')).toBeFocused();
+  await expect(row('other.test').locator('.domains-tab-count')).toHaveText('1');
+  await expect(row('other.test').locator('.domains-open-domain')).toBeFocused();
   expect((await send('snapshot')).domainPins).toEqual(['other.test']);
   await page.evaluate(() => domainsTest.api.tabs.update(6, { url: 'https://other.test/returned' }));
   await expect(row('other.test')).toBeVisible();
@@ -118,6 +122,16 @@ try {
   await page.screenshot({ path: 'test-results/domains-forced-colours-220.png' });
   await page.emulateMedia({ forcedColors: 'none' });
   await page.setViewportSize({ width: 320, height: 620 });
+
+  // If the last selected domain vanishes, Back focuses the nearest survivor.
+  await row('other.test').locator('.domains-open-domain').click();
+  await page.evaluate(async () => {
+    for (const tab of (await domainsTest.send('snapshot')).tabs)
+      if (tab.url.includes('other.test'))
+        await domainsTest.api.tabs.update(tab.id, { url: `https://gone-${tab.id}.test/` });
+  });
+  await page.locator('#domain-back').click();
+  await expect(row('example.com').locator('.domains-open-domain')).toBeFocused();
 
   await page.getByRole('button', { name: 'New folder', exact: true }).click();
   await expect(pane).toBeHidden();

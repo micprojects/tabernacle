@@ -18,7 +18,7 @@ function button(label, iconName, className) {
   return node;
 }
 
-export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
+export function createDomainsView({ root, onOpen, onClose, onSelect, onPin, onMenu }) {
   const pane = element('section', 'domains-view');
   pane.id = 'domains-view';
   pane.hidden = true;
@@ -27,11 +27,14 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
   const title = element('h1', '', 'Domains');
   title.id = 'domains-title';
   const dismiss = button('Close domains view', 'close', 'domains-close');
+  const actions = button('Domains actions', 'more', 'icon-button');
+  actions.setAttribute('aria-haspopup', 'menu');
+  actions.addEventListener('click', (event) => onMenu?.(event));
   heading.append(icon('globe'), title, dismiss);
   const tools = element('div', 'domains-tools');
   const count = element('span');
   count.setAttribute('role', 'status');
-  tools.append(count, element('span', '', 'Most tabs'));
+  tools.append(count, element('span', '', 'Most tabs'), actions);
   const content = element('div', 'domains-content');
   const pinnedHeading = element('h2', '', 'Pinned');
   const otherHeading = element('h2', '', 'Other domains');
@@ -45,7 +48,7 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
     element('h2', '', 'No domains with multiple tabs'),
     element('p', '', 'Domains appear here when two or more tabs match.'),
   );
-  const note = element('p', 'domains-note', 'Domains with 2 or more tabs');
+  const note = element('p', 'domains-note', 'Pinned domains and domains with 2 or more tabs');
   content.append(pinnedHeading, pinnedList, otherHeading, otherList, empty, note);
   pane.append(heading, tools, content);
   root.prepend(pane);
@@ -60,6 +63,9 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
   let state;
   let savedFocus;
   let foldDisabled;
+  let selectedDomain;
+  let selectedIndex = 0;
+  let scroll = 0;
 
   function close({ restoreFocus = true } = {}) {
     if (pane.hidden) return;
@@ -84,6 +90,9 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
     row.append(open, pin);
     const item = { row, open, favicon, total, pin };
     open.addEventListener('click', () => {
+      selectedDomain = domain;
+      selectedIndex = [...content.querySelectorAll('.domains-open-domain')].indexOf(open);
+      scroll = content.scrollTop;
       close({ restoreFocus: false });
       onSelect(domain, item.entry.source.id);
     });
@@ -157,7 +166,7 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
     }
   }
 
-  function open() {
+  function open({ restore = false } = {}) {
     if (!state || !pane.hidden) return;
     savedFocus = document.activeElement;
     onOpen();
@@ -167,7 +176,11 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
     root.classList.add('domains-open');
     trigger.setAttribute('aria-expanded', 'true');
     render();
-    dismiss.focus({ preventScroll: true });
+    content.scrollTop = scroll;
+    const buttons = [...content.querySelectorAll('.domains-open-domain')];
+    const previous =
+      rows.get(selectedDomain)?.open || buttons[Math.min(selectedIndex, buttons.length - 1)];
+    (restore && previous ? previous : dismiss).focus({ preventScroll: true });
   }
 
   dismiss.addEventListener('click', () => close());
@@ -188,7 +201,12 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
     }
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || pane.hidden || document.querySelector('dialog[open]')) return;
+    if (
+      event.key !== 'Escape' ||
+      pane.hidden ||
+      document.querySelector('dialog[open], #menu:not([hidden])')
+    )
+      return;
     event.preventDefault();
     close();
   });
@@ -201,7 +219,12 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin }) {
     true,
   );
   return {
+    open,
     close,
+
+    detail(active) {
+      trigger.setAttribute('aria-expanded', String(active || !pane.hidden));
+    },
 
     update(next) {
       state = next;

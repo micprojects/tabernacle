@@ -78,6 +78,27 @@
           hidden
         ></div>
       </header>
+      <div id="domain-search-tools" class="domain-search-tools" hidden>
+        <button id="domain-back" type="button" hidden>Back to Domains</button>
+        <div class="domain-search-field">
+          <input
+            id="domain-search"
+            type="search"
+            placeholder="Search this domain"
+            aria-label="Search this domain"
+            aria-controls="tree"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button
+            id="domain-actions"
+            type="button"
+            aria-label="Domain actions"
+            title="Domain actions"
+            aria-haspopup="menu"
+          ></button>
+        </div>
+      </div>
       <div id="domain-tools" class="domain-tools" hidden>
         <span id="domain-count"></span>
         <button
@@ -106,6 +127,7 @@
         <select id="domain-sort" aria-controls="tree">
           <option value="newest">Newest opened</option>
           <option value="viewed">Recently viewed</option>
+          <option value="least-viewed">Least recently viewed</option>
           <option value="oldest">Oldest opened</option>
           <option value="title">Title A–Z</option>
           <option value="tree">Tree order</option>

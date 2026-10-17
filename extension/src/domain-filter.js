@@ -1,3 +1,4 @@
+import { matchesText, sourceUrl } from './tab-source.js';
 import { hackerNewsStory, HACKER_NEWS_DOMAIN } from './hacker-news.js';
 
 // Match hostnames, never a domain mentioned in a title, path or query string.
@@ -33,15 +34,13 @@ export function domainFromUrl(value) {
 }
 
 export function domainForTab(tab) {
-  return hackerNewsStory(tab) ? HACKER_NEWS_DOMAIN : domainFromUrl(tab.url);
+  return hackerNewsStory(tab) ? HACKER_NEWS_DOMAIN : domainFromUrl(sourceUrl(tab));
 }
 
 export function matchesDomain(tab, domain, query = '') {
   const host = domainForTab(tab);
   return Boolean(
-    host &&
-    (host === domain || host.endsWith(`.${domain}`)) &&
-    `${tab.title || ''} ${tab.url || ''}`.toLowerCase().includes(query.trim().toLowerCase()),
+    host && (host === domain || host.endsWith(`.${domain}`)) && matchesText(tab, query),
   );
 }
 
@@ -83,6 +82,8 @@ export function domainResults(index, domain, query = '', sort = 'newest') {
       return results.sort((a, b) => titles.compare(a.title || a.url || '', b.title || b.url || ''));
     case 'viewed':
       return results.sort((a, b) => byTime(a, b, 'lastAccessed', -1));
+    case 'least-viewed':
+      return results.sort((a, b) => byTime(a, b, 'lastAccessed', 1));
     case 'oldest':
       return results.sort((a, b) => byTime(a, b, 'openedAt', 1));
     default:

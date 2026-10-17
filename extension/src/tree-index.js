@@ -1,4 +1,5 @@
 import { createFolderIndex } from './folder-index.js';
+import { matchesText } from './tab-source.js';
 import { isSavedForLater, sortTabs, unpinnedTabTree } from './model.js';
 
 function indexTabs(tabs) {
@@ -40,8 +41,7 @@ export function createTreeIndex(state, query = '') {
       {
         descendants: 0,
         active: Boolean(tab.active),
-        match:
-          Boolean(query) && `${tab.title || ''} ${tab.url || ''}`.toLowerCase().includes(query),
+        match: Boolean(query) && matchesText(tab, query),
         descendantMatch: false,
       },
     ]),

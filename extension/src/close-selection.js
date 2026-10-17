@@ -1,3 +1,4 @@
+import { searchTabOrder } from './tab-collection.js';
 import { createTreeIndex } from './tree-index.js';
 import { domainResults, normaliseDomain } from './domain-filter.js';
 import { laterResults } from './later.js';
@@ -26,6 +27,22 @@ export function visibleTabOrder(state) {
   return result;
 }
 
+function searchProjection(state, filter, closedId) {
+  const matches = searchTabOrder(state, filter.query || '', filter.scopeId);
+  if (!Array.isArray(filter.tabIds)) return matches;
+  const visible = new Set(matches);
+  const order = filter.tabIds.filter((id) => visible.has(id));
+  // A refreshed sidebar no longer reports the closed row. Insert it at its
+  // former neighbouring result while retaining the actual displayed order.
+  const position = matches.indexOf(closedId);
+  if (position >= 0 && !order.includes(closedId)) {
+    const next = matches.slice(position + 1).find((id) => order.includes(id));
+    if (next !== undefined) order.splice(order.indexOf(next), 0, closedId);
+    else order.push(closedId);
+  }
+  return order;
+}
+
 export function closeFallback(before, after, closedId, filter = null) {
   if (
     before.view.scopeId !== after.view.scopeId ||
@@ -38,15 +55,18 @@ export function closeFallback(before, after, closedId, filter = null) {
   // Keep the removed row's former place when finding the surviving neighbour.
   const included = Array.isArray(filter?.tabIds) ? new Set([...filter.tabIds, closedId]) : null;
   const orderFor = (state) =>
-    filter?.later
-      ? laterResults(state.tabs, { ...filter, ...(included ? { tabIds: [...included] } : {}) }).map(
-          (tab) => tab.id,
-        )
-      : domain
-        ? domainResults(createTreeIndex(state), domain, query, filter.sort)
-            .filter((tab) => !included || included.has(tab.id))
-            .map((tab) => tab.id)
-        : visibleTabOrder(state);
+    filter?.search
+      ? searchProjection(state, filter, closedId)
+      : filter?.later
+        ? laterResults(state.tabs, {
+            ...filter,
+            ...(included ? { tabIds: [...included] } : {}),
+          }).map((tab) => tab.id)
+        : domain
+          ? domainResults(createTreeIndex(state), domain, query, filter.sort)
+              .filter((tab) => !included || included.has(tab.id))
+              .map((tab) => tab.id)
+          : visibleTabOrder(state);
   const order = orderFor(before);
   const position = order.indexOf(closedId);
   if (position < 0 || after.tabs.some((tab) => tab.id === closedId)) return null;
@@ -57,8 +77,8 @@ export function closeFallback(before, after, closedId, filter = null) {
   const above = order.slice(0, position).reverse();
   const below = order.slice(position + 1);
   return (
-    (domain || filter?.later ? [...above, ...below] : [...below, ...above]).find((id) =>
-      visible.has(id),
+    (domain || filter?.later || filter?.search ? [...above, ...below] : [...below, ...above]).find(
+      (id) => visible.has(id),
     ) ??
     // Closing a collapsed parent natively can reveal its surviving children.
     remaining[0] ??
