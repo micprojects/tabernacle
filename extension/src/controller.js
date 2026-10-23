@@ -2,6 +2,7 @@ import { applyTabBatch } from './tab-batch.js';
 import { createMoveRecovery } from './move-recovery.js';
 import { resolveMove } from './move-plan.js';
 import { createBrowserCache } from './browser-cache.js';
+import { mapSettledBounded } from './bounded-settled.js';
 import { closeFallback, createCloseSelection } from './close-selection.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
 import { containerChoices, containerDetails } from './containers.js';
@@ -62,37 +63,67 @@ export function createController(
   let model;
   let treeOwners = new Map();
   let tabTreeKeys = new Map();
+  let tabWindows = new Map();
+  let windowTabIds = new Map();
+  let ownershipVersion = 0;
   let initializedTabs = false;
   let revision = 0;
   const generation = crypto.randomUUID();
   let requestTabs = new Map();
   const resolvedTabs = new Map();
   let membershipVersion = 0;
+  let unknownMembershipVersion = 0;
+  const windowMembershipVersions = new Map();
+  let groupIds = new Set();
+  let groupIdsVersion = 0;
   let stateWrites = 0;
   let queue = Promise.resolve();
+  let disposed = false;
   let pendingCreations;
   const openedTimes = new Map();
   const forgottenPins = new Map();
+  const pinLayouts = new Map();
   const publish = (windowId) => notify({ windowId, revision: ++revision, generation });
-  const cache = createBrowserCache(api, ({ windowId, removedTabId, detachedTabId }) => {
-    requestTabs.clear();
-    if (windowId != null) {
-      resolvedTabs.delete(windowId);
-      resolvedTabs.delete(null);
-    }
-    const forgotten = tabTreeKeys.get(removedTabId ?? detachedTabId);
-    if (forgotten) {
-      if (!forgottenPins.has(windowId)) forgottenPins.set(windowId, new Set());
-      forgottenPins.get(windowId).add(forgotten);
-    }
-    if (removedTabId !== undefined) {
-      openedTimes.delete(removedTabId);
-      const key = tabTreeKeys.get(removedTabId);
-      if (treeOwners.get(key) === removedTabId) treeOwners.delete(key);
-      tabTreeKeys.delete(removedTabId);
-    }
-    publish(windowId);
-  });
+  const cache = createBrowserCache(
+    api,
+    ({ windowId, removedTabId, detachedTabId, removedWindowId, removedTabIds = [] }) => {
+      requestTabs.clear();
+      if (windowId != null) {
+        if (!cache.isTabsStateCurrent(windowId, resolvedTabs.get(windowId)?.structureToken))
+          resolvedTabs.delete(windowId);
+        resolvedTabs.delete(null);
+      }
+      const forgotten = tabTreeKeys.get(removedTabId ?? detachedTabId);
+      const savedPins = pinLayouts.get(windowId)?.keys;
+      if (forgotten && (!savedPins || savedPins.has(forgotten))) {
+        if (!forgottenPins.has(windowId)) forgottenPins.set(windowId, new Set());
+        forgottenPins.get(windowId).add(forgotten);
+      }
+      if (removedTabId !== undefined) {
+        openedTimes.delete(removedTabId);
+        forgetIdentity(removedTabId);
+      }
+      if (detachedTabId !== undefined) {
+        forgetWindow(detachedTabId);
+        ownershipVersion++;
+      }
+      if (removedWindowId !== undefined) {
+        forgottenPins.delete(removedWindowId);
+        pinLayouts.delete(removedWindowId);
+        resolvedTabs.delete(removedWindowId);
+        windowMembershipVersions.delete(removedWindowId);
+        for (const id of new Set([
+          ...removedTabIds,
+          ...(windowTabIds.get(removedWindowId) || []),
+        ])) {
+          openedTimes.delete(id);
+          cache.forgetMembership(id);
+          forgetIdentity(id);
+        }
+      }
+      publish(windowId);
+    },
+  );
   const closeSelection = createCloseSelection(api, (windowId, before, closedId, current) =>
     enqueue(() => settleClose(windowId, before, closedId, current)),
   );
@@ -220,6 +251,7 @@ export function createController(
       next.domainPins = normaliseDomainPins(next.domainPins);
       await moves.load();
       model = next;
+      refreshGroupIds();
     })().catch((error) => {
       ready = null;
       throw error;
@@ -228,6 +260,7 @@ export function createController(
   }
 
   const enqueue = (work, recoverMoves = true) => {
+    if (disposed) return Promise.reject(new Error('This controller has been disposed.'));
     // A request is an ordering boundary: later native creations must not join
     // a batch already queued before that request.
     pendingCreations = null;
@@ -238,7 +271,11 @@ export function createController(
         throw new Error('A folder or tab move needs to finish. Open the sidebar, then try again.');
       return work();
     });
-    queue = result.catch(() => {});
+    // The queue retains ordering, never the preceding action's potentially large snapshot.
+    queue = result.then(
+      () => {},
+      () => {},
+    );
     return result;
   };
 
@@ -251,6 +288,7 @@ export function createController(
     next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
     await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
     model = next;
+    refreshGroupIds();
     stateWrites++;
     if (
       JSON.stringify(previousPins.map((item) => item.id)) !==
@@ -277,28 +315,147 @@ export function createController(
     return result;
   }
 
-  const viewFor = async (windowId) =>
-    normalizeView(model, await api.sessions.getWindowValue(windowId, VIEW_KEY));
+  function beginPinLayout(windowId) {
+    // Until the read/write succeeds, any closed identity may own a saved slot.
+    const pending = {};
+    pinLayouts.set(windowId, pending);
+    return pending;
+  }
+
+  function rememberPinLayout(windowId, pending, view) {
+    // A window close or newer operation invalidates an outstanding completion.
+    if (pinLayouts.get(windowId) !== pending) return;
+    pending.keys = new Set(
+      (view.pinLayout || []).filter((item) => item.kind === 'tab').map((item) => item.id),
+    );
+    const forgotten = forgottenPins.get(windowId);
+    if (!forgotten) return;
+    for (const id of forgotten) if (!pending.keys.has(id)) forgotten.delete(id);
+    if (!forgotten.size) forgottenPins.delete(windowId);
+  }
+
+  const viewFor = async (windowId) => {
+    const pending = beginPinLayout(windowId);
+    try {
+      const view = normalizeView(model, await api.sessions.getWindowValue(windowId, VIEW_KEY));
+      rememberPinLayout(windowId, pending, view);
+      return view;
+    } finally {
+      if (!pending.keys && pinLayouts.get(windowId) === pending) pinLayouts.delete(windowId);
+    }
+  };
 
   const saveView = async (windowId, view) => {
-    await api.sessions.setWindowValue(windowId, VIEW_KEY, normalizeView(model, view));
-    stateWrites++;
+    const pending = beginPinLayout(windowId);
+    try {
+      const normalized = normalizeView(model, view);
+      await api.sessions.setWindowValue(windowId, VIEW_KEY, normalized);
+      rememberPinLayout(windowId, pending, normalized);
+      stateWrites++;
+    } finally {
+      if (!pending.keys && pinLayouts.get(windowId) === pending) pinLayouts.delete(windowId);
+    }
   };
 
   const membership = async (tabId) => (await cache.membership(tabId)) ?? null;
 
-  async function saveMembership(tabId, value) {
+  function refreshGroupIds() {
+    const next = new Set(model.groups.map((group) => group.id));
+    if (next.size === groupIds.size && [...next].every((id) => groupIds.has(id))) return;
+    groupIds = next;
+    groupIdsVersion++;
+  }
+
+  function forgetWindow(id) {
+    const windowId = tabWindows.get(id);
+    if (windowId === undefined) return;
+    const ids = windowTabIds.get(windowId);
+    ids?.delete(id);
+    if (!ids?.size) windowTabIds.delete(windowId);
+    tabWindows.delete(id);
+  }
+
+  function forgetIdentity(id) {
+    const key = tabTreeKeys.get(id);
+    if (treeOwners.get(key) === id) treeOwners.delete(key);
+    tabTreeKeys.delete(id);
+    forgetWindow(id);
+    ownershipVersion++;
+  }
+
+  function rememberIdentity(id, key, windowId) {
+    const before = tabTreeKeys.get(id);
+    if (before !== key && treeOwners.get(before) === id) treeOwners.delete(before);
+    if (tabWindows.get(id) !== windowId) forgetWindow(id);
+    treeOwners.set(key, id);
+    tabTreeKeys.set(id, key);
+    tabWindows.set(id, windowId);
+    if (!windowTabIds.has(windowId)) windowTabIds.set(windowId, new Set());
+    windowTabIds.get(windowId).add(id);
+  }
+
+  const membershipEpoch = (windowId) =>
+    windowId == null ? membershipVersion : windowMembershipVersions.get(windowId) || 0;
+
+  function updateResolvedMembership(key, previousVersion, tabId, value, collapsedOnly) {
+    const resolved = resolvedTabs.get(key);
+    if (
+      collapsedOnly &&
+      !disposed &&
+      resolved?.membershipVersion === previousVersion &&
+      resolved.groupIdsVersion === groupIdsVersion &&
+      resolved.unknownMembershipVersion === unknownMembershipVersion &&
+      cache.isTabsStateCurrent(key, resolved.structureToken) &&
+      tabTreeKeys.get(tabId) === value.treeId
+    ) {
+      // Keep pending folds sparse: a bulk fold copies the resolved array once,
+      // when it is next read, rather than once per successful membership write.
+      (resolved.folds ??= new Map()).set(tabId, Boolean(value.collapsed));
+      resolved.membershipVersion = membershipEpoch(key);
+    } else resolvedTabs.delete(key);
+  }
+
+  async function saveMembership(tabId, value, collapsedOnly = false, repair) {
     await cache.saveMembership(tabId, value);
+    const previousVersion = membershipVersion;
     membershipVersion++;
+    // A new identity is not published until every repair succeeds. Its current
+    // native read can still scope invalidation without publishing partial owners.
+    // A racing structural event or ownership change discards that evidence.
+    const repairWindow =
+      repair &&
+      api.tabs.onUpdated &&
+      !disposed &&
+      ownershipVersion === repair.ownershipVersion &&
+      cache.isTabsStateCurrent(repair.scope, repair.structureToken)
+        ? repair.windowId
+        : undefined;
+    const windowId = tabWindows.get(tabId) ?? repairWindow;
+    if (windowId === undefined) {
+      unknownMembershipVersion++;
+      resolvedTabs.clear();
+    } else {
+      const windowVersion = membershipEpoch(windowId);
+      windowMembershipVersions.set(windowId, windowVersion + 1);
+      updateResolvedMembership(windowId, windowVersion, tabId, value, collapsedOnly);
+      updateResolvedMembership(null, previousVersion, tabId, value, collapsedOnly);
+    }
     stateWrites++;
     requestTabs.clear();
   }
 
   async function writeTab(windowId, method, ...args) {
+    let activated = false;
     try {
-      return await api.tabs[method](...args);
+      const result = await api.tabs[method](...args);
+      activated =
+        method === 'update' && args[1]?.active === true && Object.keys(args[1]).length === 1;
+      return result;
     } finally {
-      cache.invalidateTabs(windowId);
+      // A successful activation changes native selection, not durable placement.
+      // Failed or other writes retain the full invalidation/recovery path.
+      if (activated) cache.selectionChanged(windowId, [args[0]]);
+      else cache.invalidateTabs(windowId);
       requestTabs.clear();
       if (method === 'remove') cache.invalidateHistory();
     }
@@ -396,7 +553,7 @@ export function createController(
     return requestTabs.get(key);
   }
 
-  async function confirmedClosed(failures) {
+  async function confirmedClosed(failures, deferInvalidation = false) {
     if (!failures.length) return new Set();
     const live = new Set((await api.tabs.query({})).map((tab) => tab.id));
     // Native close animations can leave a tab in query() after Firefox has
@@ -419,144 +576,266 @@ export function createController(
       );
     // Animation completion sends no further removal event. Do not keep a
     // native list containing the closing tab cached for subsequent snapshots.
-    cache.invalidateTabs();
-    requestTabs.clear();
+    if (!deferInvalidation) {
+      cache.invalidateTabs();
+      requestTabs.clear();
+    }
     for (const { id } of failures) cache.forgetMembership(id);
     return new Set(failures.map(({ id }) => id));
   }
 
-  async function readRecords(tabs) {
-    const failures = [];
-    const records = await Promise.all(
-      tabs
-        .filter((tab) => !tab.incognito && !internalPage(api, tab.url))
-        .map(async (tab) => {
-          try {
-            return { tab, value: (await membership(tab.id)) ?? {} };
-          } catch (error) {
-            failures.push({ id: tab.id, error });
-            return null;
-          }
-        }),
+  async function readRecords(tabs, closed = null) {
+    const eligible = tabs.filter((tab) => !tab.incognito && !internalPage(api, tab.url));
+    const results = await mapSettledBounded(eligible, async (tab) => ({
+      tab,
+      value: (await membership(tab.id)) ?? {},
+    }));
+    const failures = results.flatMap((result, index) =>
+      result.status === 'rejected' ? [{ id: eligible[index].id, error: result.reason }] : [],
     );
-    await confirmedClosed(failures);
-    return records.filter(Boolean);
+    const confirmed = await confirmedClosed(failures, closed !== null);
+    if (closed) for (const id of confirmed) closed.add(id);
+    return results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+  }
+
+  function withNativeMetadata(row, native) {
+    const { groupId: nativeGroupId, ...nativeTab } = native;
+    return {
+      ...row,
+      ...nativeTab,
+      groupId: row.groupId,
+      nativeGroupId,
+      order: row.order,
+      openedAt: row.openedAt,
+      ...(Object.hasOwn(row, 'savedForLaterAt') ? { savedForLaterAt: row.savedForLaterAt } : {}),
+      treeId: row.treeId,
+      ancestors: row.ancestors,
+      collapsed: row.collapsed,
+      parentTabId: row.parentTabId,
+    };
+  }
+
+  function refreshResolved(cached, state) {
+    if (cached.native === state.tabs && !cached.folds?.size) return cached.tabs;
+    let next;
+    for (const [index, row] of cached.tabs.entries()) {
+      const position = cached.positions.get(row.id);
+      const native = state.tabs[position];
+      const folded = cached.folds?.get(row.id);
+      const foldChanged = folded !== undefined && folded !== row.collapsed;
+      const nativeChanged = native !== cached.native[position];
+      if (!nativeChanged && !foldChanged) continue;
+      next ??= cached.tabs.slice();
+      const updated = nativeChanged ? withNativeMetadata(row, native) : row;
+      next[index] = foldChanged ? { ...updated, collapsed: folded } : updated;
+    }
+    cached.native = state.tabs;
+    cached.tabs = next || cached.tabs;
+    cached.folds = undefined;
+    return cached.tabs;
   }
 
   async function loadTabs(windowId) {
-    // Check identity uniqueness across windows: Firefox can copy session values
-    // when duplicating a tab. The duplicate must not inherit the original's children.
-    // Establish identity ownership across windows once after an event-page wake.
-    // Subsequent reads only visit the requested window and reuse memberships.
-    const allWindows = !initializedTabs || windowId == null;
-    const tabs = await cache.tabs(allWindows ? null : windowId);
-    const key = windowId ?? null;
-    const cached = resolvedTabs.get(key);
-    if (
-      cached?.native === tabs &&
-      cached.groups === model.groups &&
-      cached.membershipVersion === membershipVersion
-    )
-      return cached.tabs;
-    const records = await readRecords(tabs);
-    records.sort(
-      (a, b) =>
-        Number(treeOwners.get(b.value.treeId) === b.tab.id) -
-          Number(treeOwners.get(a.value.treeId) === a.tab.id) || a.tab.id - b.tab.id,
-    );
-    const owners = allWindows ? new Map() : new Map(treeOwners);
-    const groupIds = new Set(model.groups.map((group) => group.id));
-    const result = [];
-    const repairs = [];
-    const closed = new Set();
-    for (const { tab, value } of records) {
-      let needsSave = false;
-      let owner = owners.get(value.treeId);
-      if (owner !== undefined && owner !== tab.id) {
-        // A close/restore may race its removal event. Never treat a dead owner
-        // as a live duplicate and break the restored tab's saved descendants.
-        const alive = await findOpenTab(owner);
-        if (!alive) {
-          closed.add(owner);
-          cache.forgetMembership(owner);
-          cache.invalidateTabs();
-          requestTabs.clear();
-          owners.delete(value.treeId);
-          owner = undefined;
-        }
-      }
+    for (;;) {
+      // Establish global identity ownership once after an event-page wake.
+      // Later windows stage only their own changes against that shared index.
+      const allWindows = !initializedTabs || windowId == null;
+      const scope = allWindows ? null : windowId;
+      const state = await cache.tabsState(scope);
+      if (!cache.isTabsStateCurrent(scope, state.structureToken)) continue;
+      // A window can close before cold identity resolution has registered it.
+      // Only a successful current global read can prove those memberships stale;
+      // window-local absence may instead mean a tab moved to another window.
+      if (allWindows) cache.pruneMemberships(state.tabs);
+      const key = windowId ?? null;
+      const cached = resolvedTabs.get(key);
       if (
-        typeof value.treeId !== 'string' ||
-        !value.treeId ||
-        (owner !== undefined && owner !== tab.id)
-      ) {
-        const duplicate = owner !== undefined;
-        value.treeId = crypto.randomUUID();
-        if (duplicate) {
-          value.collapsed = false;
-          // Firefox copies session values on duplication, including the source's date.
-          delete value.openedAt;
-          delete value.savedForLaterAt;
+        cached?.structureToken === state.structureToken &&
+        cached.groupIdsVersion === groupIdsVersion &&
+        cached.membershipVersion === membershipEpoch(key) &&
+        cached.unknownMembershipVersion === unknownMembershipVersion
+      )
+        return refreshResolved(cached, state);
+
+      const beforeOwnership = ownershipVersion;
+      const closed = new Set();
+      const records = await readRecords(state.tabs, closed);
+      records.sort(
+        (a, b) =>
+          Number(treeOwners.get(b.value.treeId) === b.tab.id) -
+            Number(treeOwners.get(a.value.treeId) === a.tab.id) || a.tab.id - b.tab.id,
+      );
+      const staleOwners = new Set();
+      const transferred = new Map();
+      if (!allWindows) {
+        const present = new Set(records.map(({ tab }) => tab.id));
+        for (const id of windowTabIds.get(windowId) || []) {
+          if (present.has(id) || closed.has(id)) continue;
+          // Missing removal/detach events must not leak old ownership, but a
+          // tab moved to another window still owns its durable identity.
+          const alive = await findOpenTab(id);
+          if (!alive) closed.add(id);
+          else if (!alive.incognito && !internalPage(api, alive.url))
+            transferred.set(id, { key: tabTreeKeys.get(id), windowId: alive.windowId });
+          else staleOwners.add(id);
         }
-        // Do not set a group here: a just-created tab may still be waiting for
-        // its queued onCreated handler to place it beneath its opener.
-        needsSave = true;
       }
-      if (!(Number.isFinite(value.openedAt) && value.openedAt > 0) && openedTimes.has(tab.id)) {
-        value.openedAt = openedTimes.get(tab.id);
-        needsSave = true;
-      }
-      // Native indices change when Firefox inserts, pins or moves another tab.
-      // Give legacy/new tabs a durable initial order before using fractional
-      // positions; otherwise untouched neighbours could drift around a move.
-      if (!Number.isFinite(value.order)) {
-        value.order = tab.index ?? 0;
-        needsSave = true;
-      }
-      if (needsSave) repairs.push({ id: tab.id, value });
-      owners.set(value.treeId, tab.id);
-      const { groupId: nativeGroupId, ...nativeTab } = tab;
-      result.push({
-        ...nativeTab,
-        groupId: groupIds.has(value.groupId) ? value.groupId : null,
-        nativeGroupId,
-        order: value.order,
-        openedAt: value.openedAt,
-        ...(isSavedForLater(value) ? { savedForLaterAt: value.savedForLaterAt } : {}),
-        treeId: value.treeId,
-        ancestors: Array.isArray(value.ancestors)
-          ? [...new Set(value.ancestors.filter((id) => typeof id === 'string'))]
-          : [],
-        collapsed: Boolean(value.collapsed),
-      });
-    }
-    // Settle each bounded batch before deciding whether a failure was a close.
-    for (let offset = 0; offset < repairs.length; offset += 32) {
-      const batch = repairs.slice(offset, offset + 32);
-      const results = await Promise.allSettled(
-        batch.map(({ id, value }) => saveMembership(id, value)),
+      const replaced = new Set(
+        records
+          .filter(({ tab, value }) => tabTreeKeys.get(tab.id) !== value.treeId)
+          .map(({ tab }) => tab.id),
       );
-      const failures = results.flatMap((result, index) =>
-        result.status === 'rejected' ? [{ id: batch[index].id, error: result.reason }] : [],
+      const owners = new Map();
+
+      const ownerFor = (key) => {
+        if (owners.has(key)) return owners.get(key);
+        if (allWindows) return undefined;
+        const owner = treeOwners.get(key);
+        return closed.has(owner) || staleOwners.has(owner) || replaced.has(owner)
+          ? undefined
+          : owner;
+      };
+
+      const result = [];
+      const repairs = [];
+      for (const { tab, value } of records) {
+        let needsSave = false;
+        let owner = ownerFor(value.treeId);
+        if (owner !== undefined && owner !== tab.id) {
+          // A close/restore can precede its removal event. A successful identity
+          // write can also leave the index behind until that window is read.
+          const alive = await findOpenTab(owner);
+          if (!alive) {
+            closed.add(owner);
+            cache.forgetMembership(owner);
+            owners.delete(value.treeId);
+            owner = undefined;
+          } else if ((await membership(owner))?.treeId !== value.treeId) {
+            staleOwners.add(owner);
+            owners.delete(value.treeId);
+            owner = undefined;
+          }
+        }
+        if (
+          typeof value.treeId !== 'string' ||
+          !value.treeId ||
+          (owner !== undefined && owner !== tab.id)
+        ) {
+          const duplicate = owner !== undefined;
+          value.treeId = crypto.randomUUID();
+          if (duplicate) {
+            value.collapsed = false;
+            delete value.openedAt;
+            delete value.savedForLaterAt;
+          }
+          // Placement still belongs to the queued onCreated handler.
+          needsSave = true;
+        }
+        if (!(Number.isFinite(value.openedAt) && value.openedAt > 0) && openedTimes.has(tab.id)) {
+          value.openedAt = openedTimes.get(tab.id);
+          needsSave = true;
+        }
+        if (!Number.isFinite(value.order)) {
+          value.order = tab.index ?? 0;
+          needsSave = true;
+        }
+        if (needsSave) repairs.push({ id: tab.id, value, windowId: tab.windowId });
+        owners.set(value.treeId, tab.id);
+        const { groupId: nativeGroupId, ...nativeTab } = tab;
+        result.push({
+          ...nativeTab,
+          groupId: groupIds.has(value.groupId) ? value.groupId : null,
+          nativeGroupId,
+          order: value.order,
+          openedAt: value.openedAt,
+          ...(isSavedForLater(value) ? { savedForLaterAt: value.savedForLaterAt } : {}),
+          treeId: value.treeId,
+          ancestors: Array.isArray(value.ancestors)
+            ? [...new Set(value.ancestors.filter((id) => typeof id === 'string'))]
+            : [],
+          collapsed: Boolean(value.collapsed),
+        });
+      }
+      // All repairs settle before publishing any staged identity changes.
+      for (let offset = 0; offset < repairs.length; offset += 32) {
+        const batch = repairs.slice(offset, offset + 32);
+        const settled = await Promise.allSettled(
+          batch.map(({ id, value, windowId }) =>
+            saveMembership(id, value, false, {
+              windowId,
+              scope,
+              structureToken: state.structureToken,
+              ownershipVersion: beforeOwnership,
+            }),
+          ),
+        );
+        const failures = settled.flatMap((item, index) =>
+          item.status === 'rejected' ? [{ id: batch[index].id, error: item.reason }] : [],
+        );
+        for (const id of await confirmedClosed(failures, true)) closed.add(id);
+      }
+      const latest = api.tabs.onUpdated && !disposed ? await cache.tabsState(scope) : state;
+      if (
+        latest.structureToken !== state.structureToken ||
+        !cache.isTabsStateCurrent(scope, state.structureToken) ||
+        ownershipVersion !== beforeOwnership
+      )
+        continue;
+      const displayState =
+        allWindows && windowId != null && api.tabs.onUpdated && !disposed
+          ? await cache.tabsState(windowId)
+          : latest;
+      // The synchronous check also covers an event between an awaited cache
+      // result and this continuation, before any staged ownership is committed.
+      if (
+        !cache.isTabsStateCurrent(scope, state.structureToken) ||
+        !cache.isTabsStateCurrent(
+          allWindows && windowId != null && api.tabs.onUpdated && !disposed ? windowId : scope,
+          displayState.structureToken,
+        ) ||
+        ownershipVersion !== beforeOwnership
+      )
+        continue;
+      const nativeById = new Map(displayState.tabs.map((tab) => [tab.id, tab]));
+      const resolved = resolveTabTree(
+        result
+          .filter((tab) => !closed.has(tab.id) && (windowId == null || tab.windowId === windowId))
+          .map((tab) => withNativeMetadata(tab, nativeById.get(tab.id))),
       );
-      for (const id of await confirmedClosed(failures)) closed.add(id);
+      if (allWindows) {
+        treeOwners = new Map();
+        tabTreeKeys = new Map();
+        tabWindows = new Map();
+        windowTabIds = new Map();
+      } else {
+        for (const id of closed) forgetIdentity(id);
+        for (const id of staleOwners) forgetIdentity(id);
+        for (const [id, moved] of transferred)
+          if (!closed.has(id) && !staleOwners.has(id))
+            rememberIdentity(id, moved.key, moved.windowId);
+      }
+      for (const tab of result)
+        if (!closed.has(tab.id)) rememberIdentity(tab.id, tab.treeId, tab.windowId);
+      ownershipVersion++;
+      initializedTabs = true;
+      if (closed.size) {
+        // A native closing animation may still appear in query(). Do not cache
+        // that list or endlessly retry it after the confirmed close above.
+        cache.invalidateTabs();
+        requestTabs.clear();
+        resolvedTabs.delete(key);
+      } else
+        resolvedTabs.set(key, {
+          native: displayState.tabs,
+          positions: new Map(displayState.tabs.map((tab, index) => [tab.id, index])),
+          structureToken: displayState.structureToken,
+          groupIdsVersion,
+          membershipVersion: membershipEpoch(key),
+          unknownMembershipVersion,
+          tabs: resolved,
+        });
+      return resolved;
     }
-    for (const [key, owner] of owners) if (closed.has(owner)) owners.delete(key);
-    treeOwners = owners;
-    tabTreeKeys = new Map([...owners].map(([key, id]) => [id, key]));
-    initializedTabs = true;
-    const resolved = resolveTabTree(
-      result.filter(
-        (tab) => !closed.has(tab.id) && (windowId == null || tab.windowId === windowId),
-      ),
-    );
-    resolvedTabs.set(key, {
-      native: tabs,
-      groups: model.groups,
-      membershipVersion,
-      tabs: resolved,
-    });
-    return resolved;
   }
 
   async function snapshot(windowId, extra = {}) {
@@ -571,7 +850,9 @@ export function createController(
         .catch((error) => ({ tabs: [], error: error.message })),
     ]);
     closeSelection.remember(windowId, { groups: structuredClone(model.groups), tabs, view });
-    const pins = reconcilePins(view.pinLayout, model.folderPins, tabs, forgottenPins.get(windowId));
+    const pendingPins = forgottenPins.get(windowId);
+    const forgotten = pendingPins ? new Set(pendingPins) : undefined;
+    const pins = reconcilePins(view.pinLayout, model.folderPins, tabs, forgotten);
     // Tab-only installations need no additional session writes. Once a mixed
     // layout exists, remember new slots without discarding pending restorations.
     if (
@@ -581,7 +862,12 @@ export function createController(
       view.pinLayout = pins.layout;
       await saveView(windowId, view);
     }
-    forgottenPins.delete(windowId);
+    // Closures during a session write belong to the next reconciliation.
+    const remainingPins = forgottenPins.get(windowId);
+    if (remainingPins) {
+      for (const id of forgotten || []) remainingPins.delete(id);
+      if (!remainingPins.size) forgottenPins.delete(windowId);
+    }
     const savedKeys = new Set(tabs.filter(isSavedForLater).map((tab) => tab.treeId));
     const byStore = new Map(identities.map((identity) => [identity.cookieStoreId, identity]));
     return {
@@ -626,15 +912,19 @@ export function createController(
   async function updateMembership(tabId, changes) {
     const value = (await membership(tabId)) ?? {};
     if (membershipMatches(value, changes)) return;
-    await saveMembership(tabId, {
-      ...value,
-      treeId: value.treeId || crypto.randomUUID(),
-      ...changes,
-    });
+    await saveMembership(
+      tabId,
+      {
+        ...value,
+        treeId: value.treeId || crypto.randomUUID(),
+        ...changes,
+      },
+      Object.keys(changes).length === 1 && Object.hasOwn(changes, 'collapsed'),
+    );
   }
 
-  async function checkedTab(tabId, windowId) {
-    const tab = await api.tabs.get(tabId);
+  async function checkedTab(tabId, windowId, created = false) {
+    const tab = await (created ? cache.createdTab(tabId, windowId) : api.tabs.get(tabId));
     if (tab.windowId !== windowId || tab.incognito)
       throw new Error('That tab has moved to another window.');
     return tab;
@@ -832,9 +1122,8 @@ export function createController(
       await writeTab(windowId, 'remove', source.id);
       const remaining = await findOpenTab(source.id);
       if (remaining) throw new Error('The original tab could not be closed. Try again.');
-      treeOwners.set(source.treeId, replacement.id);
-      tabTreeKeys.delete(source.id);
-      tabTreeKeys.set(replacement.id, source.treeId);
+      forgetIdentity(source.id);
+      rememberIdentity(replacement.id, source.treeId, windowId);
       return replacement.id;
     } catch (error) {
       // Every fallible preparation step precedes closing the original.
@@ -1684,7 +1973,7 @@ export function createController(
       publish(tab.windowId);
       return;
     }
-    await checkedTab(tab.id, tab.windowId);
+    await checkedTab(tab.id, tab.windowId, true);
     let context = contexts.get(tab.windowId);
     if (!context || context.revision !== revision) {
       requestTabs = new Map();
@@ -1765,6 +2054,7 @@ export function createController(
   }
 
   function created(tab) {
+    if (disposed) return Promise.reject(new Error('This controller has been disposed.'));
     // Capture the event time before queued work runs. Existing tabs discovered at
     // startup have no known creation date; restored tabs retain their saved date.
     openedTimes.set(tab.id, Date.now());
@@ -1822,10 +2112,45 @@ export function createController(
         }
       }, !folderBackupActions.has(message.type)),
 
+    cacheStats: () => ({
+      ...cache.stats(),
+      treeOwners: treeOwners.size,
+      tabTreeKeys: tabTreeKeys.size,
+      tabWindows: tabWindows.size,
+      ownedWindows: windowTabIds.size,
+      membershipWindows: windowMembershipVersions.size,
+      resolvedWindows: resolvedTabs.size,
+      requestWindows: requestTabs.size,
+      openedTimes: openedTimes.size,
+      forgottenWindows: forgottenPins.size,
+      forgottenPinKeys: [...forgottenPins.values()].reduce((sum, keys) => sum + keys.size, 0),
+      pinLayoutWindows: pinLayouts.size,
+    }),
+
     dispose() {
+      disposed = true;
       closeSelection.dispose();
       cache.dispose();
-      resolvedTabs.clear();
+      // Let outstanding reads/repairs and queued writes settle before dropping
+      // their working state. Late cache completions cannot repopulate the cache.
+      return queue.then(() => {
+        closeSelection.dispose();
+        cache.dispose();
+        treeOwners.clear();
+        tabTreeKeys.clear();
+        tabWindows.clear();
+        windowTabIds.clear();
+        windowMembershipVersions.clear();
+        groupIds.clear();
+        resolvedTabs.clear();
+        requestTabs.clear();
+        openedTimes.clear();
+        forgottenPins.clear();
+        pinLayouts.clear();
+        pendingCreations = null;
+        model = undefined;
+        ready = undefined;
+      });
     },
 
     created,

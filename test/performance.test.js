@@ -79,7 +79,7 @@ test('warm snapshots and group toggles reuse metadata, native tabs, containers a
   const state = await f.send('activateTab', { id: 2 });
   assert.equal(state.tabs.find((tab) => tab.id === 2).active, true);
   assert.equal(f.calls()['sessions.getTabValue'] || 0, 0);
-  assert.deepEqual(f.queries, [{ windowId: 1 }]);
+  assert.deepEqual(f.queries, []);
 });
 
 test('native changes invalidate only their window; irrelevant updates do not notify sidebars', async () => {
