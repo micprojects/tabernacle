@@ -10,6 +10,7 @@ import { download } from 'geckodriver';
 // Firefox instance, copy a personal profile, or use OS input/clipboard APIs.
 export class ScreenshotBrowser {
   async open(fixture, logPath) {
+    console.log('Firefox fixture: preparing isolated profile');
     this.root = await mkdtemp(join(tmpdir(), 'tabernacle-screenshots-'));
     const appData = join(this.root, 'app-data');
     await mkdir(appData);
@@ -27,6 +28,7 @@ export class ScreenshotBrowser {
     options.setPreference('layout.css.prefers-color-scheme.content-override', 1);
     const binary = process.env.GECKODRIVER_BINARY || (await download('0.37.1'));
     this.log = await open(logPath, 'w');
+    console.log('Firefox fixture: starting WebDriver session');
     this.driver = await new Builder()
       .forBrowser('firefox')
       .setFirefoxOptions(options)
@@ -37,6 +39,7 @@ export class ScreenshotBrowser {
           .setStdio(['ignore', this.log.fd, this.log.fd]),
       )
       .build();
+    console.log('Firefox fixture: WebDriver session ready');
     await this.driver.manage().setTimeouts({ script: 125000, pageLoad: 30000 });
     await this.driver.manage().window().setRect(fixture.window);
     await this.driver.setContext(firefox.Context.CHROME);
@@ -48,36 +51,33 @@ export class ScreenshotBrowser {
     const within = relative(await realpath(this.root), profile);
     assert(within && !within.startsWith('..') && !isAbsolute(within), 'Unexpected Firefox profile');
     await this.driver.setContext(firefox.Context.CONTENT);
+    console.log('Firefox fixture: installing extension');
     const addonId = await this.driver.installAddon(resolve('extension'), true);
     assert.equal(addonId, 'tabernacle@michaelprojects.com');
+    console.log('Firefox fixture: extension installed, waiting for sidebar');
     await this.driver.setContext(firefox.Context.CHROME);
-    await this.driver.wait(
+    this.sidebarUrl = await this.driver.wait(
       () =>
-        this.chrome(() =>
-          Boolean(
-            document
-              .getElementById('sidebar')
-              ?.contentDocument?.getElementById('webext-panels-browser')
-              ?.browsingContext?.currentWindowGlobal?.documentURI.spec.startsWith('moz-extension:'),
-          ),
-        ),
+        this.chrome((id) => {
+          const url = WebExtensionPolicy.getByID(id)?.getURL('sidebar.html');
+          const global = document
+            .getElementById('sidebar')
+            ?.contentDocument?.getElementById('webext-panels-browser')
+            ?.browsingContext?.currentWindowGlobal;
+          return url && global?.documentURI.spec === url ? url : null;
+        }, addonId),
       15000,
       'Firefox did not open the extension sidebar',
     );
-    await this.chrome(
-      async (id, sidebarWidth) => {
-        document.getElementById('sidebar-box').style.width = `${sidebarWidth}px`;
-        const { require } = ChromeUtils.importESModule(
-          'resource://devtools/shared/loader/Loader.sys.mjs',
-        );
-        const { CommandsFactory } = require('devtools/shared/commands/commands-factory');
-        // In-process DevTools transport: no debugging listener or inspector window.
-        window.tabernacleScreenshotCommands = await CommandsFactory.forAddon(id);
-        await window.tabernacleScreenshotCommands.targetCommand.startListening();
-      },
-      addonId,
-      fixture.sidebarWidth,
-    );
+    await this.chrome((width) => {
+      document.getElementById('sidebar-box').style.width = `${width}px`;
+    }, fixture.sidebarWidth);
+    console.log('Firefox fixture: waiting for the sidebar document (without DevTools)');
+    await this.evaluate(async () => {
+      if (document.readyState !== 'complete')
+        await new Promise((resolve) => window.addEventListener('load', resolve, { once: true }));
+    });
+    console.log('Firefox fixture: sizing sidebar');
     const size = fixture.capture.sourceSize;
     for (let attempt = 0; attempt < 3; attempt++) {
       const actual = await this.evaluate(() => ({ width: innerWidth, height: innerHeight }));
@@ -91,13 +91,54 @@ export class ScreenshotBrowser {
         .manage()
         .window()
         .setRect({ width: rect.width, height: rect.height + size.height - actual.height });
+      await this.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      );
     }
     const actual = await this.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     assert.deepEqual(actual, size, 'Firefox sidebar dimensions do not match the fixture');
+    console.log('Firefox fixture: dimensions verified, waiting for fonts');
     await this.evaluate(async () => {
       await document.fonts.ready;
     });
+    console.log('Firefox fixture: sidebar ready for checks');
     return this.environment;
+  }
+
+  async reloadSidebar() {
+    // Navigate from chrome, then wait there for a new document. An evaluation
+    // polling the old page can be discarded during reload; never replay it.
+    const previousId = await this.chrome((url) => {
+      const panel = document
+        .getElementById('sidebar')
+        ?.contentDocument?.getElementById('webext-panels-browser');
+      const global = panel?.browsingContext?.currentWindowGlobal;
+      if (!global || global.documentURI.spec !== url)
+        throw new Error('Reload target is not the installed sidebar');
+      const id = global.innerWindowId;
+      panel.reload();
+      return id;
+    }, this.sidebarUrl);
+    await this.driver.wait(
+      () =>
+        this.chrome(
+          (previousId, url) => {
+            const global = document
+              .getElementById('sidebar')
+              ?.contentDocument?.getElementById('webext-panels-browser')
+              ?.browsingContext?.currentWindowGlobal;
+            return global?.documentURI.spec === url && global.innerWindowId !== previousId;
+          },
+          previousId,
+          this.sidebarUrl,
+        ),
+      15000,
+      'Sidebar did not reload',
+    );
+    await this.evaluate(async () => {
+      if (document.readyState !== 'complete')
+        await new Promise((resolve) => window.addEventListener('load', resolve, { once: true }));
+    });
   }
 
   async setColorScheme(scheme) {
@@ -111,7 +152,7 @@ export class ScreenshotBrowser {
 
   async chrome(fn, ...args) {
     const result = await this.driver.executeAsyncScript(
-      `const done=arguments[arguments.length-1];Promise.resolve().then(()=>(${fn.toString()})(...arguments[0])).then(value=>done({ok:true,value:value??null}),error=>done({ok:false,error:error.stack||error.message}));`,
+      `const done=arguments[arguments.length-1];Promise.resolve().then(()=>(${fn.toString()})(...arguments[0])).then(value=>done({ok:true,value:value??null}),error=>done({ok:false,error:String(error)+'\\n'+(error?.stack||'')}));`,
       args,
     );
     if (!result.ok) throw new Error(result.error);
@@ -119,32 +160,76 @@ export class ScreenshotBrowser {
   }
 
   async evaluate(fn, ...args) {
-    const expression = `(async()=>{try{return JSON.stringify({ok:true,value:await (${fn.toString()})(...${JSON.stringify(args)})??null})}catch(error){return JSON.stringify({ok:false,error:error.stack||error.message})}})()`;
-    const json = await this.chrome(async (expression) => {
-      const panel = document
-        .getElementById('sidebar')
-        .contentDocument.getElementById('webext-panels-browser');
-      const response = await window.tabernacleScreenshotCommands.scriptCommand.execute(expression, {
-        innerWindowID: panel.browsingContext.currentWindowGlobal.innerWindowId,
-      });
-      if (response.exceptionMessage) throw new Error(String(response.exceptionMessage));
-      const promise = response.result;
-      try {
-        const deadline = Date.now() + 120000;
-        while (Date.now() < deadline) {
-          const { promiseState } = await promise.getPromiseState();
-          if (promiseState.state === 'fulfilled') {
-            const value = promiseState.value;
-            return typeof value === 'string' ? value : await value.string();
+    const values = JSON.stringify(JSON.stringify(args));
+    const expression = `(async()=>{try{return JSON.stringify({ok:true,value:await (${fn.toString()})(...JSON.parse(${values}))??null})}catch(error){return JSON.stringify({ok:false,error:String(error)+'\\n'+(error?.stack||'')})}})()`;
+    const json = await this.chrome(
+      async (id, expression, url) => {
+        const panel = document
+          .getElementById('sidebar')
+          ?.contentDocument?.getElementById('webext-panels-browser');
+        const global = panel?.browsingContext?.currentWindowGlobal;
+        if (!global || global.documentURI.spec !== url)
+          throw new Error('Screenshot bridge target is not the installed sidebar');
+        const innerWindowId = global.innerWindowId;
+        const name = `TabernacleScreenshot:${id}`;
+        // PrecompiledScript executes in the actual page global, as Firefox's
+        // scripting API does. Keep DOM constructors, globals and browser API
+        // arguments in that realm without attaching DevTools or relaxing CSP.
+        const script = `(async()=>{try{
+          const compiled=await ChromeUtils.compileScript(
+            ${JSON.stringify('data:text/javascript,' + encodeURIComponent(expression))},
+            {hasReturnValue:true,filename:'tabernacle-sidebar-test'});
+          if(content.document.documentURI!==${JSON.stringify(url)} ||
+             content.windowGlobalChild.innerWindowId!==${JSON.stringify(innerWindowId)})
+            throw new Error('Sidebar document changed before evaluation');
+          const json=await compiled.executeInGlobal(content,{reportExceptions:false});
+          sendAsyncMessage(${JSON.stringify(name)},{json});
+        }catch(error){sendAsyncMessage(${JSON.stringify(name)},{error:String(error)+'\\n'+(error?.stack||'')})}})();`;
+        const manager = panel.messageManager;
+        return new Promise((resolve, reject) => {
+          let finished = false;
+
+          const finish = (error, value) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timeout);
+            try {
+              manager.removeMessageListener(name, listener);
+            } catch {
+              // A discarded panel has already removed its message listeners.
+            }
+            if (error) reject(error);
+            else resolve(value);
+          };
+
+          const listener = (message) => {
+            const current = panel.browsingContext?.currentWindowGlobal;
+            if (current?.innerWindowId !== innerWindowId || current.documentURI.spec !== url)
+              finish(new Error('Sidebar document changed during evaluation'));
+            else if (message.data.error) finish(new Error(message.data.error));
+            else finish(null, message.data.json);
+          };
+
+          const timeout = setTimeout(
+            () => finish(new Error('Sidebar evaluation timed out')),
+            30000,
+          );
+          try {
+            manager.addMessageListener(name, listener);
+            manager.loadFrameScript(
+              'data:application/javascript,' + encodeURIComponent(script),
+              false,
+              false,
+            );
+          } catch (error) {
+            finish(error);
           }
-          if (promiseState.state === 'rejected') throw new Error('Sidebar evaluation rejected');
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        throw new Error('Sidebar evaluation timed out');
-      } finally {
-        await promise.release();
-      }
-    }, expression);
+        });
+      },
+      crypto.randomUUID(),
+      expression,
+      this.sidebarUrl,
+    );
     const result = JSON.parse(json);
     if (!result.ok) throw new Error(result.error);
     return result.value;

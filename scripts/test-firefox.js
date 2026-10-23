@@ -23,6 +23,13 @@ try {
   const addonId = await driver.installAddon(resolve('extension'), true);
   assert.equal(addonId, 'tabernacle@michaelprojects.com');
   await driver.setContext(firefox.Context.CHROME);
+  assert.equal(
+    await driver.executeScript(
+      'const { UpdateServiceStub } = ChromeUtils.importESModule("resource://gre/modules/UpdateServiceStub.sys.mjs"); return new UpdateServiceStub().updateDisabledForTesting;',
+    ),
+    true,
+    'The isolated browser must keep application updates disabled during automation',
+  );
   const uuid = await driver.executeScript(
     'return JSON.parse(Services.prefs.getStringPref("extensions.webextensions.uuids"))[arguments[0]];',
     addonId,
@@ -53,6 +60,7 @@ try {
 
   const reloadAddon = async () => {
     // Reload closes extension documents; keep WebDriver on a regular page.
+    await driver.switchTo().window(await driver.getWindowHandle());
     await driver.get('about:blank');
     await driver.setContext(firefox.Context.CHROME);
     await driver.executeAsyncScript(
@@ -311,6 +319,9 @@ try {
       const tab = state.tabs.find((item) => item.id === opened.id);
       return tab?.groupId === scopeId && tab.parentTabId === null;
     }, 5000);
+    // This fixture renders sidebar.html in a tab. Native activation can hide
+    // it; bring it back before asserting its visibility-driven DOM refresh.
+    await driver.switchTo().window(sidebarHandle);
     await driver.wait(async () => {
       return (
         (await driver.executeScript(
@@ -440,6 +451,7 @@ try {
   assert(reopenedPin.pinned && reopenedPin.mutedInfo.muted);
   assert.equal(reopenedPin.cookieStoreId, identity.cookieStoreId);
   console.log('✓ Real container replacements preserve trees, native groups, pins and mute state');
+  await driver.switchTo().window(sidebarHandle);
   const parentRow = await driver.wait(
     until.elementLocated(By.css(`[data-key="tab:${tab.id}"] .tab-disclosure`)),
     5000,
@@ -465,6 +477,7 @@ try {
   assert.equal(state.tabs.find((item) => item.id === restored.tab.id).groupId, design);
   assert.equal(state.tabs.find((item) => item.id === child.id).parentTabId, restored.tab.id);
   console.log('✓ Firefox close/restore keeps group membership with a new tab ID');
+  await driver.switchTo().window(sidebarHandle);
   const pin = await driver.wait(
     until.elementLocated(By.css(`[data-key="tab:${reopenedPin.id}"]`)),
     5000,
@@ -626,6 +639,7 @@ try {
   );
   await send('enterGroup', { id: null });
   // Capture the installed sidebar itself at a realistic narrow viewport.
+  await driver.switchTo().window(sidebarHandle);
   await driver.manage().window().setRect({ width: 450, height: 860 });
   await driver.wait(until.elementLocated(By.css(`[data-key="group:${work}"]`)), 5000);
   await send('setGroupContainer', { id: work, cookieStoreId: identity.cookieStoreId });
