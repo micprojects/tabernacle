@@ -129,3 +129,55 @@ test('container and pin previews describe the exact insertion boundary', () => {
   const pin = resolveMove(state, tab(3), { kind: 'pins', before: { kind: 'group', id: 'work' } });
   assert.match(pin.label, /before Work/);
 });
+
+test('folder plans bound folder reads with many tabs and preserve descendant counts', () => {
+  let reads = 0;
+  const count = 1000;
+  const groups = Array.from({ length: count }, (_, i) => ({
+    get id() {
+      reads++;
+      return `g${i}`;
+    },
+
+    name: `Folder ${i}`,
+    parentId: i % 500 ? `g${i - (i % 500)}` : null,
+  }));
+  const current = {
+    groups,
+    tabs: Array.from({ length: count }, (_, i) => ({
+      id: i + 1,
+      groupId: `g${i}`,
+      pinned: i % 7 === 0,
+      ...(i % 10 === 0 ? { savedForLaterAt: 1000 } : {}),
+    })),
+  };
+  const plan = resolveMove(current, { kind: 'group', id: 'g0' }, { kind: 'group', id: 'g500' });
+  assert.equal(plan.count, 450);
+  assert.deepEqual(plan.destination, { kind: 'folder', parentId: 'g500', beforeId: null });
+  assert.match(plan.label, /into Home \/ Folder 500/);
+  assert(reads < count * 30, `Expected linear folder reads, observed ${reads}`);
+});
+
+test('folder plans refresh counts, paths, siblings and cycle checks after in-place edits', () => {
+  const current = structuredClone(state);
+  current.tabs.push(
+    { id: 5, groupId: 'child', pinned: true },
+    { id: 6, groupId: 'child', savedForLaterAt: 1000 },
+  );
+  const source = { kind: 'group', id: 'work' };
+  const before = resolveMove(current, source, { kind: 'folder', parentId: null });
+  assert.equal(before.count, 3);
+  assert.equal(before.noOp, true);
+  assert.throws(() => resolveMove(current, source, { kind: 'group', id: 'child' }), /subfolders/);
+  current.groups[1].parentId = null;
+  current.groups[1].name = 'Independent';
+  const after = resolveMove(current, source, { kind: 'group', id: 'child' });
+  assert.equal(after.count, 2);
+  assert.equal(after.noOp, false);
+  assert.match(after.label, /into Home \/ Independent/);
+  assert.notEqual(after.expected, before.expected);
+  current.groups.reverse();
+  const reordered = resolveMove(current, source, { kind: 'folder', parentId: null });
+  assert.equal(reordered.noOp, true);
+  assert.notEqual(reordered.expected, before.expected);
+});

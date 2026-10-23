@@ -8,6 +8,7 @@ import {
 } from '../extension/src/close-selection.js';
 import { VIEW_KEY } from '../extension/src/model.js';
 import { memoryBrowser } from '../preview/browser.js';
+import { captureTarget } from '../extension/src/tab-collection.js';
 
 async function fixture({ events = true, windowId = 1, readCloseFilter } = {}) {
   const api = memoryBrowser({
@@ -44,6 +45,41 @@ async function fixture({ events = true, windowId = 1, readCloseFilter } = {}) {
 }
 
 const activeId = (state) => state.tabs.find((tab) => tab.active)?.id;
+
+for (const events of [false, true]) {
+  test(`reviewed closes retain filtered selection after earlier inactive removals (events: ${events})`, async (t) => {
+    const f = await filteredFixture({ events });
+    t.after(() => f.controller.dispose());
+    await f.api.tabs.update(3, { successorTabId: 1 });
+    const before = await f.send('snapshot');
+    const after = await f.send('closeTabSet', {
+      scope: { kind: 'window' },
+      targets: [2, 3].map((id) => captureTarget(before.tabs.find((tab) => tab.id === id))),
+    });
+    assert.deepEqual(after.batchResult.completed, [2, 3]);
+    assert.equal(activeId(after), 5, 'The nested match is now the nearest result above');
+    assert.equal(after.view.scopeId, 'work');
+    assert.deepEqual(after.view.collapsed, ['nested']);
+  });
+}
+
+test('a target activated between reviewed removals gets the active-close fallback', async (t) => {
+  const f = await filteredFixture();
+  t.after(() => f.controller.dispose());
+  await f.api.tabs.update(4, { successorTabId: 1 });
+  const before = await f.send('snapshot');
+  const remove = f.api.tabs.remove;
+  f.api.tabs.remove = async (id) => {
+    await remove(id);
+    if (id === 2) await f.api.tabs.update(4, { active: true });
+  };
+  const after = await f.send('closeTabSet', {
+    scope: { kind: 'window' },
+    targets: [2, 4].map((id) => captureTarget(before.tabs.find((tab) => tab.id === id))),
+  });
+  assert.deepEqual(after.batchResult.completed, [2, 4]);
+  assert.equal(activeId(after), 3);
+});
 
 function retains(root, target, seen = new Set()) {
   if (root === target) return true;

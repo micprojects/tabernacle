@@ -1,17 +1,21 @@
 import { isSavedForLater, isWithin } from './model.js';
 import { matchesDomain } from './domain-filter.js';
 import { createTreeIndex } from './tree-index.js';
+import { createFolderIndex } from './folder-index.js';
 import { sourceUrl, matchesText, httpUrl } from './tab-source.js';
 import { laterResults } from './later.js';
 
 export { sourceUrl, matchesText };
 
-export function savedSearchResults(state, query, scopeId = state.view.scopeId) {
+export function savedSearchResults(state, query, scopeId = state.view.scopeId, folders) {
   if (!query.trim()) return [];
+  if (scopeId !== null) folders ??= createFolderIndex(state);
   return state.tabs
     .filter(
       (tab) =>
-        isSavedForLater(tab) && isWithin(state, tab.groupId, scopeId) && matchesText(tab, query),
+        isSavedForLater(tab) &&
+        (scopeId === null || folders.isWithin(tab.groupId, scopeId)) &&
+        matchesText(tab, query),
     )
     .sort((a, b) => b.savedForLaterAt - a.savedForLaterAt || a.index - b.index);
 }
@@ -25,6 +29,13 @@ export function viewedAge(time, now = Date.now()) {
 export function searchTabOrder(state, query, scopeId = state.view.scopeId) {
   const text = query.trim().toLowerCase();
   const index = createTreeIndex(state, text);
+  return [
+    ...treeTabOrder(index, text, scopeId),
+    ...savedSearchResults(state, query, scopeId, index.folders).map((tab) => tab.id),
+  ];
+}
+
+function treeTabOrder(index, text, scopeId) {
   const order = [];
   const pending = [{ groupId: scopeId, match: !text }];
   while (pending.length) {
@@ -46,15 +57,16 @@ export function searchTabOrder(state, query, scopeId = state.view.scopeId) {
           });
     }
   }
-  return [...order, ...savedSearchResults(state, query, scopeId).map((tab) => tab.id)];
+  return order;
 }
 
 export function folderCollection(state, scopeId) {
-  const tabs = state.tabs.filter((tab) => isWithin(state, tab.groupId, scopeId));
+  const index = createTreeIndex(state);
+  const tabs = state.tabs.filter((tab) => index.folders.isWithin(tab.groupId, scopeId));
   const byId = new Map(tabs.map((tab) => [tab.id, tab]));
   return [
     ...tabs.filter((tab) => tab.pinned && !isSavedForLater(tab)).sort((a, b) => a.index - b.index),
-    ...searchTabOrder(state, '', scopeId)
+    ...treeTabOrder(index, '', scopeId)
       .map((id) => byId.get(id))
       .filter(Boolean),
     ...tabs.filter(isSavedForLater).sort((a, b) => b.savedForLaterAt - a.savedForLaterAt),
@@ -80,13 +92,13 @@ export function matchesTarget(tab, target) {
   );
 }
 
-export function inCollection(state, tab, scope) {
+export function inCollection(state, tab, scope, folders) {
   if (scope?.kind === 'window') return true;
   if (scope?.kind === 'folder')
-    return (
-      (scope.id === null || state.groups.some((group) => group.id === scope.id)) &&
-      isWithin(state, tab.groupId, scope.id)
-    );
+    return folders
+      ? folders.isWithin(tab.groupId, scope.id)
+      : (scope.id === null || state.groups.some((group) => group.id === scope.id)) &&
+          isWithin(state, tab.groupId, scope.id);
   if (scope?.kind === 'domain')
     return !isSavedForLater(tab) && matchesDomain(tab, scope.domain, scope.query || '');
   if (scope?.kind === 'later') return laterResults([tab], scope).length === 1;

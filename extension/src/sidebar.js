@@ -1,6 +1,7 @@
 import { batchSummary } from './collection-dialogs.js';
 import { folderCollection, sourceUrl, viewedAge, captureTarget } from './tab-collection.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
+import { createFolderIndex } from './folder-index.js';
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches, updateTreeAudio } from './tree-index.js';
@@ -35,7 +36,6 @@ import { openDemoPage } from './internal-pages.js';
 import {
   groupById,
   groupPath,
-  isWithin,
   isSavedForLater,
   sortTabs,
   tabChildren,
@@ -2397,10 +2397,11 @@ async function copyTabUrls(tabs, emptyMessage = 'No URLs to copy.') {
 }
 
 async function copyUrls(kind, id) {
+  const folders = kind === 'group' ? createFolderIndex(state) : null;
   const tabs =
     kind === 'group'
       ? sortTabs(
-          state.tabs.filter((tab) => !isSavedForLater(tab) && isWithin(state, tab.groupId, id)),
+          state.tabs.filter((tab) => !isSavedForLater(tab) && folders.isWithin(tab.groupId, id)),
         )
       : state.tabs.filter((tab) => tab.id === id);
   return copyTabUrls(tabs, kind === 'group' ? 'No URLs to copy in this folder.' : undefined);
@@ -2467,9 +2468,7 @@ function contextMenu(kind, id, x, y) {
           label: 'Close all tabs…',
           icon: 'close',
           run: () => closeGroupTabsDialog(id),
-          disabled: !state.tabs.some(
-            (tab) => !isSavedForLater(tab) && isWithin(state, tab.groupId, id),
-          ),
+          disabled: !unsavedFolderTabs.length,
           danger: true,
         },
         {

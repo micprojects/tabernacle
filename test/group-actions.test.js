@@ -135,6 +135,71 @@ test('a partial or refused close keeps the groups and supports retrying deletion
   }
 });
 
+test('failed deletion view reads, view writes and model writes preserve folders for restart and retry', async () => {
+  for (const failure of ['view-read', 'view-write', 'model-write']) {
+    const { api, send, controller } = await fixture();
+    const contents = await send('getGroupContents', { id: 'source' });
+    const savedModel = structuredClone(api.testing.saved[MODEL_KEY]);
+    const native = await api.tabs.query({});
+    const readView = api.sessions.getWindowValue;
+    const writeView = api.sessions.setWindowValue;
+    const writeModel = api.storage.local.set;
+    api.sessions.getWindowValue = async (id, ...args) => {
+      if (failure === 'view-read' && id === 2) throw new Error('View read failed');
+      return readView(id, ...args);
+    };
+    api.sessions.setWindowValue = async (id, ...args) => {
+      if (failure === 'view-write' && id === 2) throw new Error('View write failed');
+      return writeView(id, ...args);
+    };
+    api.storage.local.set = async (value) => {
+      if (failure === 'model-write' && Object.hasOwn(value, MODEL_KEY))
+        throw new Error('Model write failed');
+      return writeModel(value);
+    };
+    await assert.rejects(send('removeGroup', { id: 'source', ...contents }), /failed/);
+    assert.deepEqual(api.testing.saved[MODEL_KEY], savedModel);
+    const remaining = await api.tabs.query({});
+    if (failure === 'model-write') {
+      const stableNative = (tab) => {
+        const copy = { ...tab };
+        delete copy.active;
+        delete copy.lastAccessed;
+        return copy;
+      };
+
+      assert.deepEqual(
+        remaining.map((tab) => tab.id),
+        [6, 7],
+      );
+      assert.deepEqual(
+        remaining.map(stableNative),
+        native.filter((tab) => [6, 7].includes(tab.id)).map(stableNative),
+      );
+    } else assert.deepEqual(remaining, native);
+    api.sessions.getWindowValue = readView;
+    api.sessions.setWindowValue = writeView;
+    api.storage.local.set = writeModel;
+    await controller.dispose();
+    const restarted = createController(api);
+    const retry = await restarted.request({
+      type: 'removeGroup',
+      windowId: 1,
+      id: 'source',
+      ...contents,
+    });
+    assert.deepEqual(
+      retry.groups.map((group) => group.id),
+      ['outer', 'target', 'existing'],
+    );
+    assert.deepEqual(
+      (await api.tabs.query({})).map((tab) => tab.id),
+      [6, 7],
+    );
+    await restarted.dispose();
+  }
+});
+
 test('moving contents appends tabs and subgroups, preserving trees, containers, pins, windows and views', async () => {
   const { api, send, notices, controller } = await fixture();
   await send('enterGroup', { id: 'deep' }, 2);

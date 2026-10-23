@@ -15,8 +15,10 @@ export function emptyModel() {
   };
 }
 
-export function groupById(model, id) {
-  return model.groups.find((group) => group.id === id);
+// An optional index belongs to this exact model revision. Mutable transaction
+// copies and ordinary callers continue to use fresh scans.
+export function groupById(model, id, index) {
+  return index ? index.get(id) : model.groups.find((group) => group.id === id);
 }
 
 export function validGroups(groups) {
@@ -49,17 +51,17 @@ export function validGroups(groups) {
   return true;
 }
 
-export function requireGroup(model, id) {
-  if (id !== null && !groupById(model, id)) throw new Error('That folder no longer exists.');
+export function requireGroup(model, id, index) {
+  if (id !== null && !groupById(model, id, index)) throw new Error('That folder no longer exists.');
   return id;
 }
 
-export function groupPath(model, id) {
+export function groupPath(model, id, index) {
   const result = [];
   const visited = new Set();
   while (id !== null && !visited.has(id)) {
     visited.add(id);
-    const group = groupById(model, id);
+    const group = groupById(model, id, index);
     if (!group) break;
     result.unshift(group);
     id = group.parentId;
@@ -68,18 +70,38 @@ export function groupPath(model, id) {
 }
 
 // Missing/null settings inherit; firefox-default explicitly stops inheritance.
-export function groupContainer(model, id) {
-  return groupPath(model, id)
+export function groupContainer(model, id, index) {
+  return groupPath(model, id, index)
     .reverse()
     .find((group) => group.defaultCookieStoreId != null)?.defaultCookieStoreId;
 }
 
-export function isWithin(model, groupId, scopeId) {
-  return scopeId === null || groupPath(model, groupId).some((group) => group.id === scopeId);
+export function isWithin(model, groupId, scopeId, index) {
+  return scopeId === null || groupPath(model, groupId, index).some((group) => group.id === scopeId);
 }
 
 export function children(model, parentId) {
   return model.groups.filter((group) => group.parentId === parentId);
+}
+
+// Fresh traversal also works for mutable transaction copies and deep trees.
+export function groupSubtreeIds(model, id) {
+  const children = new Map();
+  let found = false;
+  for (const group of model.groups) {
+    if (group.id === id) found = true;
+    if (!children.has(group.parentId)) children.set(group.parentId, []);
+    children.get(group.parentId).push(group.id);
+  }
+  const result = new Set();
+  const pending = found ? [id] : [];
+  while (pending.length) {
+    const current = pending.pop();
+    if (result.has(current)) continue;
+    result.add(current);
+    for (const child of children.get(current) || []) pending.push(child);
+  }
+  return result;
 }
 
 export function cleanName(value) {
@@ -117,18 +139,21 @@ export function moveGroup(model, id, parentId, beforeId = null) {
 export function removeGroup(model, id) {
   const group = groupById(model, requireGroup(model, id));
   if (!group) throw new Error('Choose a folder to remove.');
-  model.groups = model.groups.filter((item) => !isWithin(model, item.id, id));
+  const removed = groupSubtreeIds(model, id);
+  model.groups = model.groups.filter((item) => !removed.has(item.id));
   return group.parentId;
 }
 
-export function normalizeView(model, view = {}) {
+export function normalizeView(model, view = {}, index) {
   view ??= {};
   const recentExpandedFolders = normalizeExpansions(model.groups, view.recentExpandedFolders);
   const seen = new Set();
   const recentFolders = (Array.isArray(view.recentFolders) ? view.recentFolders : [])
     .filter(
       (entry) =>
-        groupById(model, entry?.id) && Number.isFinite(entry.enteredAt) && entry.enteredAt > 0,
+        groupById(model, entry?.id, index) &&
+        Number.isFinite(entry.enteredAt) &&
+        entry.enteredAt > 0,
     )
     .sort((a, b) => b.enteredAt - a.enteredAt)
     .filter(({ id }) => {
@@ -139,9 +164,9 @@ export function normalizeView(model, view = {}) {
     .slice(0, 100)
     .map(({ id, enteredAt }) => ({ id, enteredAt }));
   return {
-    scopeId: groupById(model, view.scopeId) ? view.scopeId : null,
+    scopeId: groupById(model, view.scopeId, index) ? view.scopeId : null,
     collapsed: Array.isArray(view.collapsed)
-      ? view.collapsed.filter((id) => groupById(model, id))
+      ? view.collapsed.filter((id) => groupById(model, id, index))
       : [],
     ...(recentFolders.length ? { recentFolders } : {}),
     ...(recentExpandedFolders.length ? { recentExpandedFolders } : {}),

@@ -25,6 +25,7 @@ import {
   groupById,
   requireGroup,
   groupPath,
+  groupSubtreeIds,
   groupContainer,
   isWithin,
   isSavedForLater,
@@ -62,6 +63,12 @@ export function createController(
 ) {
   const receiptKey = 'tabernacle.move-receipts.v1';
   let model;
+  let folderIndex = new Map();
+  const folderById = (id) => groupById(model, id, folderIndex);
+  const requireFolder = (id) => requireGroup(model, id, folderIndex);
+  const folderPath = (id) => groupPath(model, id, folderIndex);
+  const folderContainer = (id) => groupContainer(model, id, folderIndex);
+  const inFolder = (groupId, scopeId) => isWithin(model, groupId, scopeId, folderIndex);
   let treeOwners = new Map();
   let tabTreeKeys = new Map();
   let tabWindows = new Map();
@@ -150,13 +157,13 @@ export function createController(
       if (source?.kind === 'group') {
         // Recovery owns this folder's placement only. A rename, appearance
         // change or newly created folder must survive a background restart.
-        if (!groupById(model, source.id)) return;
+        if (!folderById(source.id)) return;
         const desired = groups.find((group) => group.id === source.id);
         if (!desired) throw new Error('The saved folder destination is unavailable.');
         const siblings = groups.filter((group) => group.parentId === desired.parentId);
         const following = siblings
           .slice(siblings.indexOf(desired) + 1)
-          .find((group) => groupById(model, group.id)?.parentId === desired.parentId);
+          .find((group) => folderById(group.id)?.parentId === desired.parentId);
         await changeModel((next) =>
           moveGroup(next, source.id, desired.parentId, following?.id ?? null),
         );
@@ -213,7 +220,7 @@ export function createController(
       // mixed layouts against this shared folder order on their next snapshot.
       const next = { ...model, folderPins };
       await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
-      model = next;
+      commitModel(next);
       stateWrites++;
     }
     if (effects.layout) {
@@ -253,8 +260,7 @@ export function createController(
       next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
       next.domainPins = normaliseDomainPins(next.domainPins);
       await moves.load();
-      model = next;
-      refreshGroupIds();
+      commitModel(next);
     })().catch((error) => {
       ready = null;
       throw error;
@@ -290,8 +296,7 @@ export function createController(
     const result = change(next);
     next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
     await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
-    model = next;
-    refreshGroupIds();
+    commitModel(next);
     stateWrites++;
     if (
       JSON.stringify(previousPins.map((item) => item.id)) !==
@@ -340,7 +345,11 @@ export function createController(
   const viewFor = async (windowId) => {
     const pending = beginPinLayout(windowId);
     try {
-      const view = normalizeView(model, await api.sessions.getWindowValue(windowId, VIEW_KEY));
+      const view = normalizeView(
+        model,
+        await api.sessions.getWindowValue(windowId, VIEW_KEY),
+        folderIndex,
+      );
       rememberPinLayout(windowId, pending, view);
       return view;
     } finally {
@@ -351,7 +360,7 @@ export function createController(
   const saveView = async (windowId, view) => {
     const pending = beginPinLayout(windowId);
     try {
-      const normalized = normalizeView(model, view);
+      const normalized = normalizeView(model, view, folderIndex);
       await api.sessions.setWindowValue(windowId, VIEW_KEY, normalized);
       rememberPinLayout(windowId, pending, normalized);
       stateWrites++;
@@ -361,6 +370,18 @@ export function createController(
   };
 
   const membership = async (tabId) => (await cache.membership(tabId)) ?? null;
+
+  function commitModel(next) {
+    // Only committed records enter the index. Mutable transaction copies keep
+    // using fresh scans until their storage write has succeeded.
+    const nextIndex =
+      next.groups === model?.groups
+        ? folderIndex
+        : new Map(next.groups.map((group) => [group.id, group]));
+    model = next;
+    folderIndex = nextIndex;
+    refreshGroupIds();
+  }
 
   function refreshGroupIds() {
     const next = new Set(model.groups.map((group) => group.id));
@@ -951,11 +972,12 @@ export function createController(
   }
 
   async function groupContents(id) {
-    const group = groupById(model, requireGroup(model, id));
+    const group = folderById(requireFolder(id));
     if (!group) throw new Error('Choose a folder.');
-    const groupIds = model.groups.filter((item) => isWithin(model, item.id, id)).map((g) => g.id);
+    const included = groupSubtreeIds(model, id);
+    const groupIds = model.groups.filter((item) => included.has(item.id)).map((g) => g.id);
     const tabs = (await listTabs()).filter(
-      (tab) => !isSavedForLater(tab) && groupIds.includes(tab.groupId),
+      (tab) => !isSavedForLater(tab) && included.has(tab.groupId),
     );
     return {
       groupIds,
@@ -966,10 +988,10 @@ export function createController(
   }
 
   async function moveGroupContents(id, destinationId) {
-    const group = groupById(model, requireGroup(model, id));
+    const group = folderById(requireFolder(id));
     if (!group) throw new Error('Choose a folder to move contents from.');
-    requireGroup(model, destinationId);
-    if (isWithin(model, destinationId, id))
+    requireFolder(destinationId);
+    if (inFolder(destinationId, id))
       throw new Error('Choose a destination outside this folder and its subfolders.');
     const tabs = (await listTabs()).filter((tab) => !isSavedForLater(tab));
     const windows = new Set(tabs.filter((tab) => tab.groupId === id).map((tab) => tab.windowId));
@@ -1012,8 +1034,7 @@ export function createController(
   }
 
   async function newTabContainer(groupId, explicitStore, fallbackStore) {
-    const cookieStoreId =
-      explicitStore === undefined ? groupContainer(model, groupId) : explicitStore;
+    const cookieStoreId = explicitStore === undefined ? folderContainer(groupId) : explicitStore;
     if (cookieStoreId === undefined) return fallbackStore;
     try {
       await requireContainer(cookieStoreId);
@@ -1052,8 +1073,8 @@ export function createController(
     const tab = tabs.find((tab) => tab.id === id);
     if (!tab || isSavedForLater(tab)) return;
     const view = await viewFor(windowId);
-    if (!isWithin(model, tab.groupId, view.scopeId)) view.scopeId = tab.groupId;
-    const parents = new Set(groupPath(model, tab.groupId).map((group) => group.id));
+    if (!inFolder(tab.groupId, view.scopeId)) view.scopeId = tab.groupId;
+    const parents = new Set(folderPath(tab.groupId).map((group) => group.id));
     view.collapsed = view.collapsed.filter((id) => !parents.has(id));
     await saveView(windowId, view);
     await expandAncestors(tabs, tab.id);
@@ -1162,7 +1183,7 @@ export function createController(
 
   async function planTabMove(tabId, groupId, windowId, beforeId = null, parentTabId = null) {
     await checkedTab(tabId, windowId);
-    requireGroup(model, groupId);
+    requireFolder(groupId);
     const allTabs = await listTabs(windowId);
     if (isSavedForLater(allTabs.find((tab) => tab.id === tabId)))
       throw new Error('Return this tab from Saved for Later before moving it.');
@@ -1234,13 +1255,13 @@ export function createController(
       if (!tab.pinned) await revealTab(tab.id, windowId);
       return { kind: 'tab', id: tab.id, treeId: tab.treeId };
     }
-    const group = groupById(model, requireGroup(model, source.id));
+    const group = folderById(requireFolder(source.id));
     if (!group) throw new Error('That folder no longer exists.');
     if (source.kind !== 'pin-group') {
       const view = await viewFor(windowId);
-      if (view.scopeId === group.id || !isWithin(model, group.id, view.scopeId))
+      if (view.scopeId === group.id || !inFolder(group.id, view.scopeId))
         view.scopeId = group.parentId;
-      const parents = new Set(groupPath(model, group.parentId).map((item) => item.id));
+      const parents = new Set(folderPath(group.parentId).map((item) => item.id));
       view.collapsed = view.collapsed.filter((id) => !parents.has(id));
       await saveView(windowId, view);
     }
@@ -1469,8 +1490,8 @@ export function createController(
         )
           throw new Error('Choose a valid folder identifier.');
         extra.createdGroupId = id;
-        if (groupById(model, id)) break;
-        const parentId = requireGroup(model, message.parentId ?? null);
+        if (folderById(id)) break;
+        const parentId = requireFolder(message.parentId ?? null);
         const name = cleanName(message.name);
         const appearance = requireGroupAppearance(message.appearance ?? {});
         let cookieStoreId = message.cookieStoreId ?? null;
@@ -1521,7 +1542,7 @@ export function createController(
         break;
       }
       case 'renameGroup': {
-        requireGroup(model, message.id);
+        requireFolder(message.id);
         if (message.id === null) throw new Error('Choose a folder to rename.');
         await changeModel((next) => {
           groupById(next, message.id).name = cleanName(message.name);
@@ -1529,7 +1550,7 @@ export function createController(
         break;
       }
       case 'setGroupContainer': {
-        const group = groupById(model, requireGroup(model, message.id));
+        const group = folderById(requireFolder(message.id));
         if (!group) throw new Error('Choose a folder to set a default container.');
         if (message.cookieStoreId !== null) await requireContainer(message.cookieStoreId);
         await changeModel((next) => {
@@ -1540,7 +1561,7 @@ export function createController(
         break;
       }
       case 'setGroupAppearance': {
-        const group = groupById(model, requireGroup(model, message.id));
+        const group = folderById(requireFolder(message.id));
         if (!group) throw new Error('Choose a folder to customise.');
         const appearance = requireGroupAppearance(message.appearance);
         await changeModel((next) => {
@@ -1559,7 +1580,7 @@ export function createController(
         await moveGroupContents(message.id, message.groupId ?? null);
         break;
       case 'removeGroup': {
-        const group = groupById(model, requireGroup(model, message.id));
+        const group = folderById(requireFolder(message.id));
         if (!group) throw new Error('Choose a folder to delete.');
         if (
           !Array.isArray(message.groupIds) ||
@@ -1569,18 +1590,21 @@ export function createController(
           !message.tabIds.every(Number.isInteger)
         )
           throw new Error('Confirm the folder and tabs to delete.');
+        const confirmedGroups = new Set(message.groupIds);
+        const confirmedTabs = new Set(message.tabIds);
         const contents = await groupContents(group.id);
         if (
-          contents.groupIds.some((id) => !message.groupIds.includes(id)) ||
-          contents.tabIds.some((id) => !message.tabIds.includes(id))
+          contents.groupIds.some((id) => !confirmedGroups.has(id)) ||
+          contents.tabIds.some((id) => !confirmedTabs.has(id))
         )
           throw new Error('The folder contents changed. Close this dialog and review them again.');
+        const removedGroups = new Set(contents.groupIds);
         const windows = await api.windows.getAll();
         // Save views before closing tabs, which may close their browser windows.
         for (const item of windows.filter((item) => !item.incognito)) {
           const view = await viewFor(item.id);
-          if (contents.groupIds.includes(view.scopeId)) view.scopeId = group.parentId;
-          view.collapsed = view.collapsed.filter((id) => !contents.groupIds.includes(id));
+          if (removedGroups.has(view.scopeId)) view.scopeId = group.parentId;
+          view.collapsed = view.collapsed.filter((id) => !removedGroups.has(id));
           await saveView(item.id, view);
         }
         if (contents.tabIds.length) await writeTab(null, 'remove', contents.tabIds);
@@ -1595,7 +1619,7 @@ export function createController(
         break;
       }
       case 'enterGroup': {
-        const scopeId = requireGroup(model, message.id ?? null);
+        const scopeId = requireFolder(message.id ?? null);
         const view = await viewFor(windowId);
         if (scopeId !== null && scopeId !== view.scopeId)
           view.recentFolders = [
@@ -1613,7 +1637,7 @@ export function createController(
         // Navigating into a nonempty group brings a real member tab into view.
         if (scopeId !== null) {
           const tabs = (await listTabs(windowId)).filter(
-            (tab) => !isSavedForLater(tab) && isWithin(model, tab.groupId, scopeId),
+            (tab) => !isSavedForLater(tab) && inFolder(tab.groupId, scopeId),
           );
           if (tabs.length && !tabs.some((tab) => tab.active)) {
             tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
@@ -1623,14 +1647,13 @@ export function createController(
         break;
       }
       case 'revealGroup': {
-        const group = groupById(model, requireGroup(model, message.id));
+        const group = folderById(requireFolder(message.id));
         if (!group) throw new Error('Choose a folder to show.');
         const view = await viewFor(windowId);
         // The scoped folder itself has no row: its parent tree must be shown.
-        if (view.scopeId === group.id || !isWithin(model, group.id, view.scopeId))
-          view.scopeId = null;
+        if (view.scopeId === group.id || !inFolder(group.id, view.scopeId)) view.scopeId = null;
         if (view.collapsed.includes(group.id)) recordExpansions(view, [group.id]);
-        const expanded = new Set(groupPath(model, group.id).map((item) => item.id));
+        const expanded = new Set(folderPath(group.id).map((item) => item.id));
         view.collapsed = view.collapsed.filter((id) => !expanded.has(id));
         await saveView(windowId, view);
         break;
@@ -1648,7 +1671,7 @@ export function createController(
         break;
       }
       case 'setGroupPin': {
-        const group = groupById(model, requireGroup(model, message.id));
+        const group = folderById(requireFolder(message.id));
         if (!group) throw new Error('Choose a folder to pin.');
         if (message.action !== null && !Object.hasOwn(pinActionLabels, message.action))
           throw new Error('Choose what clicking the pinned folder does.');
@@ -1662,7 +1685,7 @@ export function createController(
         break;
       }
       case 'toggleGroup': {
-        requireGroup(model, message.id);
+        requireFolder(message.id);
         const view = await viewFor(windowId);
         if (view.collapsed.includes(message.id)) recordExpansions(view, [message.id]);
         view.collapsed = view.collapsed.includes(message.id)
@@ -1679,7 +1702,7 @@ export function createController(
         break;
       }
       case 'collapseTree': {
-        const scopeId = requireGroup(model, message.scopeId ?? null);
+        const scopeId = requireFolder(message.scopeId ?? null);
         if (typeof message.collapsed !== 'boolean') throw new Error('Choose a tree state.');
         const view = await viewFor(windowId);
         const index = createTreeIndex({ ...model, tabs: await listTabs(windowId) });
@@ -1757,7 +1780,7 @@ export function createController(
         break;
       }
       case 'newTab': {
-        const groupId = requireGroup(model, message.groupId ?? null);
+        const groupId = requireFolder(message.groupId ?? null);
         const cookieStoreId = await newTabContainer(groupId, message.cookieStoreId);
         const tab = await writeTab(windowId, 'create', {
           windowId,
@@ -1849,7 +1872,14 @@ export function createController(
             await updateMembership(id, { savedForLaterAt });
           },
 
-          close: (id, validate) => closeTabs(windowId, id, validate),
+          close: async (id, validate) => {
+            // Only an active close needs the full before/after selection tree.
+            // Check native selection for each target: an earlier removal or a
+            // user activation can change it while this batch is running.
+            if ((await findOpenTab(id))?.active) return closeTabs(windowId, id, validate);
+            if (!(await validate())) return false;
+            await writeTab(windowId, 'remove', id);
+          },
         });
         break;
       }
@@ -1895,7 +1925,7 @@ export function createController(
         break;
       }
       case 'closeGroupTabs': {
-        const group = groupById(model, requireGroup(model, message.id));
+        const group = folderById(requireFolder(message.id));
         if (!group) throw new Error('Choose a folder whose tabs you want to close.');
         if (!Array.isArray(message.tabIds) || !message.tabIds.every(Number.isInteger))
           throw new Error('Choose the tabs to close.');
@@ -1905,9 +1935,7 @@ export function createController(
         const ids = (await listTabs(windowId))
           .filter(
             (tab) =>
-              !isSavedForLater(tab) &&
-              confirmed.has(tab.id) &&
-              isWithin(model, tab.groupId, group.id),
+              !isSavedForLater(tab) && confirmed.has(tab.id) && inFolder(tab.groupId, group.id),
           )
           .map((tab) => tab.id);
         if (ids.length) await closeTabs(windowId, ids);
@@ -2171,6 +2199,7 @@ export function createController(
         windowTabIds.clear();
         windowMembershipVersions.clear();
         groupIds.clear();
+        folderIndex.clear();
         resolvedTabs.clear();
         requestTabs.clear();
         openedTimes.clear();
