@@ -8,9 +8,9 @@ import {
   normalizeNewTab,
   requireNewTab,
   searchAddress,
-} from '../extension/src/new-tab-preferences.js';
-import { createNewTabRouting } from '../extension/src/new-tab-routing.js';
-import { createWeatherService, WEATHER_ACCESS } from '../extension/src/new-tab-weather.js';
+} from '../extension/src/new-tab/preferences.js';
+import { createNewTabRouting } from '../extension/src/new-tab/routing.js';
+import { createWeatherService, WEATHER_ACCESS } from '../extension/src/new-tab/weather.js';
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const location = { name: 'Manchester, England, United Kingdom', latitude: 53.48, longitude: -2.24 };

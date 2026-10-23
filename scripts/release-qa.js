@@ -1,7 +1,7 @@
 import { createWriteStream } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { uiSuites, firefoxSuites } from './qa-suites.js';
+import { uiSuites, firefoxSuites, suiteFile } from './qa-suites.js';
 import { fingerprintSource } from './memory/common.js';
 import { runQaSuite, runQaBatch } from './qa-suite-runner.js';
 
@@ -29,7 +29,7 @@ const suites = [
   ...[...uiSuites, ...firefoxSuites, ...(report.stress ? ['stress-firefox'] : [])].map((name) => ({
     name,
     command: process.execPath,
-    args: [`scripts/${name}.js`],
+    args: [suiteFile(name)],
   })),
   { name: 'build', command: 'npm', args: ['run', 'build'] },
 ];

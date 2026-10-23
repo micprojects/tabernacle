@@ -5,13 +5,15 @@ import { createBrowserCache } from './browser-cache.js';
 import { createPresentationCache, immutableCopy } from './presentation-cache.js';
 import { mapSettledBounded } from './bounded-settled.js';
 import { closeFallback, createCloseSelection } from './close-selection.js';
-import { createTreeIndex, scopeBranches } from './tree-index.js';
-import { containerChoices, containerDetails } from './containers.js';
+import { createTreeIndex, scopeBranches } from './tree/index.js';
+import { containerDetails } from './containers.js';
+import { createPreferenceActions } from './controller/preference-actions.js';
+import { createContainerActions } from './controller/container-actions.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normaliseDomain } from './domain-filter.js';
 import { normaliseDomainPins } from './domains.js';
-import { normalizeLook, requireLook } from './look.js';
-import { normalizeNewTab, requireNewTab, isNewTabPage } from './new-tab-preferences.js';
+import { normalizeLook } from './look.js';
+import { normalizeNewTab, isNewTabPage } from './new-tab/preferences.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
@@ -138,6 +140,13 @@ export function createController(
     enqueue(() => settleClose(windowId, before, closedId, current)),
   );
   let ready;
+  const preferences = createPreferenceActions({ api, getModel: () => model, changeModel });
+  const containerActions = createContainerActions({
+    api,
+    list: () => cache.containers(),
+    invalidate: () => cache.invalidateContainers(),
+  });
+  const { list: containers } = containerActions;
   const folderBackup = createFolderBackupController({
     api,
     getModel: () => model,
@@ -1020,10 +1029,6 @@ export function createController(
     await moves.apply(changes, { before: structuredClone(model.groups), after: remaining });
   }
 
-  async function containers() {
-    return cache.containers();
-  }
-
   async function requireContainer(cookieStoreId) {
     if (typeof cookieStoreId !== 'string' || !cookieStoreId) throw new Error('Choose a container.');
     if (
@@ -1405,10 +1410,7 @@ export function createController(
       case 'getNewTabState':
         return snapshot(windowId, { newTab: model.newTab });
       case 'setNewTab': {
-        const value = requireNewTab({ ...model.newTab, ...message.value });
-        await changeModel((next) => {
-          next.newTab = value;
-        });
+        await preferences.setNewTab(message.value);
         publish();
         return {
           newTab: structuredClone(model.newTab),
@@ -1418,21 +1420,8 @@ export function createController(
         };
       }
       case 'previewNewTab': {
-        const value = requireNewTab({ ...model.newTab, ...message.value });
-        const token = crypto.randomUUID();
-        const key = `tabernacle.newTabPreview.${token}`;
-        await api.storage.session.set({ [key]: value });
-        try {
-          const tab = await api.tabs.create({
-            windowId,
-            url: api.runtime.getURL(`new-tab.html?preview=${token}`),
-            active: true,
-          });
-          return { tabId: tab.id };
-        } catch (error) {
-          await api.storage.session.remove(key);
-          throw error;
-        }
+        const tab = await preferences.previewNewTab(message.value, windowId);
+        return { tabId: tab.id };
       }
       case 'openPage':
         return openInternalPage(api, message.page, windowId, { section: message.section });
@@ -1454,34 +1443,18 @@ export function createController(
         extra.reopenedTabId = await reopenInContainer(message.id, message.cookieStoreId, windowId);
         break;
       case 'getContainerChoices':
-        await containers();
-        return containerChoices(api);
+        return containerActions.choices();
       case 'createContainer': {
-        await containers();
-        const details = await containerDetails(api, message);
-        const identity = await api.contextualIdentities.create(details);
-        cache.invalidateContainers();
+        const identity = await containerActions.create(message);
         extra.createdCookieStoreId = identity.cookieStoreId;
         break;
       }
       case 'updateContainer':
-      case 'removeContainer': {
-        if (!(await containers()).some((item) => item.cookieStoreId === message.cookieStoreId))
-          throw new Error('That container no longer exists. Reopen Manage containers.');
-        if (type === 'updateContainer') {
-          const details = await containerDetails(api, message);
-          await api.contextualIdentities.update(message.cookieStoreId, details);
-        } else {
-          // Check every window immediately before deletion; never close tabs implicitly.
-          if ((await api.tabs.query({})).some((tab) => tab.cookieStoreId === message.cookieStoreId))
-            throw new Error(
-              'Close this container’s tabs in all Firefox windows before removing it.',
-            );
-          await api.contextualIdentities.remove(message.cookieStoreId);
-        }
-        cache.invalidateContainers();
+        await containerActions.update(message);
         break;
-      }
+      case 'removeContainer':
+        await containerActions.remove(message.cookieStoreId);
+        break;
       case 'createGroup': {
         const id = message.id ?? crypto.randomUUID();
         if (
@@ -1971,12 +1944,7 @@ export function createController(
         break;
       }
       case 'setLook': {
-        const look = requireLook(
-          message.partial ? { ...model.look, ...message.value } : message.value,
-        );
-        await changeModel((next) => {
-          next.look = look;
-        });
+        await preferences.setLook(message.value, message.partial);
         break;
       }
       default:

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { treeLayout, visibleRange, revealOffset } from '../extension/src/tree-geometry.js';
+import { treeLayout, visibleRange, revealOffset } from '../extension/src/tree/geometry.js';
 
 function projection(specs) {
   const visibleRows = specs.map(([key, kind, parentKey = null]) => ({

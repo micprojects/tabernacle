@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
-import { createTreeIndex, scopeBranches } from '../extension/src/tree-index.js';
+import { createTreeIndex, scopeBranches } from '../extension/src/tree/index.js';
 import { VIEW_KEY } from '../extension/src/model.js';
 import { memoryBrowser } from '../preview/browser.js';
 

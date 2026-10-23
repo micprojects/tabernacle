@@ -1,3 +1,4 @@
+import { sourceFile } from '../instrumentation/source.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -21,6 +22,7 @@ import {
 export async function fingerprintNativeHarness() {
   const files = [
     '../benchmark-memory-firefox.js',
+    '../instrumentation/source.js',
     '../screenshot-browser.js',
     '../../preview/performance-fixture.js',
     './native.js',
@@ -198,7 +200,7 @@ export async function runNative(options, logPath) {
       };
     }, windowId);
   const { createTreeIndex } = await import(
-    pathToFileURL(resolve(options.sourceRoot, 'extension/src/tree-index.js'))
+    pathToFileURL(await sourceFile(options.sourceRoot, 'treeIndex'))
   );
   // Published v0.2.0 predates tab-collection.js. Its source index still owns
   // query matching; the expectation helper traverses that index directly.

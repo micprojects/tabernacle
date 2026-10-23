@@ -1,6 +1,6 @@
 import { isSavedForLater, isWithin } from './model.js';
 import { matchesDomain } from './domain-filter.js';
-import { createTreeIndex } from './tree-index.js';
+import { createTreeIndex } from './tree/index.js';
 import { createFolderIndex } from './folder-index.js';
 import { sourceUrl, matchesText, httpUrl } from './tab-source.js';
 import { laterResults } from './later.js';

@@ -1,3 +1,4 @@
+import { replaceSource, sourceFile } from '../../instrumentation/source.js';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -19,7 +20,7 @@ assert(
 const output = resolve(outputArg);
 await mkdir(output, { recursive: false });
 const source = await freezeSource(resolve(output, 'source'), ref === '-' ? undefined : ref);
-const file = resolve(source.root, 'extension/src/sidebar.js');
+const file = await sourceFile(source.root, 'rows');
 let code = await readFile(file, 'utf8');
 if (variant === '--wrapper-pool') code = withWrapperPool(code);
 for (const text of [
@@ -29,15 +30,15 @@ for (const text of [
   assert(code.includes(text), `Missing instrumentation point: ${text}`);
 code =
   'globalThis.__viewportWork = { tabBuilds: 0, wrapperBuilds: 0 };\n' +
-  code
-    .replace(
+  replaceSource(
+    replaceSource(
+      code,
       'function createTabRow(tab, expanded, stats) {',
       'function createTabRow(tab, expanded, stats) { globalThis.__viewportWork.tabBuilds++;',
-    )
-    .replace(
-      "const node = el('div', `${kind}-node`);",
-      "globalThis.__viewportWork.wrapperBuilds++; const node = el('div', `${kind}-node`);",
-    );
+    ),
+    "const node = el('div', `${kind}-node`);",
+    "globalThis.__viewportWork.wrapperBuilds++; const node = el('div', `${kind}-node`);",
+  );
 await writeFile(file, code);
 if (variant === '--visible-rows') {
   const css = resolve(source.root, 'extension/tree.css');

@@ -4,7 +4,7 @@ import { containerListIcon, visualChoices } from './container-dialogs.js';
 import { sortContainers } from './containers.js';
 import { icon } from './icons.js';
 import { createSettingsBackup } from './settings-backup.js';
-import { createNewTabSettings } from './new-tab-settings.js';
+import { createNewTabSettings } from './new-tab/settings.js';
 
 const $ = (id) => document.getElementById(id);
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
