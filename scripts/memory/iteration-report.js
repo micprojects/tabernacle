@@ -2,6 +2,18 @@ import assert from 'node:assert/strict';
 import { assessMetric } from './iteration-policy.js';
 import { percentile } from './common.js';
 
+// Sum each run before comparing medians: this is a fixed workload, not an
+// average of percentage improvements or a sum of independent phase medians.
+const activePhases = [
+  'enabled-initial',
+  'warm-snapshots',
+  'search',
+  'title-burst',
+  'folder-actions',
+  'sidebars-reopened',
+  'view-cycles',
+];
+
 function extensionReport(memory) {
   const pids = memory.processes.filter((p) => p.type === 'extension').map((p) => p.pid);
   assert.equal(pids.length, 1, 'The control page must keep one shared extension process alive.');
@@ -74,6 +86,17 @@ export function nativeMetrics(result, guard, samples = []) {
         metrics[`${prefix}/${query}-next-frame.ms`] = sample.response.nextFrameMs;
       }
     }
+  }
+  const active = activePhases.map((name) => result.phases.find((phase) => phase.name === name));
+  if (active.every(Boolean)) {
+    metrics['Firefox/active-workload/extensionCPU.ms'] = active.reduce(
+      (sum, phase) => sum + phase.cpu.extensionMs,
+      0,
+    );
+    metrics['Firefox/active-workload/elapsed.ms'] = active.reduce(
+      (sum, phase) => sum + phase.elapsedMs,
+      0,
+    );
   }
   metrics['Watchdog/owned-peak.bytes'] = guard.peakRssBytes;
   const resident = samples.filter(
@@ -164,5 +187,5 @@ export function iterationHtml(report) {
       return `<figure><figcaption>${escape(name)}</figcaption><div>Baseline <meter min="0" max="${max}" value="${item.baseline.median}"></meter></div><div>Candidate <meter min="0" max="${max}" value="${item.candidate.median}"></meter></div><p>${escape(item.verdict)} (${number(item.relativeDelta === null ? null : item.relativeDelta * 100)}%)</p></figure>`;
     })
     .join('');
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tabernacle optimisation benchmark</title><style>body{font:16px/1.5 system-ui,sans-serif;background:#f7f7f5;color:#242424;margin:32px auto;padding:0 24px;max-width:1200px}h1{font-size:30px}p{max-width:90ch}small{display:block;color:#666}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;border-bottom:1px solid #ccc;padding:10px;vertical-align:top}th{font-weight:500;overflow-wrap:anywhere}figure{display:inline-block;max-width:330px;vertical-align:top;margin:10px 20px 20px 0;padding:16px;border:1px solid #ccc;border-radius:6px}figcaption{overflow-wrap:anywhere;font-size:13px}meter{width:200px;max-width:70%}.scroll{overflow:auto}code{overflow-wrap:anywhere}</style><h1>Tabernacle optimisation benchmark</h1><p><strong>${escape(report.status)} · ${escape(report.mode)} · ${report.requestedPairs} pair(s)</strong>. ${escape(report.error || '')}</p><p>Baseline <code>${escape(report.sources?.baseline.commit)}</code>; candidate <code>${escape(report.sources?.candidate.sha256)}</code>. ${escape(report.environment?.firefox || 'No Firefox')} · ${escape(report.environment?.node)}. <a href="report.json">Raw evidence and individual samples</a>.</p><p>${report.noisePath ? 'Matched five-pair A/A calibration applied.' : 'No matching A/A calibration. Timing and memory differences are descriptive only.'} Three-pair screening identifies candidates for confirmation; keep changes only after five-pair confirmation and the relevant regression suites.</p><p>Native: 1,000 mostly discarded tabs, two real sidebar documents, one live update page; complete row order checked. Node: 100 / 1,000 / 10,000 tabs with two readers per window. ${report.syntheticOnly ? '<strong>This run is synthetic only: no Firefox memory evidence.</strong>' : ''}</p>${charts}<p>Added memory is the difference from the same profile with Tabernacle disabled; a small control extension keeps the shared extension process alive. “Unforced” idle is sampled before enabled-memory collection. Later phases have earlier collections in their history. Collected heap measures retention, not ordinary RAM. Whole-browser resident sums may double-count shared pages. Node heap includes fixtures and readers and is not Firefox memory. One-second OS samples include an extension-process RSS peak. Neither this nor the owned-process peak is an exact allocation peak; the latter includes the driver and worker and is primarily a safety metric. CPU totals omit exited processes; elapsed UI observations include a 200 ms stability floor.</p><p>The default has a 3 GiB owned-process stop, normal-pressure preflight and a five-minute per-worker timeout. Resource stops are inconclusive, never passes. This fixture does not replace deep-chain, container, recovery, upgrade, native Find, drag or high-capacity regression suites.</p><div class="scroll"><table><thead><tr><th>Metric</th><th>Baseline median (range)</th><th>Candidate median (range)</th><th>Change</th><th>Assessment</th></tr></thead><tbody>${rows}</tbody></table></div><p>Recorded ${escape(report.finishedAt)}. Harness <code>${escape(report.harness?.sha256)}</code>.</p></html>`;
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tabernacle optimisation benchmark</title><style>body{font:16px/1.5 system-ui,sans-serif;background:#f7f7f5;color:#242424;margin:32px auto;padding:0 24px;max-width:1200px}h1{font-size:30px}p{max-width:90ch}small{display:block;color:#666}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;border-bottom:1px solid #ccc;padding:10px;vertical-align:top}th{font-weight:500;overflow-wrap:anywhere}figure{display:inline-block;max-width:330px;vertical-align:top;margin:10px 20px 20px 0;padding:16px;border:1px solid #ccc;border-radius:6px}figcaption{overflow-wrap:anywhere;font-size:13px}meter{width:200px;max-width:70%}.scroll{overflow:auto}code{overflow-wrap:anywhere}</style><h1>Tabernacle optimisation benchmark</h1><p><strong>${escape(report.status)} · ${escape(report.mode)} · ${report.requestedPairs} pair(s)</strong>. ${escape(report.error || '')}</p><p>Baseline <code>${escape(report.sources?.baseline.commit)}</code>; candidate <code>${escape(report.sources?.candidate.sha256)}</code>. ${escape(report.environment?.firefox || 'No Firefox')} · ${escape(report.environment?.node)}. <a href="report.json">Raw evidence and individual samples</a>.</p><p>${report.noisePath ? 'Matched five-pair A/A calibration applied.' : 'No matching A/A calibration. Timing and memory differences are descriptive only.'} Three-pair screening identifies candidates for confirmation; keep changes only after five-pair confirmation and the relevant regression suites.</p><p>Native: 1,000 mostly discarded tabs, two real sidebar documents, one live update page; complete row order checked. Node: 100 / 1,000 / 10,000 tabs with two readers per window. ${report.syntheticOnly ? '<strong>This run is synthetic only: no Firefox memory evidence.</strong>' : ''}</p>${charts}<p>Added memory is the difference from the same profile with Tabernacle disabled; a small control extension keeps the shared extension process alive. “Unforced” idle is sampled before enabled-memory collection. Later phases have earlier collections in their history. Collected heap measures retention, not ordinary RAM. Whole-browser resident sums may double-count shared pages. Node heap includes fixtures and readers and is not Firefox memory. One-second OS samples include an extension-process RSS peak. Neither this nor the owned-process peak is an exact allocation peak; the latter includes the driver and worker and is primarily a safety metric. CPU totals omit exited processes; elapsed UI observations include a 200 ms stability floor.</p><p>The routine benchmark has a ${number(report.limits?.maxRssBytes / 1024 ** 3)} GiB owned-process stop, normal-pressure preflight and a five-minute per-worker timeout. Resource stops are inconclusive, never passes. This fixture does not replace deep-chain, container, recovery, upgrade, native Find, drag or high-capacity regression suites.</p><div class="scroll"><table><thead><tr><th>Metric</th><th>Baseline median (range)</th><th>Candidate median (range)</th><th>Change</th><th>Assessment</th></tr></thead><tbody>${rows}</tbody></table></div><p>Recorded ${escape(report.finishedAt)}. Harness <code>${escape(report.harness?.sha256)}</code>.</p></html>`;
 }

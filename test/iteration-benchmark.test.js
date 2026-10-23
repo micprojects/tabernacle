@@ -224,6 +224,53 @@ test('search frame observations stay separate from complete traversal and accept
   assert(!Object.keys(legacy).some((key) => key.includes('-frame.ms')));
 });
 
+test('resource totals require every active phase and exclude idle, collection and disable costs', () => {
+  const names = [
+    'enabled-initial',
+    'warm-snapshots',
+    'search',
+    'title-burst',
+    'folder-actions',
+    'sidebars-reopened',
+    'view-cycles',
+  ];
+  const result = {
+    phases: [
+      ...names,
+      'disabled-before',
+      'enabled-idle',
+      'quiet-idle',
+      'sidebars-closed',
+      'disabled-final',
+    ].map((name, i) => ({
+      name,
+      elapsedMs: (i + 1) * 100,
+      cpu: { extensionMs: i + 1, totalMs: (i + 1) * 10 },
+      windows: [{ samples: [{ round: 1, ms: 1, bytes: 1 }] }],
+    })),
+  };
+  const metrics = nativeMetrics(result, { peakRssBytes: 2000 });
+  assert.equal(metrics['Firefox/active-workload/extensionCPU.ms'], 28);
+  assert.equal(metrics['Firefox/active-workload/elapsed.ms'], 2800);
+  assert.equal(metrics['Firefox/quiet-idle/extensionCPU.ms'], 10);
+  result.phases.splice(2, 1);
+  assert(
+    !('Firefox/active-workload/extensionCPU.ms' in nativeMetrics(result, { peakRssBytes: 2000 })),
+  );
+});
+
+test('quiet idle is a bounded wait without observer work and participates in fixture identity', async () => {
+  assert.equal(iterationFixture.native.quietIdleMs, 5000);
+  const source = await readFile(
+    new URL('../scripts/memory/iteration-native.js', import.meta.url),
+    'utf8',
+  );
+  const body = source.split("await phase('quiet-idle', async () => {")[1].split('\n  });')[0];
+  assert.match(body, /await wait\(iterationFixture.native.quietIdleMs\)/);
+  assert(!/settle\(|browser\.|nativeMemory\(/.test(body));
+  assert.match(source, /quietIdleMs: iterationFixture.native.quietIdleMs/);
+});
+
 test(
   'the external watchdog actually stops only its owned child at a tightened RSS limit',
   { skip: process.platform !== 'darwin' },
