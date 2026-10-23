@@ -876,6 +876,32 @@ export function createController(
     }
   }
 
+  function snapshotPins(windowId, tabs, view, forgotten) {
+    const resolved = resolvedTabs.get(windowId ?? null);
+    const reusable = resolved?.tabs === tabs && presentation.ownsTabs(tabs) && !forgotten?.size;
+    const layout = presentation.field(windowId, 'pinLayout', view.pinLayout);
+    const prior = resolved?.pins;
+    if (
+      reusable &&
+      prior?.tabs === tabs &&
+      prior.folders === model.folderPins &&
+      prior.layout === layout
+    )
+      return prior.value;
+    const value = reconcilePins(layout, model.folderPins, tabs, forgotten);
+    const savedKeys = new Set(tabs.filter(isSavedForLater).map((tab) => tab.treeId));
+    value.items = value.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id));
+    // Keep one derived result with its existing window snapshot. A changed tab
+    // array, folder order, saved layout or pending closure always reconciles.
+    if (reusable) {
+      const immutable = presentation.record(value);
+      resolved.pins = { tabs, folders: model.folderPins, layout, value: immutable };
+      return immutable;
+    }
+    if (resolved) delete resolved.pins;
+    return value;
+  }
+
   async function snapshot(windowId, extra = {}) {
     const snapshotRevision = revision;
     const [tabs, view, identities, history] = await readTogether([
@@ -906,7 +932,7 @@ export function createController(
     });
     const pendingPins = forgottenPins.get(windowId);
     const forgotten = pendingPins ? new Set(pendingPins) : undefined;
-    const pins = reconcilePins(view.pinLayout, model.folderPins, tabs, forgotten);
+    const pins = snapshotPins(windowId, presentedTabs, view, forgotten);
     // Tab-only installations need no additional session writes. Once a mixed
     // layout exists, remember new slots without discarding pending restorations.
     if (
@@ -922,18 +948,13 @@ export function createController(
       for (const id of forgotten || []) remainingPins.delete(id);
       if (!remainingPins.size) forgottenPins.delete(windowId);
     }
-    const savedKeys = new Set(tabs.filter(isSavedForLater).map((tab) => tab.treeId));
     const fields = {
       generation,
       revision: snapshotRevision,
       groups: presentation.record(model.groups),
       folderPins: presentation.record(model.folderPins),
       domainPins: presentation.record(model.domainPins),
-      pins: presentation.field(
-        windowId,
-        'pins',
-        pins.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id)),
-      ),
+      pins: presentation.field(windowId, 'pins', pins.items),
       containers: presentation.record(identities),
       look: presentation.field(windowId, 'look', model.look),
       canUndoClose: history.tabs.length > 0,
