@@ -5,6 +5,7 @@ import { groupById } from './model.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
 import { createRowCache, reconcileChildren } from './dom.js';
 import { createFolderIndex } from './folder-index.js';
+import { captureFocus, restoreFocusToken, captureScroll, restoreScroll } from './view-state.js';
 import {
   activityItems,
   activityKinds,
@@ -25,6 +26,8 @@ const folderEvent = $('folder-event');
 let state, request, windowId, busyKey, readFailed;
 let disposed = false;
 let readSnapshot;
+let suspendedView;
+let viewGeneration = 0;
 let kind = 'all';
 const rows = createRowCache({ retain: 2048 });
 const sections = new Map();
@@ -55,7 +58,7 @@ function itemIcon(item) {
   node.setAttribute('aria-hidden', 'true');
 
   const fallback = () => {
-    const group = item.kind === 'folder' && groupById(state, item.id);
+    const group = state && item.kind === 'folder' && groupById(state, item.id);
     node.replaceChildren(
       group ? folderIcon(group, folderContainer(state, group), { state }) : icon('globe'),
     );
@@ -227,7 +230,7 @@ function empty() {
 }
 
 function render() {
-  if (!state || disposed) return;
+  if (!state || disposed || document.hidden) return;
   appearance();
   const focusedKey = document.activeElement?.dataset.key;
   const options = { query: search.value, period: period.value };
@@ -273,6 +276,11 @@ function render() {
     if (historyFolders.has(group.id)) live.add(`folder:${group.id}`);
   rows.finish((key) => live.has(key));
   results.setAttribute('aria-busy', 'false');
+  if (suspendedView) {
+    restoreScroll(results, suspendedView.scroll, document.scrollingElement);
+    if (document.activeElement === document.body) restoreFocusToken(suspendedView.focus);
+    suspendedView = undefined;
+  }
   if (focusedKey) {
     const selector = `[data-key="${CSS.escape(focusedKey)}"]`;
     (results.querySelector(selector) || results.querySelector('.item-button') || search).focus({
@@ -288,20 +296,23 @@ const refreshScheduler = createRefreshScheduler({
   canRefresh: () => Boolean(request) && !document.hidden,
 
   async refresh() {
+    const version = viewGeneration;
     try {
-      state = await request('snapshot');
-      if (disposed) return;
+      const next = await request('snapshot');
+      if (disposed || document.hidden || version !== viewGeneration) return;
+      state = next;
       if (readFailed) showError('');
       readFailed = false;
       render();
     } catch (error) {
-      if (disposed) return;
+      if (disposed || document.hidden || version !== viewGeneration) return;
       readFailed = true;
       if (!state)
         results.replaceChildren(el('p', 'empty-message', 'Recent activity is unavailable.'));
       showError(error.message || 'Could not load recent activity.', true);
     } finally {
-      if (!disposed) results.setAttribute('aria-busy', 'false');
+      if (!disposed && !document.hidden && version === viewGeneration)
+        results.setAttribute('aria-busy', 'false');
     }
   },
 });
@@ -364,9 +375,14 @@ document.addEventListener('keydown', (event) => {
 
 async function start() {
   if (demo) {
-    const controller = mockup
-      ? await (await import('../../preview/activity-demo.js')).createActivityDemo(scheduleRefresh)
-      : await (await import('../../preview/session.js')).connectDemo(scheduleRefresh);
+    const demoModule = mockup
+      ? await import('../../preview/activity-demo.js')
+      : await import('../../preview/session.js');
+    if (disposed) return;
+    const controller = await (mockup ? demoModule.createActivityDemo : demoModule.connectDemo)(
+      scheduleRefresh,
+    );
+    if (disposed) return;
     windowId = 1;
     request = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
     $('activity-demo').hidden = false;
@@ -374,6 +390,7 @@ async function start() {
     if (!globalThis.browser?.runtime?.id)
       throw new Error('Open this page from Tabernacle in Firefox.');
     windowId = (await browser.windows.getCurrent()).id;
+    if (disposed) return;
 
     const send = async (type, args = {}) => {
       windowId = (await browser.windows.getCurrent()).id;
@@ -408,15 +425,47 @@ async function start() {
 const timer = setInterval(() => {
   if (!document.hidden) render();
 }, 60000);
+
+function hasResultSelection() {
+  const selection = document.getSelection();
+  if (!selection || selection.isCollapsed) return false;
+  for (let i = 0; i < selection.rangeCount; i++) {
+    const range = selection.getRangeAt(i);
+    if (!range.collapsed && range.intersectsNode(results)) return true;
+  }
+  return false;
+}
+
+function suspend() {
+  viewGeneration++;
+  // Keep a native Find or user text selection connected while this page is hidden.
+  // Page disposal still releases all derived state.
+  if (!disposed && hasResultSelection()) return;
+  if (state && !suspendedView)
+    suspendedView = {
+      scroll: captureScroll(results, '.item-button', 'data-key', document.scrollingElement),
+      focus: captureFocus(),
+    };
+  readSnapshot?.clear();
+  state = undefined;
+  rows.clear();
+  sections.clear();
+  timelineRoot.replaceChildren();
+  results.replaceChildren();
+  results.setAttribute('aria-busy', 'true');
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refresh();
+  if (document.hidden) suspend();
+  else refresh();
 });
 window.addEventListener('focus', () => scheduleRefresh());
 window.addEventListener(
   'pagehide',
   () => {
     disposed = true;
-    readSnapshot?.clear();
+    suspend();
+    suspendedView = undefined;
     refreshScheduler.dispose();
     clearInterval(timer);
     cancelAnimationFrame(searchFrame);
@@ -424,6 +473,7 @@ window.addEventListener(
   { once: true },
 );
 start().catch((error) => {
+  if (disposed) return;
   results.replaceChildren(el('p', 'empty-message', error.message));
   results.setAttribute('aria-busy', 'false');
 });

@@ -6,6 +6,7 @@ import { createFolderIndex } from './folder-index.js';
 import { normalizeNewTab, isNewTabPage, searchAddress } from './new-tab-preferences.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
 import { weatherLabel } from './new-tab-weather.js';
+import { captureFocus, restoreFocusToken, captureScroll, restoreScroll } from './view-state.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -13,6 +14,8 @@ const demo = !globalThis.browser?.runtime?.id && params.has('demo');
 let state, request, windowId, ownTabId, draft, weatherData, weatherKey;
 let disposed = false;
 let readSnapshot;
+let suspendedView;
+let viewGeneration = 0;
 let weatherGeneration = 0;
 const expanded = new Set();
 
@@ -151,7 +154,7 @@ function showRows(id, items, limit, render, empty) {
 }
 
 function render() {
-  if (!state) return;
+  if (!state || disposed || document.hidden) return;
   const focused = document.activeElement?.dataset.key;
   const value = prefs();
   document.documentElement.dataset.colorScheme =
@@ -245,6 +248,11 @@ function render() {
   );
   renderSearch();
   renderWeather();
+  if (suspendedView) {
+    restoreScroll($('new-tab-content'), suspendedView.scroll, document.scrollingElement);
+    if (document.activeElement === document.body) restoreFocusToken(suspendedView.focus);
+    suspendedView = undefined;
+  }
   if (focused)
     [...document.querySelectorAll('[data-key]')]
       .find((node) => node.dataset.key === focused)
@@ -333,11 +341,20 @@ const scheduler = createRefreshScheduler({
   delay: 80,
 
   async refresh() {
-    state = await request('getNewTabState');
-    if (!disposed) render();
+    const version = viewGeneration;
+    try {
+      const next = await request('getNewTabState');
+      if (disposed || document.hidden || version !== viewGeneration) return;
+      state = next;
+      render();
+    } catch (err) {
+      if (!disposed && !document.hidden && version === viewGeneration) throw err;
+    }
   },
 
-  onError: error,
+  onError(err) {
+    if (!disposed && !document.hidden) error(err);
+  },
 });
 
 for (const node of document.querySelectorAll('[data-icon]')) node.append(icon(node.dataset.icon));
@@ -374,9 +391,10 @@ for (const id of ['folders', 'later', 'recent'])
 
 async function start() {
   if (demo) {
-    const controller = await (
-      await import('../../preview/session.js')
-    ).connectDemo(scheduler.schedule);
+    const { connectDemo } = await import('../../preview/session.js');
+    if (disposed) return;
+    const controller = await connectDemo(scheduler.schedule);
+    if (disposed) return;
     windowId = 1;
     request = (type, args = {}) => controller.request({ type, windowId, ...args });
     if (params.has('preview'))
@@ -387,6 +405,7 @@ async function start() {
     if (!globalThis.browser?.runtime?.id)
       throw new Error('Open this page from Tabernacle in Firefox.');
     const tab = await browser.tabs.getCurrent();
+    if (disposed) return;
     windowId = tab.windowId;
     ownTabId = tab.id;
 
@@ -418,6 +437,8 @@ async function start() {
       );
       await browser.storage.session.remove(key);
     }
+    // Finish consuming an already-read preview token, then avoid late listeners.
+    if (disposed) return;
 
     const changed = (message) => {
       if (message.type === 'tabernacle:changed') scheduler.schedule(message);
@@ -445,6 +466,7 @@ async function start() {
     });
   }
   await scheduler.now();
+  if (disposed) return;
   if (params.has('start')) {
     // A runtime redirect cannot select Firefox's address bar. Focus our input
     // once for a newly opened foreground page; background tabs never take focus.
@@ -474,8 +496,45 @@ const timer = setInterval(() => {
     scheduler.schedule();
   }
 }, 30 * 60_000);
+
+function hasResultSelection() {
+  const selection = document.getSelection();
+  if (!selection || selection.isCollapsed) return false;
+  for (let i = 0; i < selection.rangeCount; i++) {
+    const range = selection.getRangeAt(i);
+    if (!range.collapsed && range.intersectsNode($('new-tab-content'))) return true;
+  }
+  return false;
+}
+
+function suspend() {
+  viewGeneration++;
+  weatherGeneration++;
+  // Preserve the existing visible refresh path for native Find/user selections.
+  // Page disposal still releases all derived state.
+  if (!disposed && hasResultSelection()) return;
+  if (state && !suspendedView)
+    suspendedView = {
+      scroll: captureScroll(
+        $('new-tab-content'),
+        '[data-key]',
+        'data-key',
+        document.scrollingElement,
+      ),
+      focus: captureFocus(),
+    };
+  readSnapshot?.clear();
+  state = undefined;
+  weatherKey = undefined;
+  weatherData = null;
+  for (const id of ['links', 'folders', 'later', 'recent', 'search-matches'])
+    $(id).replaceChildren();
+  $('loading').hidden = false;
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
+  if (document.hidden) suspend();
+  else {
     date();
     weatherKey = undefined;
     scheduler.schedule();
@@ -486,7 +545,8 @@ window.addEventListener(
   'pagehide',
   () => {
     disposed = true;
-    readSnapshot?.clear();
+    suspend();
+    suspendedView = undefined;
     weatherGeneration++;
     clearInterval(timer);
     scheduler.dispose();
@@ -494,6 +554,7 @@ window.addEventListener(
   { once: true },
 );
 start().catch((err) => {
+  if (disposed) return;
   $('loading').hidden = true;
   error(err);
 });

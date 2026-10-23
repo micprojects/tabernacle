@@ -8,6 +8,30 @@ const { page, close, base } = await startUiTest({
 });
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
+const dialogSource = await readFile('extension/src/dialogs.js', 'utf8');
+await page.route('**/extension/src/dialogs.js', (route) =>
+  route.fulfill({
+    contentType: 'application/javascript',
+    body: dialogSource.replace(
+      '  return {\n    ...collections,',
+      `  window.dialogLifecycleProbe = {
+      show: showDialog, dispose, container: () => newContainerDialog(),
+      resumeUi: () => { createDialog(); manageContainersDialog(); createContainerDialog(); },
+      bulk: () => collections.closeCollection({ kind: 'window' }, getState().tabs),
+      inspect: () => ({ action: Boolean(dialogAction), cancel: Boolean(dialogCancel),
+        complete: Boolean(dialogComplete), cleanup: Boolean(dialogCleanup),
+        context: Boolean(dialogContext), controls: Boolean(disabledControls), back: Boolean($('dialog-back').onclick),
+        pickerHandlers: [$('container-search').oninput, $('container-search').onkeydown,
+          $('dialog-options').onkeydown, $('container-search-clear').onclick,
+          $('create-container').onclick, $('manage-containers').onclick].filter(Boolean).length,
+        options: $('dialog-options').childElementCount, choices: $('dialog-select').childElementCount,
+        content: $('dialog-content').childElementCount }),
+    };
+  return {
+    ...collections,`,
+    ),
+  }),
+);
 const demo = await readFile('preview/demo.js', 'utf8');
 await page.route('**/preview/demo.js', (route) =>
   route.fulfill({
@@ -208,6 +232,275 @@ try {
   expect(afterFolderSave.tabs.find((tab) => tab.id === newId).savedForLaterAt).toBeFalsy();
   await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
   expect((await snapshot()).tabs.some((tab) => tab.savedForLaterAt)).toBe(false);
+  const releasedDialog = {
+    action: false,
+    cancel: false,
+    complete: false,
+    cleanup: false,
+    context: false,
+    controls: false,
+    back: false,
+    pickerHandlers: 0,
+    options: 0,
+    choices: 0,
+    content: 0,
+  };
+  const beforeCancelled = await snapshot();
+  await page.locator('#home').focus();
+  await page.evaluate(() => dialogLifecycleProbe.bulk());
+  expect(await page.evaluate(() => dialogLifecycleProbe.inspect().action)).toBe(true);
+  await page.locator('#dialog-cancel').click();
+  await expect
+    .poll(() => page.evaluate(() => dialogLifecycleProbe.inspect()))
+    .toEqual(releasedDialog);
+  expect((await snapshot()).tabs).toEqual(beforeCancelled.tabs);
+  await expect(page.locator('#home')).toBeFocused();
+
+  for (const replace of [false, true]) {
+    await page.evaluate(() => dialogLifecycleProbe.container());
+    await expect(page.locator('#container-search')).toBeEnabled();
+    expect(await page.evaluate(() => dialogLifecycleProbe.inspect().pickerHandlers)).toBe(6);
+    if (replace) {
+      await page.evaluate(() =>
+        dialogLifecycleProbe.show({
+          title: 'Plain replacement',
+          input: false,
+
+          onSubmit: () => {},
+        }),
+      );
+      expect(await page.evaluate(() => dialogLifecycleProbe.inspect())).toMatchObject({
+        pickerHandlers: 0,
+        options: 0,
+        choices: 0,
+      });
+    }
+    await page.locator('#dialog-cancel').click();
+    await expect
+      .poll(() => page.evaluate(() => dialogLifecycleProbe.inspect()))
+      .toEqual(releasedDialog);
+  }
+
+  for (const replacement of ['cancel', 'cleanup']) {
+    await page.evaluate((replacement) => {
+      const openNext = () =>
+        dialogLifecycleProbe.show({
+          title: 'Replacement ' + replacement,
+          input: false,
+          content: document.createElement('span'),
+
+          onSubmit: () => {},
+        });
+      dialogLifecycleProbe.show({
+        title: 'First dialog',
+        input: false,
+
+        onSubmit: () => {},
+
+        ...(replacement === 'cancel' ? { onCancel: openNext } : { cleanup: openNext }),
+      });
+    }, replacement);
+    await page.locator('#dialog-cancel').click();
+    await expect(page.locator('#dialog-title')).toHaveText('Replacement ' + replacement);
+    await expect(page.locator('#dialog')).toBeVisible();
+    await expect(page.locator('#dialog-submit')).toBeFocused();
+    expect(await page.evaluate(() => dialogLifecycleProbe.inspect())).toMatchObject({
+      action: true,
+      context: true,
+      content: 1,
+    });
+    await page.locator('#dialog-cancel').click();
+    await expect
+      .poll(() => page.evaluate(() => dialogLifecycleProbe.inspect()))
+      .toEqual(releasedDialog);
+  }
+  // Replacement initialisation restores the old submission's controls first.
+  // A late old completion must not overwrite the replacement's deliberate state.
+  for (const kind of ['input', 'choices'])
+    for (const fail of [false, true]) {
+      await page.evaluate(() => {
+        window.oldDialogDone = false;
+        dialogLifecycleProbe.show({
+          title: 'Old pending dialog',
+          input: false,
+          onSubmit: () =>
+            new Promise((resolve, reject) => {
+              window.settleOldDialog = (fail) =>
+                fail ? reject(new Error('Old failure')) : resolve('old result');
+            }),
+
+          afterSubmit: () => {
+            oldDialogDone = true;
+          },
+        });
+      });
+      await page.locator('#dialog-submit').click();
+      await page.evaluate((kind) => {
+        dialogLifecycleProbe.show({
+          title: 'New live dialog',
+          value: 'editable',
+          ...(kind === 'choices' ? { choices: [{ value: 'editable', label: 'Editable' }] } : {}),
+
+          onBack: () => {},
+
+          onSubmit: () => {},
+        });
+        document.getElementById('dialog-close').hidden = false;
+      }, kind);
+      for (const id of [
+        'dialog-input',
+        'dialog-select',
+        'dialog-back',
+        'dialog-close',
+        'dialog-submit',
+        'dialog-cancel',
+      ])
+        await expect(page.locator('#' + id)).toBeEnabled();
+      await expect(
+        page.locator(kind === 'input' ? '#dialog-input' : '#dialog-select'),
+      ).toBeFocused();
+      await page.evaluate(() => {
+        for (const id of [
+          'dialog-input',
+          'dialog-select',
+          'dialog-back',
+          'dialog-close',
+          'dialog-submit',
+        ])
+          document.getElementById(id).disabled = true;
+      });
+      await page.evaluate(async (fail) => {
+        settleOldDialog(fail);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }, fail);
+      await expect(page.locator('#dialog-title')).toHaveText('New live dialog');
+      await expect(page.locator('#dialog')).toBeVisible();
+      await expect(page.locator('#dialog-error')).toBeHidden();
+      for (const id of [
+        'dialog-input',
+        'dialog-select',
+        'dialog-back',
+        'dialog-close',
+        'dialog-submit',
+      ])
+        await expect(page.locator('#' + id)).toBeDisabled();
+      expect(await page.evaluate(() => oldDialogDone)).toBe(!fail);
+      // Restore only this test's intentional flags before the next scenario.
+      await page.evaluate(() => {
+        for (const id of [
+          'dialog-input',
+          'dialog-select',
+          'dialog-back',
+          'dialog-close',
+          'dialog-submit',
+        ])
+          document.getElementById(id).disabled = false;
+      });
+      await page.locator('#dialog-cancel').click();
+      await expect
+        .poll(() => page.evaluate(() => dialogLifecycleProbe.inspect()))
+        .toEqual(releasedDialog);
+    }
+  for (const outcome of ['success', 'failure', 'replacement', 'disposed']) {
+    await page.evaluate((outcome) => {
+      window.dialogCompletion = [];
+      window.dialogSubmitted = false;
+      window.dialogAttempts = 0;
+      dialogLifecycleProbe.show({
+        title: 'Pending dialog',
+        input: false,
+
+        onSubmit: async () => {
+          dialogSubmitted = true;
+          dialogAttempts++;
+          await new Promise((resolve, reject) => {
+            window.settleDialog = () =>
+              outcome === 'failure' && dialogAttempts === 1
+                ? reject(new Error('Try the dialog again'))
+                : resolve();
+          });
+          if (outcome === 'replacement')
+            dialogLifecycleProbe.show({
+              title: 'Completion replacement',
+              input: true,
+
+              onBack: () => {},
+
+              onSubmit: () => {},
+            });
+          return 'preserved result';
+        },
+
+        afterSubmit: (result) => {
+          dialogCompletion.push(result);
+          if (outcome === 'disposed') {
+            dialogLifecycleProbe.show({
+              title: 'Must not reopen',
+
+              onSubmit: () => {},
+            });
+            dialogLifecycleProbe.resumeUi();
+          }
+        },
+      });
+    }, outcome);
+    await page.locator('#dialog-submit').click();
+    await expect.poll(() => page.evaluate(() => dialogSubmitted)).toBe(true);
+    if (outcome === 'disposed')
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event('pagehide'));
+        window.lateDialogFocus = [];
+        window.lateDialogMutations = [];
+        document.addEventListener('focusin', (event) => lateDialogFocus.push(event.target.id));
+        window.dialogMutationObserver = new MutationObserver((records) =>
+          lateDialogMutations.push(...records.map((record) => record.type)),
+        );
+        dialogMutationObserver.observe(document.getElementById('dialog'), {
+          subtree: true,
+          attributes: true,
+          childList: true,
+          characterData: true,
+        });
+      });
+    await page.evaluate(() => settleDialog());
+    if (outcome === 'failure') {
+      await expect(page.locator('#dialog-error')).toHaveText('Try the dialog again');
+      await expect(page.locator('#dialog-submit')).toBeEnabled();
+      expect(await page.evaluate(() => dialogCompletion)).toEqual([]);
+      expect(await page.evaluate(() => dialogLifecycleProbe.inspect().action)).toBe(true);
+      await page.locator('#dialog-submit').click();
+      await expect.poll(() => page.evaluate(() => dialogAttempts)).toBe(2);
+      await page.evaluate(() => settleDialog());
+      await expect.poll(() => page.evaluate(() => dialogCompletion)).toEqual(['preserved result']);
+      await expect(page.locator('#dialog')).toBeHidden();
+    } else {
+      await expect.poll(() => page.evaluate(() => dialogCompletion)).toEqual(['preserved result']);
+      if (outcome === 'replacement') {
+        await expect(page.locator('#dialog-title')).toHaveText('Completion replacement');
+        await expect(page.locator('#dialog')).toBeVisible();
+        await expect(page.locator('#dialog-submit')).toBeEnabled();
+        await expect(page.locator('#dialog-input')).toBeEnabled();
+        await expect(page.locator('#dialog-input')).toBeFocused();
+        await expect(page.locator('#dialog-select')).toBeEnabled();
+        await expect(page.locator('#dialog-back')).toBeEnabled();
+        await expect(page.locator('#dialog-close')).toBeEnabled();
+        expect(await page.evaluate(() => dialogLifecycleProbe.inspect().action)).toBe(true);
+        await page.locator('#dialog-cancel').click();
+      }
+    }
+    await expect
+      .poll(() => page.evaluate(() => dialogLifecycleProbe.inspect()))
+      .toEqual(releasedDialog);
+    if (outcome === 'disposed') {
+      expect(
+        await page.evaluate(() => ({ focus: lateDialogFocus, mutations: lateDialogMutations })),
+      ).toEqual({ focus: [], mutations: [] });
+      await page.evaluate(() => dialogMutationObserver.disconnect());
+    }
+  }
+  console.log(
+    '✓ Closed dialogs release captured collections and content; cancellation/replacement, retry and in-flight completion remain intact through disposal',
+  );
   expect(errors).toEqual([]);
   console.log(
     '✓ Scoped saved search, domain search/sort, batch save/undo/close, stable duplicate review and Later return',

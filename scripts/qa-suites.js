@@ -54,6 +54,7 @@ export const firefoxSuites = [
   'test-backup-firefox',
   'test-new-tab-firefox',
   'test-activity-firefox',
+  'test-find-firefox',
   'test-pinned-folders-firefox',
   'test-toolbar-icon-firefox',
 ];

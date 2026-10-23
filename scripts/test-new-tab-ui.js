@@ -58,6 +58,28 @@ try {
   await expect(preview.locator('#search-results')).toBeHidden();
   await preview.locator('#all-folders').click();
   await expect(preview.locator('.folder')).toHaveCount(5);
+  await preview.getByLabel('Search the web or your tabs', { exact: true }).fill('Figma');
+  await preview.evaluate(() => {
+    window.lifecycleHidden = true;
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => lifecycleHidden });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(preview.locator('#new-tab-content [data-key]')).toHaveCount(0);
+  await preview.evaluate(() => {
+    lifecycleHidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(preview.locator('#links')).toHaveClass(/list-style/);
+  await expect(preview.locator('#links a')).toHaveText(['GitHub', 'MDN']);
+  await expect(preview.locator('.folder')).toHaveCount(5);
+  await expect(preview.getByLabel('Search the web or your tabs', { exact: true })).toHaveValue(
+    'Figma',
+  );
+  await expect(preview.locator('#search-matches')).toContainText('Figma');
+  await preview.getByLabel('Search the web or your tabs', { exact: true }).press('Escape');
+  await preview.evaluate(() => {
+    delete document.hidden;
+  });
   await preview.locator('#all-folders').click();
   await expect(preview.locator('.folder')).toHaveCount(3);
   await page.locator('#new-tab-discard').click();

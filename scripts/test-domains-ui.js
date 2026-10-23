@@ -45,6 +45,7 @@ try {
   await trigger.click();
   await expect(pane).toBeVisible();
   await expect(page.locator('#tree')).toBeHidden();
+  await expect(page.locator('#tree .row, #pinned-tabs .row')).toHaveCount(0);
   await expect(page.locator('#navigation-capsule')).toBeHidden();
   await expect(page.locator('#pinned-tabs')).toBeHidden();
   await expect(page.locator('#tree-toggle')).toBeDisabled();
@@ -67,6 +68,7 @@ try {
   // Directory navigation preserves its origin and adds a direct back action.
   await row('example.com').locator('.domains-open-domain').click();
   await expect(pane).toBeHidden();
+  await expect(pane.locator('.domains-row')).toHaveCount(0);
   await expect(page.locator('#domain-name')).toHaveText('example.com');
   await expect(page.locator('#domain-count')).toHaveText('4 tabs');
   await expect(page.locator('#tree .tab-row')).toHaveCount(4);

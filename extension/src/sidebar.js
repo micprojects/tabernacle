@@ -17,6 +17,7 @@ import { createDomainsView } from './domains-view.js';
 import { createLaterView } from './later-view.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
+import { captureScroll, restoreScroll } from './view-state.js';
 import { createFaviconTints } from './favicon-tint.js';
 import { createLabelColors } from './label-colors.js';
 import { guideColors } from './appearance-colors.js';
@@ -41,6 +42,7 @@ const $ = (id) => document.getElementById(id);
 const tree = $('tree');
 let treeTabs = [];
 let index;
+let collapsedGroups = new Set();
 const rowCache = createRowCache({ retain: 2048 });
 const faviconTint = createFaviconTints();
 const renderDomainHeader = createDomainHeader($('domain-header'));
@@ -121,6 +123,11 @@ forcedColors.addEventListener('change', renderAppearance);
 reducedMotion.addEventListener('change', renderAppearance);
 let state, request, windowId, selected, drag, toastTimer, menuReturnFocus;
 let confirmedState;
+let readSnapshot;
+let disposed = false;
+let suspendedTree;
+let visibilityGeneration = 0;
+let awaitingVisibleSnapshot = document.hidden;
 let pointerMoves;
 let movingItem = false;
 let actionQueue = Promise.resolve();
@@ -128,6 +135,7 @@ let activeActions = 0;
 const pendingViewActions = [];
 const domainsView = createDomainsView({
   root: document.querySelector('.sidebar'),
+  getState: () => state,
 
   onOpen() {
     laterView.close({ restoreFocus: false });
@@ -137,6 +145,7 @@ const domainsView = createDomainsView({
     treeMotion.finishAll();
     if (domainFilter) leaveDomain({ restoreFocus: false });
     if (searchOpen) showSearch(false, { restoreFocus: false });
+    suspendTree();
   },
 
   onClose: () => render(),
@@ -147,6 +156,7 @@ const domainsView = createDomainsView({
 
 const laterView = createLaterView({
   root: document.querySelector('.sidebar'),
+  getState: () => state,
 
   onOpen() {
     cancelGroupClick();
@@ -156,6 +166,7 @@ const laterView = createLaterView({
     domainsView.close({ restoreFocus: false });
     if (domainFilter) leaveDomain({ restoreFocus: false });
     if (searchOpen) showSearch(false, { restoreFocus: false });
+    suspendTree();
   },
 
   onClose: () => render(),
@@ -192,6 +203,7 @@ async function returnSavedTab(id) {
 }
 
 function acceptState(next) {
+  if (disposed) return;
   confirmedState = next;
   const collapsed = new Set(next.view.collapsed);
   let scopeId = next.view.scopeId;
@@ -288,6 +300,7 @@ const pathOverflowSeparator = folderChevron(null, 'Home');
 const homeLabel = el('span', 'crumb-label', 'Home');
 
 function announce(message, error = false) {
+  if (disposed) return;
   clearTimeout(toastTimer);
   $('toast').textContent = message;
   $('toast').classList.toggle('error', error);
@@ -397,7 +410,11 @@ function action(type, args = {}) {
       if (!activeActions) refreshScheduler.resume();
     }
   });
-  actionQueue = result.catch(() => {});
+  // The queue keeps ordering only; callers retain their own action result.
+  actionQueue = result.then(
+    () => {},
+    () => {},
+  );
   return result;
 }
 
@@ -468,13 +485,18 @@ tree.addEventListener(
 const refreshScheduler = createRefreshScheduler({
   getState: () => confirmedState,
   getWindowId: () => windowId,
-  canRefresh: () => Boolean(request) && !pointerHeld && !activeActions,
+  canRefresh: () => Boolean(request) && !document.hidden && !pointerHeld && !activeActions,
 
   async refresh() {
+    const version = visibilityGeneration;
     try {
-      acceptState(await request('snapshot'));
+      const next = await request('snapshot');
+      if (disposed || document.hidden || version !== visibilityGeneration) return;
+      acceptState(next);
+      awaitingVisibleSnapshot = false;
       render();
     } catch (error) {
+      if (disposed || document.hidden || version !== visibilityGeneration) return;
       if (!state) tree.replaceChildren(el('p', 'loading', error.message));
       announce(error.message, true);
     }
@@ -483,6 +505,12 @@ const refreshScheduler = createRefreshScheduler({
 const scheduleRefresh = refreshScheduler.schedule;
 const refresh = refreshScheduler.now;
 window.addEventListener('pagehide', refreshScheduler.dispose, { once: true });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    visibilityGeneration++;
+    awaitingVisibleSnapshot = true;
+  } else refresh();
+});
 
 function enter(id, collapsed) {
   laterView.close({ restoreFocus: false });
@@ -683,7 +711,7 @@ function groupNode(group, query, ancestorMatch = false) {
       () => createGroupRow(group, container),
     ),
   );
-  const expanded = Boolean(query) || !state.view.collapsed.includes(group.id);
+  const expanded = Boolean(query) || !collapsedGroups.has(group.id);
   labelColors.apply(row, appearance.color);
   setAttribute(row, 'aria-expanded', expanded);
   const disclosure = row.querySelector('.disclosure');
@@ -792,22 +820,27 @@ function activateTab(id) {
 }
 
 function closeFilter() {
-  if (laterView.isOpen) return laterView.closeFilter();
-  if (domainFilter)
-    return {
+  let filter;
+  if (laterView.isOpen) filter = laterView.closeFilter();
+  else if (domainFilter)
+    filter = {
       domain: domainFilter,
       query: $('domain-search').value,
       sort: domainSort,
       tabIds: domainVisibleTabs.map((tab) => tab.id),
     };
-  if (searchOpen && $('search').value.trim())
-    return {
+  else if (searchOpen && $('search').value.trim())
+    filter = {
       search: true,
       query: $('search').value,
       scopeId: state.view.scopeId,
       tabIds: searchVisibleIds,
     };
-  return null;
+  // The controller asks while settling a native close. It already owns fresh
+  // state and can recompute these criteria; requesting a snapshot here would
+  // deadlock its serial queue. A hidden view's displayed IDs can be stale.
+  if (filter && (document.hidden || awaitingVisibleSnapshot || renderPending)) delete filter.tabIds;
+  return filter || null;
 }
 
 function closeOnMiddleClick(node, id) {
@@ -1336,8 +1369,55 @@ function restoreRowFocus(key) {
       ?.focus({ preventScroll: true });
 }
 
+function releaseTree() {
+  treeMotion.finishAll();
+  tree.replaceChildren();
+  $('pinned-tabs').replaceChildren();
+  rowCache.clear();
+  wrappers.clear();
+  usedWrappers.clear();
+  treeTabs = [];
+  index = undefined;
+  collapsedGroups.clear();
+  audioInTabs.clear();
+  audioInGroups.clear();
+  previousRender = null;
+  domainVisibleTabs = [];
+  searchVisibleIds = [];
+  for (const pair of breadcrumbItems) for (const node of pair) node.remove();
+  breadcrumbItems = [];
+  breadcrumbKey = undefined;
+  $('menu').replaceChildren();
+  menuReturnFocus = undefined;
+}
+
+function suspendTree() {
+  if (suspendedTree) return;
+  suspendedTree = captureScroll(tree, '.row, .new-tab-action');
+  releaseTree();
+}
+
+window.addEventListener(
+  'pagehide',
+  () => {
+    disposed = true;
+    cancelGroupClick();
+    pointerMoves?.dispose();
+    readSnapshot?.clear();
+    releaseTree();
+    laterView.dispose();
+    domainsView.dispose();
+    state = confirmedState = suspendedTree = undefined;
+  },
+  { once: true },
+);
+
 function render(motionKey = null) {
-  if (!state) return;
+  if (!state || disposed) return;
+  if (document.hidden) {
+    renderPending = true;
+    return;
+  }
   renderAppearance();
   refreshCollectionDialog();
   $('new-tab').disabled = false;
@@ -1364,7 +1444,7 @@ function render(motionKey = null) {
   tree.classList.toggle('show-folder-counts', state.look.folderCounts);
   tree.classList.toggle('domain-results', Boolean(domainFilter));
   const focusedKey = document.activeElement?.closest('[data-key]')?.dataset.key;
-  const scroll = tree.scrollTop;
+  const scroll = suspendedTree?.top ?? tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
   const query = (domainFilter ? $('domain-search').value : $('search').value).trim().toLowerCase();
   const filtering = Boolean(query || domainFilter);
@@ -1393,6 +1473,7 @@ function render(motionKey = null) {
   motionContext = nextMotionContext;
   treeMotion.prepare(!filtering && !drag && !changingTree ? motionKey : null);
   index = createTreeIndex(state, query);
+  collapsedGroups = new Set(state.view.collapsed);
   // Folder menus must not retain destinations renamed, moved or removed elsewhere.
   if (folderMenuKey && folderMenuKey !== folderHierarchyKey()) closeMenu(true);
   updateTreeToggle(query);
@@ -1508,16 +1589,15 @@ function render(motionKey = null) {
     );
     tree.prepend(empty);
   }
+  const savedTabIds = new Set();
+  for (const tab of state.tabs) if (isSavedForLater(tab)) savedTabIds.add(tab.id);
   rowCache.finish((key) => {
     if (key.startsWith('pin:group:')) return index.groups.has(key.slice('pin:group:'.length));
     const separator = key.indexOf(':');
     const kind = key.slice(0, separator);
     const id = key.slice(separator + 1);
     if (kind === 'tab' || kind === 'pin' || kind === 'new-child-tab')
-      return (
-        index.byId.has(Number(id)) ||
-        (kind === 'tab' && state.tabs.some((tab) => tab.id === Number(id) && isSavedForLater(tab)))
-      );
+      return index.byId.has(Number(id)) || (kind === 'tab' && savedTabIds.has(Number(id)));
     return (kind === 'new-tab' && id === 'null') || index.groups.has(id);
   });
   // Native closes or another sidebar can remove the row owning an open menu.
@@ -1526,6 +1606,8 @@ function render(motionKey = null) {
   usedWrappers.clear();
   $('new-tab').title = scope ? `New tab in ${scope.name}` : 'New tab';
   tree.scrollTop = searchScroll ?? scroll;
+  if (suspendedTree && searchScroll === undefined) restoreScroll(tree, suspendedTree);
+  suspendedTree = undefined;
   searchScroll = undefined;
   restoreRowFocus(focusedKey);
   rememberRender(filtering, context);
@@ -2447,10 +2529,12 @@ async function start() {
   if (demo) {
     const { connectDemo } = await import('../../preview/session.js');
     const controller = await connectDemo(scheduleRefresh, closeFilter);
+    if (disposed) return;
     windowId = 1;
     request = (type, args = {}) => controller.request({ type, windowId, ...args });
   } else if (globalThis.browser?.runtime?.id) {
     const currentWindow = await browser.windows.getCurrent();
+    if (disposed) return;
     windowId = currentWindow.id;
     windowFocused = Boolean(currentWindow.focused);
     browser.windows.onFocusChanged?.addListener((id) => {
@@ -2472,15 +2556,19 @@ async function start() {
       return result.data;
     };
 
-    const readSnapshot = createSnapshotReader((snapshotToken) =>
+    readSnapshot = createSnapshotReader((snapshotToken) =>
       send('snapshot', { incremental: true, snapshotToken }),
     );
     request = (type, args) =>
-      type === 'snapshot'
+      (type === 'snapshot'
         ? readSnapshot()
         : readSnapshot.perform((snapshotToken) =>
             send(type, { ...args, incremental: 2, snapshotToken }),
-          );
+          )
+      ).finally(() => {
+        // Late action and recovery responses cannot repopulate a disposed view.
+        if (disposed) readSnapshot.clear();
+      });
     browser.runtime.onMessage.addListener((message) => {
       if (message.type === 'tabernacle:changed') scheduleRefresh(message);
       if (message.type === 'tabernacle:getCloseFilter' && message.windowId === windowId)
@@ -2492,5 +2580,6 @@ async function start() {
 }
 
 start().catch((error) => {
+  if (disposed) return;
   tree.replaceChildren(el('p', 'loading', error.message));
 });

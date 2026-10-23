@@ -100,6 +100,9 @@ export function createCloseSelection(api, correct) {
   }
 
   function schedule(windowId, entry, before, closedId, transition) {
+    // The queued correction owns this snapshot now. Keep only the transition
+    // identity for cancellation once the removal and activation have paired.
+    transition.before = undefined;
     const current = () => windows.get(windowId) === entry && entry.transition === transition;
     correct(windowId, before, closedId, current).catch((error) =>
       console.warn('Tabernacle could not select a nearby tab:', error.message),
@@ -114,7 +117,7 @@ export function createCloseSelection(api, correct) {
       return;
     }
     if (entry.activeId === id) entry.removed = { id, before: entry.state };
-    else if (entry.transition?.closed && entry.transition.from === id)
+    else if (entry.transition?.before && entry.transition.closed && entry.transition.from === id)
       schedule(windowId, entry, entry.transition.before, id, entry.transition);
   });
   watch(api.tabs.onActivated, ({ windowId, tabId, previousTabId }) => {
@@ -125,7 +128,7 @@ export function createCloseSelection(api, correct) {
       from,
       to: tabId,
       closed: previousTabId == null,
-      before: entry.state,
+      before: previousTabId == null ? entry.state : undefined,
     };
     entry.activeId = tabId;
     entry.transition = transition;

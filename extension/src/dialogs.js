@@ -37,6 +37,8 @@ export function createDialogs({
 }) {
   let dialogAction, dialogContext, dialogCancel, dialogComplete, dialogCleanup;
   let dialogBusy = false;
+  let disposed = false;
+  let disabledControls;
 
   function showDialog({
     title,
@@ -56,6 +58,9 @@ export function createDialogs({
     onBack,
     backLabel = 'Back',
   }) {
+    if (disposed) return;
+    restoreControls(disabledControls);
+    clearPickerHandlers();
     closeMenu();
     dialogCleanup?.();
     dialogCleanup = cleanup;
@@ -132,7 +137,8 @@ export function createDialogs({
       showDialog,
       request,
       onChange,
-      isCurrent: (context) => dialogContext === context && $('dialog').open,
+      isCurrent: (context) => !disposed && dialogContext === context && $('dialog').open,
+      canShow: () => !disposed,
     });
 
   const createDialog = createGroupCreation({
@@ -142,7 +148,8 @@ export function createDialogs({
     showDialog,
     draftContainerDialog,
     editAppearance,
-    isCurrent: (context) => dialogContext === context && $('dialog').open,
+    isCurrent: (context) => !disposed && dialogContext === context && $('dialog').open,
+    canShow: () => !disposed,
   });
 
   function editAppearance({ group, container, onSubmit, onSave, onCancel }) {
@@ -154,7 +161,10 @@ export function createDialogs({
       compact: true,
       content: picker.element,
       onCancel,
-      afterSubmit: () => onSave?.(picker.getValue()),
+
+      afterSubmit: () => {
+        if (!disposed) onSave?.(picker.getValue());
+      },
 
       onSubmit: async () => {
         await onSubmit?.(picker.getValue());
@@ -284,6 +294,7 @@ export function createDialogs({
   }
 
   async function containerPicker({ load, note = '', query = '', ...options }) {
+    if (disposed) return;
     const context = showDialog({ ...options, input: false });
     $('dialog').classList.add('picker-dialog', 'container-picker-dialog');
     $('dialog-close').hidden = false;
@@ -475,7 +486,10 @@ export function createDialogs({
           return next;
         },
 
-        afterSubmit: onMove,
+        afterSubmit: (next) => {
+          if (!disposed) onMove?.(next);
+        },
+
         onCancel: () => openingRow?.isConnected && openingRow.focus({ preventScroll: true }),
       });
       $('dialog').classList.add('picker-dialog', 'move-dialog');
@@ -530,8 +544,41 @@ export function createDialogs({
     });
   }
 
+  function restoreControls(owner) {
+    if (!owner || owner !== disabledControls) return;
+    disabledControls = undefined;
+    if (!disposed) for (const { node, disabled } of owner) node.disabled = disabled;
+  }
+
+  function clearPickerHandlers() {
+    $('container-search').oninput = null;
+    $('container-search').onkeydown = null;
+    $('dialog-options').onkeydown = null;
+    for (const id of ['container-search-clear', 'create-container', 'manage-containers'])
+      $(id).onclick = null;
+  }
+
+  function releaseDialog() {
+    restoreControls(disabledControls);
+    const cleanup = dialogCleanup;
+    dialogAction = dialogCancel = dialogComplete = dialogCleanup = dialogContext = undefined;
+    dialogBusy = false;
+    $('dialog-back').onclick = null;
+    clearPickerHandlers();
+    for (const id of ['dialog-content', 'dialog-options', 'dialog-select']) $(id).replaceChildren();
+    cleanup?.();
+  }
+
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    releaseDialog();
+  }
+
+  window.addEventListener('pagehide', dispose, { once: true });
+
   function cancelDialog() {
-    if (dialogBusy) return;
+    if (disposed || dialogBusy) return;
     const back = dialogCancel;
     $('dialog').close();
     back?.();
@@ -542,10 +589,7 @@ export function createDialogs({
   $('dialog-close').addEventListener('click', cancelDialog);
   $('dialog').addEventListener('close', () => {
     // A cancel callback can immediately reopen this shared dialog for another step.
-    if (!$('dialog').open) {
-      dialogCleanup?.();
-      dialogCleanup = undefined;
-    }
+    if (!$('dialog').open) releaseDialog();
   });
   $('dialog').addEventListener('cancel', (event) => {
     event.preventDefault();
@@ -553,7 +597,7 @@ export function createDialogs({
   });
   $('dialog-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (dialogBusy || $('dialog-submit').disabled) return;
+    if (disposed || dialogBusy || $('dialog-submit').disabled) return;
     const container = $('dialog-options').querySelector('input:checked');
     const value = $('dialog-options').hidden
       ? $('dialog-select').hidden
@@ -564,21 +608,26 @@ export function createDialogs({
     const controls = [...$('dialog-form').querySelectorAll('button, input, select')].map(
       (node) => ({ node, disabled: node.disabled }),
     );
+    disabledControls = controls;
     for (const { node } of controls) node.disabled = true;
     const complete = dialogComplete;
+    const context = dialogContext;
+    const current = () => !disposed && dialogContext === context;
     let result,
       succeeded = false;
     $('dialog-error').hidden = true;
     try {
       result = await dialogAction(value);
       succeeded = true;
-      $('dialog').close();
+      if (current()) $('dialog').close();
     } catch (error) {
-      $('dialog-error').textContent = error.message;
-      $('dialog-error').hidden = false;
+      if (current()) {
+        $('dialog-error').textContent = error.message;
+        $('dialog-error').hidden = false;
+      }
     } finally {
-      dialogBusy = false;
-      for (const { node, disabled } of controls) node.disabled = disabled;
+      restoreControls(controls);
+      if (current()) dialogBusy = false;
     }
     if (succeeded) complete?.(result);
   });

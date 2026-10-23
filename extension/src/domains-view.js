@@ -1,5 +1,6 @@
 import { icon } from './icons.js';
 import { reconcileChildren } from './dom.js';
+import { captureFocus, restoreFocusToken, captureScroll, restoreScroll } from './view-state.js';
 import { listDomains } from './domains.js';
 
 function element(tag, className, text) {
@@ -18,7 +19,9 @@ function button(label, iconName, className) {
   return node;
 }
 
-export function createDomainsView({ root, onOpen, onClose, onSelect, onPin, onMenu }) {
+export function createDomainsView({ root, getState, onOpen, onClose, onSelect, onPin, onMenu }) {
+  const events = new AbortController();
+  let disposed = false;
   const pane = element('section', 'domains-view');
   pane.id = 'domains-view';
   pane.hidden = true;
@@ -65,17 +68,22 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin, onMe
   let foldDisabled;
   let selectedDomain;
   let selectedIndex = 0;
-  let scroll = 0;
+  let savedScroll;
 
   function close({ restoreFocus = true } = {}) {
     if (pane.hidden) return;
+    savedScroll = captureScroll(content, '.domains-row', 'data-domain');
     pane.hidden = true;
     root.classList.remove('domains-open');
+    rows.clear();
+    pinnedList.replaceChildren();
+    otherList.replaceChildren();
+    state = null;
     trigger.setAttribute('aria-expanded', 'false');
     fold.disabled = foldDisabled;
     onClose();
-    if (restoreFocus)
-      (savedFocus?.isConnected ? savedFocus : trigger).focus({ preventScroll: true });
+    if (restoreFocus) restoreFocusToken(savedFocus, trigger);
+    savedFocus = null;
   }
 
   function makeRow(domain) {
@@ -92,9 +100,9 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin, onMe
     open.addEventListener('click', () => {
       selectedDomain = domain;
       selectedIndex = [...content.querySelectorAll('.domains-open-domain')].indexOf(open);
-      scroll = content.scrollTop;
+      const sourceId = item.entry.source.id;
       close({ restoreFocus: false });
-      onSelect(domain, item.entry.source.id);
+      onSelect(domain, sourceId);
     });
     pin.addEventListener('click', async () => {
       if (pin.getAttribute('aria-disabled') === 'true') return;
@@ -167,67 +175,92 @@ export function createDomainsView({ root, onOpen, onClose, onSelect, onPin, onMe
   }
 
   function open({ restore = false } = {}) {
-    if (!state || !pane.hidden) return;
-    savedFocus = document.activeElement;
+    if (disposed || !pane.hidden || !getState()) return;
+    savedFocus = captureFocus();
     onOpen();
+    state = getState();
     foldDisabled = fold.disabled;
     fold.disabled = true;
     pane.hidden = false;
     root.classList.add('domains-open');
     trigger.setAttribute('aria-expanded', 'true');
     render();
-    content.scrollTop = scroll;
+    restoreScroll(content, savedScroll);
     const buttons = [...content.querySelectorAll('.domains-open-domain')];
     const previous =
       rows.get(selectedDomain)?.open || buttons[Math.min(selectedIndex, buttons.length - 1)];
     (restore && previous ? previous : dismiss).focus({ preventScroll: true });
   }
 
-  dismiss.addEventListener('click', () => close());
-  trigger.addEventListener('click', () => (pane.hidden ? open() : close()));
-  pane.addEventListener('keydown', (event) => {
-    if (event.altKey || event.metaKey || event.ctrlKey) return;
-    const buttons = [...content.querySelectorAll('.domains-open-domain')];
-    const current = event.target.closest('.domains-row');
-    const index = buttons.findIndex((node) => node.closest('li') === current);
-    let target;
-    if (event.key === 'ArrowDown') target = buttons[Math.min(index + 1, buttons.length - 1)];
-    else if (event.key === 'ArrowUp') target = buttons[Math.max(index - 1, 0)];
-    else if (event.key === 'Home') target = buttons[0];
-    else if (event.key === 'End') target = buttons.at(-1);
-    if (target) {
+  dismiss.addEventListener('click', () => close(), { signal: events.signal });
+  trigger.addEventListener('click', () => (pane.hidden ? open() : close()), {
+    signal: events.signal,
+  });
+  pane.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.altKey || event.metaKey || event.ctrlKey) return;
+      const buttons = [...content.querySelectorAll('.domains-open-domain')];
+      const current = event.target.closest('.domains-row');
+      const index = buttons.findIndex((node) => node.closest('li') === current);
+      let target;
+      if (event.key === 'ArrowDown') target = buttons[Math.min(index + 1, buttons.length - 1)];
+      else if (event.key === 'ArrowUp') target = buttons[Math.max(index - 1, 0)];
+      else if (event.key === 'Home') target = buttons[0];
+      else if (event.key === 'End') target = buttons.at(-1);
+      if (target) {
+        event.preventDefault();
+        target.focus();
+      }
+    },
+    { signal: events.signal },
+  );
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (
+        event.key !== 'Escape' ||
+        pane.hidden ||
+        document.querySelector('dialog[open], #menu:not([hidden])')
+      )
+        return;
       event.preventDefault();
-      target.focus();
-    }
-  });
-  document.addEventListener('keydown', (event) => {
-    if (
-      event.key !== 'Escape' ||
-      pane.hidden ||
-      document.querySelector('dialog[open], #menu:not([hidden])')
-    )
-      return;
-    event.preventDefault();
-    close();
-  });
+      close();
+    },
+    { signal: events.signal },
+  );
   document.addEventListener(
     'click',
     (event) => {
       if (!trigger.contains(event.target) && event.target.closest('footer'))
         close({ restoreFocus: false });
     },
-    true,
+    { capture: true, signal: events.signal },
   );
   return {
     open,
     close,
+
+    dispose() {
+      disposed = true;
+      events.abort();
+      state = savedFocus = savedScroll = null;
+      rows.clear();
+      pinnedList.replaceChildren();
+      otherList.replaceChildren();
+      pane.hidden = true;
+      root.classList.remove('domains-open');
+      pane.remove();
+      trigger.remove();
+    },
 
     detail(active) {
       trigger.setAttribute('aria-expanded', String(active || !pane.hidden));
     },
 
     update(next) {
-      state = next;
+      if (disposed) return false;
+      state = pane.hidden ? null : next;
       trigger.disabled = false;
       render();
       return !pane.hidden;

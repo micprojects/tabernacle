@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
-import { closeFallback, visibleTabOrder } from '../extension/src/close-selection.js';
+import {
+  closeFallback,
+  createCloseSelection,
+  visibleTabOrder,
+} from '../extension/src/close-selection.js';
 import { VIEW_KEY } from '../extension/src/model.js';
 import { memoryBrowser } from '../preview/browser.js';
 
@@ -40,6 +44,93 @@ async function fixture({ events = true, windowId = 1, readCloseFilter } = {}) {
 }
 
 const activeId = (state) => state.tabs.find((tab) => tab.active)?.id;
+
+function retains(root, target, seen = new Set()) {
+  if (root === target) return true;
+  if (!root || typeof root !== 'object' || seen.has(root)) return false;
+  seen.add(root);
+  return Object.values(root).some((value) => retains(value, target, seen));
+}
+
+function observedSelection(t, correct) {
+  const api = memoryBrowser({ events: true });
+  const selection = createCloseSelection(api, correct);
+  t.after(() => selection.dispose());
+  const before = {
+    groups: [],
+    view: { scopeId: null, collapsed: [] },
+    tabs: [{ id: 1, active: true }, { id: 2 }, { id: 3 }],
+  };
+  // Observe the retained entry without adding a production inspection API.
+  let entry;
+  const set = Map.prototype.set;
+  const observe = t.mock.method(Map.prototype, 'set', function (key, value) {
+    if (value?.state === before) entry = value;
+    return set.call(this, key, value);
+  });
+  try {
+    selection.remember(1, before);
+  } finally {
+    observe.mock.restore();
+  }
+  assert(entry);
+  return { api, selection, before, entry };
+}
+
+test('a deliberate activation does not retain an obsolete close snapshot', (t) => {
+  let corrections = 0;
+  const f = observedSelection(t, async () => corrections++);
+  const current = f.selection.guard(1, [1]);
+  f.api.tabs.onActivated.emit({ windowId: 1, tabId: 2, previousTabId: 1 });
+  f.selection.remember(1, { ...f.before, tabs: [{ id: 2, active: true }] });
+  assert.equal(retains(f.entry, f.before), false);
+  assert.equal(retains(f.entry, f.before.tabs), false);
+  assert.equal(current(), false);
+  f.api.tabs.onRemoved.emit(1, { windowId: 1 });
+  assert.equal(corrections, 0, 'Closing the old background tab cannot redirect selection');
+});
+
+for (const activationFirst of [false, true]) {
+  test(`paired close releases its old snapshot while correction remains valid (activation first: ${activationFirst})`, async (t) => {
+    const calls = [];
+    let release;
+    let completedBefore;
+    const pending = new Promise((resolve) => (release = resolve));
+    const f = observedSelection(t, async (windowId, before, closedId, current) => {
+      calls.push({ windowId, before, closedId, current });
+      await pending;
+      completedBefore = before;
+    });
+    const activate = () => f.api.tabs.onActivated.emit({ windowId: 1, tabId: 2 });
+    const remove = () => f.api.tabs.onRemoved.emit(1, { windowId: 1 });
+    const managedCurrent = f.selection.guard(1, [1]);
+    (activationFirst ? activate : remove)();
+    const after = { ...f.before, tabs: [{ id: 2, active: true }, { id: 3 }] };
+    f.selection.remember(1, after);
+    assert(retains(f.entry, f.before), 'The unpaired event still needs the pre-close state');
+    assert.equal(calls.length, 0);
+    (activationFirst ? remove : activate)();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].windowId, 1);
+    assert.equal(calls[0].closedId, 1);
+    assert.equal(calls[0].before, f.before);
+    assert.equal(calls[0].current(), true);
+    assert.equal(managedCurrent(), true);
+    assert.equal(retains(f.entry, f.before), false);
+    assert.equal(retains(f.entry, f.before.tabs), false);
+    f.selection.remember(1, { ...after, tabs: [...after.tabs] });
+    assert.equal(retains(f.entry, after), false, 'An intermediate refresh is released too');
+    assert.equal(retains(f.entry, after.tabs), false);
+    remove();
+    assert.equal(calls.length, 1, 'The consumed transition cannot schedule twice');
+    f.api.tabs.onActivated.emit({ windowId: 1, tabId: 3, previousTabId: 2 });
+    assert.equal(calls[0].current(), false);
+    assert.equal(managedCurrent(), false);
+    release();
+    await pending;
+    assert.equal(completedBefore, f.before, 'Queued work keeps its own pre-close state');
+  });
+}
 
 test('filtered close follows the selected sort, preserving pre-close viewed order', () => {
   const before = {

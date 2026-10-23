@@ -23,8 +23,11 @@ export function createGroupCreation({
   draftContainerDialog,
   editAppearance,
   isCurrent,
+  canShow = () => true,
 }) {
-  return function createDialog(parentId = getState().view.scopeId) {
+  return function createDialog(parentId) {
+    if (!canShow()) return;
+    if (parentId === undefined) parentId = getState().view.scopeId;
     const draft = {
       id: crypto.randomUUID(),
       name: '',
@@ -66,6 +69,7 @@ export function createGroupCreation({
     }
 
     function showGroup(restoreFocus = false) {
+      if (!canShow()) return;
       const content = el('div');
       const field = el('div', 'group-container-field');
       const label = el('span', 'group-container-label', 'Default container');
@@ -98,11 +102,13 @@ export function createGroupCreation({
 
           onSave: (value) => {
             draft.appearance = value;
+            if (!canShow()) return;
             showGroup();
             $('change-group-appearance').focus();
           },
 
           onCancel: () => {
+            if (!canShow()) return;
             showGroup();
             $('change-group-appearance').focus();
           },
@@ -172,6 +178,7 @@ export function createGroupCreation({
     }
 
     function showEditor() {
+      if (!canShow()) return;
       draftContainerDialog(draft.container ?? { name: draft.name.trim() }, {
         onSubmit: (container) => {
           draft.container = container;
@@ -185,6 +192,7 @@ export function createGroupCreation({
     }
 
     async function showPicker() {
+      if (!canShow()) return;
       const content = el('div');
       const list = el('div', 'group-container-list');
       const loading = el('p', '', 'Loading containers…');
