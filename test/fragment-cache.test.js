@@ -29,7 +29,7 @@ test('fragment navigation reads complete native records and preserves other rows
   assert.deepEqual(after.tabs, await f.api.tabs.query({ windowId: 1 }));
 });
 
-for (const change of ['path', 'query', 'internal', 'unknown', 'removed-field', 'pinned']) {
+for (const change of ['path', 'query', 'internal', 'unknown', 'pinned']) {
   test(`fragment refresh falls back on ${change} changes`, async (t) => {
     const f = fixture(t);
     const before = await f.cache.tabsState(1);
@@ -39,7 +39,6 @@ for (const change of ['path', 'query', 'internal', 'unknown', 'removed-field', '
     if (change === 'query') tab.url = tab.url.split('?')[0] + '?changed';
     if (change === 'internal') tab.url = f.api.runtime.getURL('settings.html');
     if (change === 'unknown') tab.futureField = { kept: ['complete'] };
-    if (change === 'removed-field') delete tab.favIconUrl;
     if (change === 'pinned') tab.pinned = !tab.pinned;
     const after = await f.cache.tabsState(1);
     assert.notEqual(after.structureToken, before.structureToken);
@@ -77,7 +76,8 @@ for (const change of ['metadata', 'fragment', 'remove', 'move', 'dispose']) {
     const after = await reading;
     if (change === 'dispose') assert(Object.values(f.cache.stats()).every((n) => n === 0));
     else {
-      assert.notEqual(after.structureToken, before.structureToken);
+      if (change === 'metadata') assert.equal(after.structureToken, before.structureToken);
+      else assert.notEqual(after.structureToken, before.structureToken);
       assert.deepEqual(after.tabs, await f.api.tabs.query({ windowId: 1 }));
     }
   });

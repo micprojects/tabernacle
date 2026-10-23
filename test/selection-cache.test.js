@@ -91,7 +91,8 @@ for (const change of ['move', 'remove', 'metadata', 'activation']) {
     held.release();
     const after = await reading;
     assert.deepEqual(after.tabs, await f.api.tabs.query({ windowId: 1 }));
-    assert.notEqual(after.structureToken, before.structureToken);
+    if (change === 'metadata') assert.equal(after.structureToken, before.structureToken);
+    else assert.notEqual(after.structureToken, before.structureToken);
     assert.equal(before.tabs.find((tab) => tab.id === 1).active, true);
   });
 }

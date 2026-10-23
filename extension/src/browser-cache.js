@@ -1,5 +1,6 @@
 import { TAB_KEY } from './model.js';
 import { deserializeMembership, serializeMembership } from './persistence.js';
+import { internalPage } from './internal-pages.js';
 
 // Cache only data with an explicit invalidation path. Memberships belong to this
 // extension; native tabs, containers and closed sessions have Firefox events.
@@ -7,6 +8,7 @@ export function createBrowserCache(api, changed = () => {}) {
   const memberships = new Map();
   const tabLists = new Map();
   const tabSnapshots = new WeakMap();
+  const pendingRefreshes = new WeakMap();
   const ancillary = new Map();
   const listeners = [];
   const invalidatedRead = Symbol('invalidated read');
@@ -63,8 +65,8 @@ export function createBrowserCache(api, changed = () => {}) {
 
   // These events carry all changed values and cannot move tabs or alter which
   // tabs belong to a window. Keep old arrays immutable for in-flight snapshots.
-  // Structural changes, unknown fields and pending reads still query. Fragment
-  // navigation takes a complete bounded native read before reusing topology.
+  // Structural changes, unknown fields and pending full queries still query.
+  // Eligible navigation takes complete bounded native reads before reusing topology.
   const metadataProperties = new Set([
     'title',
     'favIconUrl',
@@ -81,7 +83,22 @@ export function createBrowserCache(api, changed = () => {}) {
     /^https?:\/\//.test(left) &&
     left.split('#', 1)[0] === right.split('#', 1)[0];
 
-  function fragmentChanged(id, properties, windowId) {
+  function sameOriginAddress(left, right) {
+    if (
+      typeof left !== 'string' ||
+      typeof right !== 'string' ||
+      !/^https?:\/\//.test(left) ||
+      !/^https?:\/\//.test(right)
+    )
+      return false;
+    try {
+      return new URL(left).origin === new URL(right).origin;
+    } catch {
+      return false;
+    }
+  }
+
+  function navigationChanged(id, properties, windowId) {
     if (
       !Object.hasOwn(properties, 'url') ||
       !Object.keys(properties).every((key) => key === 'url' || metadataProperties.has(key))
@@ -89,10 +106,40 @@ export function createBrowserCache(api, changed = () => {}) {
       return false;
     const cached = tabSnapshots.get(tabLists.get(windowId));
     const before = cached?.tabs[cached.positions.get(id)];
-    if (!samePageAddress(before?.url, properties.url)) return false;
+    const fragment = samePageAddress(before?.url, properties.url);
+    if (
+      !fragment &&
+      (!sameOriginAddress(before?.url, properties.url) ||
+        internalPage(api, before.url) ||
+        internalPage(api, properties.url))
+    )
+      return false;
+    selectionChanged(windowId, [id]);
+    if (tabSnapshots.get(tabLists.get(windowId)) === cached) {
+      if (fragment) {
+        cached.navigationUrls?.delete(id);
+        (cached.fragmentIds ??= new Set()).add(id);
+      } else {
+        cached.fragmentIds?.delete(id);
+        (cached.navigationUrls ??= new Map()).set(id, properties.url);
+      }
+    }
+    return true;
+  }
+
+  function articleChanged(id, properties, windowId) {
+    if (
+      typeof properties.isArticle !== 'boolean' ||
+      !Object.keys(properties).every((key) => key === 'isArticle' || metadataProperties.has(key))
+    )
+      return false;
+    const cached = tabSnapshots.get(tabLists.get(windowId));
+    if (!cached?.positions.has(id)) return false;
+    // Firefox resets Reader Mode eligibility before announcing a new URL.
+    // Read complete native data; this event cannot reveal removed favicons.
     selectionChanged(windowId, [id]);
     if (tabSnapshots.get(tabLists.get(windowId)) === cached)
-      (cached.fragmentIds ??= new Set()).add(id);
+      (cached.articleIds ??= new Set()).add(id);
     return true;
   }
 
@@ -114,7 +161,10 @@ export function createBrowserCache(api, changed = () => {}) {
     for (const tab of cached.tabs)
       if (tab.active || tab.highlighted) cached.selectionIds.add(tab.id);
     for (const id of known) cached.selectionIds.add(id);
-    tabLists.delete(null);
+    // Release a bulk burst immediately, before later events scan this window
+    // again or retain more native-refresh markers between reader requests.
+    if (cached.selectionIds.size > 32) invalidateTabs(windowId);
+    else tabLists.delete(null);
   }
 
   function refreshSelection(windowId) {
@@ -126,62 +176,93 @@ export function createBrowserCache(api, changed = () => {}) {
       invalidateTabs(windowId);
       return;
     }
-    // The pending promise has no snapshot: an intervening event invalidates it
-    // and read() retries authoritative data, just like a cold tabs.query().
-    const pending = Promise.resolve().then(async () => {
-      const settled = await Promise.allSettled(ids.map((id) => api.tabs.get(id)));
-      const structural = (tab, fragment) =>
-        JSON.stringify(
-          Object.entries(tab).filter(
-            ([key]) =>
-              !metadataProperties.has(key) &&
-              !selectionProperties.has(key) &&
-              !(fragment && key === 'url'),
-          ),
-        );
-      if (
-        settled.some((result, i) => {
-          if (result.status === 'rejected') return true;
-          const before = cached.tabs[cached.positions.get(ids[i])];
-          const fragment =
-            cached.fragmentIds?.has(ids[i]) && samePageAddress(before.url, result.value.url);
-          // Resolved metadata merges cannot remove a formerly present field.
-          // Navigation that loses a favicon or other optional data must rebuild.
+
+    const refresh = { cached, ids: new Set(ids), revision: 0 };
+
+    const fallback = () => {
+      // Updates during a full query must invalidate its result as usual.
+      pendingRefreshes.delete(pending);
+      return api.tabs.query({ windowId });
+    };
+
+    const pending = Promise.resolve()
+      .then(async () => {
+        const structural = (tab, navigation, article) =>
+          JSON.stringify(
+            Object.entries(tab).filter(
+              ([key]) =>
+                !metadataProperties.has(key) &&
+                !selectionProperties.has(key) &&
+                !(navigation && key === 'url') &&
+                !(article && key === 'isArticle'),
+            ),
+          );
+        // A late event can describe older data than an in-flight get() reply.
+        // Never overlay it: repeat complete reads after known metadata changes.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (disposed) return fallback();
+          if (tabLists.get(windowId) !== pending) return invalidatedRead;
+          const ids = [...refresh.ids];
+          const revision = refresh.revision;
+          const settled = await Promise.allSettled(ids.map((id) => api.tabs.get(id)));
+          if (disposed) return fallback();
+          if (tabLists.get(windowId) !== pending) return invalidatedRead;
+          if (revision !== refresh.revision) continue;
           if (
-            fragment &&
-            [...metadataProperties, ...selectionProperties].some(
-              (key) => Object.hasOwn(before, key) && !Object.hasOwn(result.value, key),
-            )
+            settled.some((result, i) => {
+              if (result.status === 'rejected') return true;
+              const before = cached.tabs[cached.positions.get(ids[i])];
+              const fragment =
+                cached.fragmentIds?.has(ids[i]) && samePageAddress(before.url, result.value.url);
+              const announced = cached.navigationUrls?.get(ids[i]);
+              const navigation =
+                fragment || (announced !== undefined && announced === result.value.url);
+              const article = cached.articleIds?.has(ids[i]);
+              return (
+                structural(result.value, navigation, article) !==
+                structural(before, navigation, article)
+              );
+            })
           )
-            return true;
-          return structural(result.value, fragment) !== structural(before, fragment);
-        })
-      )
-        return api.tabs.query({ windowId });
-      const tabs = cached.tabs.slice();
-      for (const [position, properties] of cached.patches)
-        tabs[position] = { ...tabs[position], ...properties };
-      for (const [i, result] of settled.entries())
-        tabs[cached.positions.get(ids[i])] = result.value;
-      // Separate get() replies must describe one coherent native selection.
-      // A racing activation/close can otherwise leave zero or two active rows.
-      if (tabs.filter((tab) => tab.active).length !== 1) return api.tabs.query({ windowId });
-      if (!disposed && tabLists.get(windowId) === pending)
-        tabSnapshots.set(pending, {
-          tabs,
-          positions: cached.positions,
-          patches: new Map(),
-          selectionIds: new Set(),
-          structureToken: cached.structureToken,
-        });
-      return tabs;
-    });
+            return fallback();
+          const tabs = cached.tabs.slice();
+          for (const [position, properties] of cached.patches)
+            tabs[position] = { ...tabs[position], ...properties };
+          for (const [i, result] of settled.entries())
+            tabs[cached.positions.get(ids[i])] = result.value;
+          // Separate get() replies must describe one coherent native selection.
+          if (tabs.filter((tab) => tab.active).length !== 1) return fallback();
+          tabSnapshots.set(pending, {
+            tabs,
+            positions: cached.positions,
+            patches: new Map(),
+            selectionIds: new Set(),
+            structureToken: cached.structureToken,
+          });
+          return tabs;
+        }
+        return fallback();
+      })
+      .finally(() => pendingRefreshes.delete(pending));
+    pendingRefreshes.set(pending, refresh);
     tabLists.set(windowId, pending);
   }
 
   function updateMetadata(id, properties, windowId) {
     if (!Object.keys(properties).every((key) => metadataProperties.has(key))) return false;
-    const cached = tabSnapshots.get(tabLists.get(windowId));
+    const pending = tabLists.get(windowId);
+    const refresh = pendingRefreshes.get(pending);
+    if (refresh) {
+      if (!refresh.cached.positions.has(id)) return false;
+      refresh.ids.add(id);
+      if (refresh.ids.size > 32) invalidateTabs(windowId);
+      else {
+        refresh.revision++;
+        tabLists.delete(null);
+      }
+      return true;
+    }
+    const cached = tabSnapshots.get(pending);
     const position = cached?.positions.get(id);
     if (position === undefined) return false;
     cached.patches.set(position, {
@@ -375,7 +456,8 @@ export function createBrowserCache(api, changed = () => {}) {
     )
       selectionChanged(tab.windowId, [id]);
     else if (
-      !fragmentChanged(id, properties, tab.windowId) &&
+      !articleChanged(id, properties, tab.windowId) &&
+      !navigationChanged(id, properties, tab.windowId) &&
       !updateMetadata(id, properties, tab.windowId)
     )
       invalidateTabs(tab.windowId);
@@ -437,6 +519,13 @@ export function createBrowserCache(api, changed = () => {}) {
       !api.tabs.onUpdated ||
       (structureToken !== undefined &&
         tabSnapshots.get(tabLists.get(windowId ?? null))?.structureToken === structureToken),
+
+    // Retaining a prior resolution does not make this unfinished read current.
+    isTabsRefreshPending: (windowId, structureToken) =>
+      !disposed &&
+      structureToken !== undefined &&
+      pendingRefreshes.get(tabLists.get(windowId ?? null))?.cached.structureToken ===
+        structureToken,
 
     async tabs(windowId = null) {
       return (await tabsState(windowId)).tabs;
