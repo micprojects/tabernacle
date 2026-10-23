@@ -100,7 +100,11 @@ export function createController(
     ({ windowId, removedTabId, detachedTabId, removedWindowId, removedTabIds = [] }) => {
       requestTabs.clear();
       if (windowId != null) {
-        if (!cache.isTabsStateCurrent(windowId, resolvedTabs.get(windowId)?.structureToken))
+        const structureToken = resolvedTabs.get(windowId)?.structureToken;
+        if (
+          !cache.isTabsStateCurrent(windowId, structureToken) &&
+          !cache.isTabsRefreshPending(windowId, structureToken)
+        )
           resolvedTabs.delete(windowId);
         resolvedTabs.delete(null);
       }
@@ -633,8 +637,9 @@ export function createController(
 
   function withNativeMetadata(row, native) {
     const { groupId: nativeGroupId, ...nativeTab } = native;
+    // This is a complete native record. Reconstruct the derived organisation
+    // without retaining native fields that disappeared (for example a favicon).
     return {
-      ...row,
       ...nativeTab,
       groupId: row.groupId,
       nativeGroupId,

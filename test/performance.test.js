@@ -521,8 +521,27 @@ test('metadata bursts reuse settled native lists without changing older snapshot
   f.controller.dispose();
 });
 
+test('same-origin navigation reads the changed native tab without rewriting organisation', async (t) => {
+  const f = fixture(10);
+  t.after(() => f.controller.dispose());
+  const before = await f.send('snapshot');
+  const stored = structuredClone(f.api.testing.tabValues);
+  f.reset();
+  await f.api.tabs.update(1, { url: 'https://example.com/navigation', title: 'Next page' });
+  const after = await f.send('snapshot');
+  assert.deepEqual(f.queries, []);
+  assert.equal(f.calls()['tabs.get'], 1);
+  assert.equal(f.calls()['sessions.setTabValue'] || 0, 0);
+  assert.equal(before.tabs[0].url, 'https://example.com/0');
+  assert.equal(after.tabs[0].url, 'https://example.com/navigation');
+  assert.equal(after.tabs[0].title, 'Next page');
+  for (const key of ['treeId', 'groupId', 'order', 'ancestors', 'collapsed'])
+    assert.deepEqual(after.tabs[0][key], before.tabs[0][key]);
+  assert.deepEqual(f.api.testing.tabValues, stored);
+});
+
 for (const properties of [
-  { url: 'https://example.com/navigation' },
+  { url: 'https://different.example/navigation' },
   { pinned: true },
   { hidden: true },
   { groupId: 42 },
