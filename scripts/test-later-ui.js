@@ -5,6 +5,15 @@ import { startUiTest } from './ui-test.js';
 const { page, close, base } = await startUiTest({ viewport: { width: 400, height: 740 } });
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
+const sidebar = await readFile('extension/src/sidebar.js', 'utf8');
+await page.route('**/extension/src/sidebar.js', (route) =>
+  route.fulfill({
+    contentType: 'application/javascript',
+    body:
+      sidebar +
+      '\nwindow.treeLifecycleState = () => ({ tabs: treeTabs.length, index: Boolean(index), wrappers: wrappers.size });',
+  }),
+);
 const demo = await readFile('preview/demo.js', 'utf8');
 await page.route('**/preview/demo.js', (route) =>
   route.fulfill({
@@ -54,14 +63,25 @@ try {
     'recently-closed-toggle',
     'settings',
   ]);
+  const treeScroll = await page.locator('#tree').evaluate((node) => {
+    node.scrollTop = 160;
+    return node.scrollTop;
+  });
   await trigger.click();
   await expect(pane.getByRole('heading', { name: 'Saved for Later', exact: true })).toBeVisible();
   await expect(pane.getByRole('heading', { name: 'Nothing saved for later' })).toBeVisible();
   await expect(page.locator('#tree')).toBeHidden();
+  await expect(page.locator('#tree .row, #pinned-tabs .row')).toHaveCount(0);
+  expect(await page.evaluate(() => treeLifecycleState())).toEqual({
+    tabs: 0,
+    index: false,
+    wrappers: 0,
+  });
   await expect(page.locator('#navigation-capsule')).toBeHidden();
   await expect(page.locator('#tree-toggle')).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
+  expect(await page.locator('#tree').evaluate((node) => node.scrollTop)).toBeCloseTo(treeScroll, 0);
 
   await page.locator('#tree .tab-row[data-id="1"]').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Save for later', exact: true }).click();
@@ -128,6 +148,18 @@ try {
     expect(geometry.actionsRight).toBeLessThanOrEqual(width);
     await page.screenshot({ path: `test-results/later-plain-${width}.png` });
   }
+  await page.setViewportSize({ width: 400, height: 360 });
+  const laterScroll = await pane.locator('.later-content').evaluate((node) => {
+    node.scrollTop = 100;
+    return node.scrollTop;
+  });
+  await trigger.click();
+  await expect(pane.locator('.later-row')).toHaveCount(0);
+  await trigger.click();
+  expect(await pane.locator('.later-content').evaluate((node) => node.scrollTop)).toBeCloseTo(
+    laterScroll,
+    0,
+  );
   await page.setViewportSize({ width: 400, height: 740 });
   await pane.locator('.later-content').evaluate((node) => {
     node.scrollTop = 0;
@@ -144,6 +176,18 @@ try {
   await search.fill('OAK');
   await expect(pane.locator('.later-row')).toHaveCount(1);
   await expect(row(5)).toBeVisible();
+  await pane.getByRole('combobox').selectOption('oldest');
+  await trigger.click();
+  await expect(pane.locator('.later-row')).toHaveCount(0);
+  await expect(page.locator('#tree .row').first()).toBeVisible();
+  await page.evaluate(() =>
+    laterTest.api.tabs.update(5, { title: 'Solid oak desk updated while closed' }),
+  );
+  await trigger.click();
+  await expect(search).toHaveValue('OAK');
+  await expect(pane.getByRole('combobox')).toHaveValue('oldest');
+  await expect(pane.locator('.later-row')).toHaveCount(1);
+  await expect(row(5).locator('.later-label')).toHaveText('Solid oak desk updated while closed');
   await search.fill('nothing matches');
   await expect(pane.getByRole('heading', { name: 'No matching tabs' })).toBeVisible();
   await search.fill('');
@@ -175,8 +219,10 @@ try {
   await page.getByRole('button', { name: 'Domains', exact: true }).click();
   await expect(pane).toBeHidden();
   await expect(page.locator('#domains-view')).toBeVisible();
+  await expect(pane.locator('.later-row')).toHaveCount(0);
   await trigger.click();
   await expect(page.locator('#domains-view')).toBeHidden();
+  await expect(page.locator('#domains-view .domains-row')).toHaveCount(0);
   await expect(pane).toBeVisible();
   await page.keyboard.press('Control+k');
   await expect(pane).toBeVisible();

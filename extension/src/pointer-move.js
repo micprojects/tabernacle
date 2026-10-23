@@ -14,6 +14,8 @@ export function createPointerMove({
   commit,
   announce,
 }) {
+  const events = new AbortController();
+  let disposed = false;
   let session,
     frame,
     hoverTimer,
@@ -329,11 +331,34 @@ export function createPointerMove({
     } else void commit(saved.plan, saved.intent);
   }
 
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    events.abort();
+    const saved = session;
+    session = null;
+    clearTimeout(hoverTimer);
+    hoverTimer = undefined;
+    hoverKey = null;
+    cancelAnimationFrame(frame);
+    frame = undefined;
+    suppressClick = false;
+    clearMarkers();
+    root.classList.remove('moving-item', 'move-invalid');
+    document.querySelectorAll('.dragging').forEach((node) => node.classList.remove('dragging'));
+    if (saved && root.hasPointerCapture(saved.pointerId))
+      root.releasePointerCapture(saved.pointerId);
+    preview.remove();
+    marker.remove();
+    live.remove();
+  }
+
   document.addEventListener(
     'pointerdown',
     (event) => {
       suppressClick = false;
       if (
+        disposed ||
         session ||
         event.button !== 0 ||
         !event.isPrimary ||
@@ -376,7 +401,7 @@ export function createPointerMove({
         announce(error.message, true);
       }
     },
-    true,
+    { capture: true, signal: events.signal },
   );
   document.addEventListener(
     'pointermove',
@@ -397,27 +422,34 @@ export function createPointerMove({
       event.preventDefault();
       session.dirty = true;
     },
-    true,
+    { capture: true, signal: events.signal },
   );
   document.addEventListener(
     'pointerup',
     (event) => {
       if (event.pointerId === session?.pointerId) finish(false, event);
     },
-    true,
+    { capture: true, signal: events.signal },
   );
-  document.addEventListener('pointercancel', () => finish(true), true);
-  root.addEventListener('lostpointercapture', () => finish(true));
-  window.addEventListener('blur', () => finish(true));
-  window.addEventListener('resize', () => {
-    if (session) session.dirty = true;
+  document.addEventListener('pointercancel', () => finish(true), {
+    capture: true,
+    signal: events.signal,
   });
+  root.addEventListener('lostpointercapture', () => finish(true), { signal: events.signal });
+  window.addEventListener('blur', () => finish(true), { signal: events.signal });
+  window.addEventListener(
+    'resize',
+    () => {
+      if (session) session.dirty = true;
+    },
+    { signal: events.signal },
+  );
   root.addEventListener(
     'scroll',
     () => {
       if (session) session.dirty = true;
     },
-    true,
+    { capture: true, signal: events.signal },
   );
   document.addEventListener(
     'keydown',
@@ -429,7 +461,7 @@ export function createPointerMove({
         finish(true);
       }
     },
-    true,
+    { capture: true, signal: events.signal },
   );
   document.addEventListener(
     'click',
@@ -439,11 +471,12 @@ export function createPointerMove({
       event.preventDefault();
       event.stopImmediatePropagation();
     },
-    true,
+    { capture: true, signal: events.signal },
   );
-  root.addEventListener('dragstart', (event) => event.preventDefault());
+  root.addEventListener('dragstart', (event) => event.preventDefault(), { signal: events.signal });
   return {
     project,
+    dispose,
 
     refresh() {
       if (session) {

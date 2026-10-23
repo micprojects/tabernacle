@@ -1,6 +1,7 @@
 import { icon } from './icons.js';
 import { reconcileChildren } from './dom.js';
-import { groupById, isSavedForLater } from './model.js';
+import { captureFocus, restoreFocusToken, captureScroll, restoreScroll } from './view-state.js';
+import { isSavedForLater } from './model.js';
 import { laterResults } from './later.js';
 import { sourceUrl } from './tab-source.js';
 
@@ -22,6 +23,7 @@ function button(label, iconName, className) {
 
 export function createLaterView({
   root,
+  getState,
   onOpen,
   onClose,
   onActivate,
@@ -31,6 +33,8 @@ export function createLaterView({
   onActions,
   onError = () => {},
 }) {
+  const events = new AbortController();
+  let disposed = false;
   const pane = element('section', 'later-view');
   pane.id = 'later-view';
   pane.hidden = true;
@@ -63,13 +67,14 @@ export function createLaterView({
   }
   const actions = button('Saved tabs actions', 'more', 'icon-button');
   actions.setAttribute('aria-haspopup', 'menu');
-  actions.addEventListener('click', (event) =>
-    onActions?.(
-      event,
-      visibleIds.map((id) => state.tabs.find((tab) => tab.id === id)).filter(Boolean),
-      { kind: 'later', query: search.value },
-    ),
-  );
+  actions.addEventListener('click', (event) => {
+    if (!onActions) return;
+    const tabsById = new Map(state.tabs.map((tab) => [tab.id, tab]));
+    onActions(event, visibleIds.map((id) => tabsById.get(id)).filter(Boolean), {
+      kind: 'later',
+      query: search.value,
+    });
+  });
   tools.append(count, sort, actions);
   const content = element('div', 'later-content');
   const list = element('ul', 'later-list');
@@ -91,15 +96,21 @@ export function createLaterView({
   const rows = new Map();
   let state, savedFocus;
   let visibleIds = [];
+  let savedScroll;
 
   function close({ restoreFocus = true } = {}) {
     if (pane.hidden) return;
+    savedScroll = captureScroll(list, '.later-row', 'data-id', content);
     pane.hidden = true;
     root.classList.remove('later-open');
+    rows.clear();
+    list.replaceChildren();
+    visibleIds = [];
+    state = null;
     trigger.setAttribute('aria-expanded', 'false');
     onClose();
-    if (restoreFocus)
-      (savedFocus?.isConnected ? savedFocus : trigger).focus({ preventScroll: true });
+    if (restoreFocus) restoreFocusToken(savedFocus, trigger);
+    savedFocus = null;
   }
 
   function makeRow(id) {
@@ -168,7 +179,8 @@ export function createLaterView({
     const saved = state.tabs.filter(isSavedForLater);
     const entries = laterResults(saved, { query: search.value, sort: sort.value });
     visibleIds = entries.map((tab) => tab.id);
-    const total = state.tabs.filter(isSavedForLater).length;
+    const total = saved.length;
+    const groupsById = new Map(state.groups.map((group) => [group.id, group]));
     const focused = document.activeElement;
     const oldRows = [...list.children];
     const focusedIndex = oldRows.findIndex((row) => row.contains(focused));
@@ -185,7 +197,7 @@ export function createLaterView({
       if (tab.active) item.open.setAttribute('aria-current', 'true');
       else item.open.removeAttribute('aria-current');
       item.row.classList.toggle('active', Boolean(tab.active));
-      const folder = groupById(state, tab.groupId)?.name || 'Home';
+      const folder = groupsById.get(tab.groupId)?.name || 'Home';
       item.restore.title = `Return to ${tab.pinned ? 'pinned tabs' : folder}`;
       item.restore.setAttribute('aria-label', item.restore.title);
       if (item.url !== tab.favIconUrl || !item.favicon.childNodes.length) {
@@ -223,58 +235,83 @@ export function createLaterView({
   }
 
   function open() {
-    if (!state || !pane.hidden) return;
-    savedFocus = document.activeElement;
+    if (disposed || !pane.hidden || !getState()) return;
+    savedFocus = captureFocus();
     onOpen();
+    state = getState();
     pane.hidden = false;
     root.classList.add('later-open');
     trigger.setAttribute('aria-expanded', 'true');
     fold.disabled = true;
     render();
+    restoreScroll(list, savedScroll, content);
     dismiss.focus({ preventScroll: true });
   }
 
-  dismiss.addEventListener('click', () => close());
-  trigger.addEventListener('click', () => (pane.hidden ? open() : close()));
-  search.addEventListener('input', render);
-  sort.addEventListener('change', render);
-  pane.addEventListener('keydown', (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey || event.target.closest('input, select'))
-      return;
-    const buttons = [...list.querySelectorAll('.later-open-tab')];
-    const row = event.target.closest('.later-row');
-    const position = buttons.findIndex((button) => button.closest('li') === row);
-    let target;
-    if (event.key === 'ArrowDown') target = buttons[Math.min(position + 1, buttons.length - 1)];
-    else if (event.key === 'ArrowUp') target = buttons[Math.max(position - 1, 0)];
-    else if (event.key === 'Home') target = buttons[0];
-    else if (event.key === 'End') target = buttons.at(-1);
-    if (target) {
+  dismiss.addEventListener('click', () => close(), { signal: events.signal });
+  trigger.addEventListener('click', () => (pane.hidden ? open() : close()), {
+    signal: events.signal,
+  });
+  search.addEventListener('input', render, { signal: events.signal });
+  sort.addEventListener('change', render, { signal: events.signal });
+  pane.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.target.closest('input, select'))
+        return;
+      const buttons = [...list.querySelectorAll('.later-open-tab')];
+      const row = event.target.closest('.later-row');
+      const position = buttons.findIndex((button) => button.closest('li') === row);
+      let target;
+      if (event.key === 'ArrowDown') target = buttons[Math.min(position + 1, buttons.length - 1)];
+      else if (event.key === 'ArrowUp') target = buttons[Math.max(position - 1, 0)];
+      else if (event.key === 'Home') target = buttons[0];
+      else if (event.key === 'End') target = buttons.at(-1);
+      if (target) {
+        event.preventDefault();
+        target.focus();
+      }
+    },
+    { signal: events.signal },
+  );
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (
+        event.key !== 'Escape' ||
+        pane.hidden ||
+        document.querySelector('dialog[open], #menu:not([hidden])')
+      )
+        return;
       event.preventDefault();
-      target.focus();
-    }
-  });
-  document.addEventListener('keydown', (event) => {
-    if (
-      event.key !== 'Escape' ||
-      pane.hidden ||
-      document.querySelector('dialog[open], #menu:not([hidden])')
-    )
-      return;
-    event.preventDefault();
-    close();
-  });
+      close();
+    },
+    { signal: events.signal },
+  );
   document.addEventListener(
     'click',
     (event) => {
       if (!trigger.contains(event.target) && event.target.closest('footer'))
         close({ restoreFocus: false });
     },
-    true,
+    { capture: true, signal: events.signal },
   );
   return {
     open,
     close,
+
+    dispose() {
+      disposed = true;
+      events.abort();
+      state = savedFocus = savedScroll = null;
+      visibleIds = [];
+      rows.clear();
+      list.replaceChildren();
+      pane.hidden = true;
+      root.classList.remove('later-open');
+      pane.remove();
+      trigger.remove();
+    },
 
     focusSearch() {
       search.focus();
@@ -291,7 +328,8 @@ export function createLaterView({
         : { later: true, query: search.value, sort: sort.value, tabIds: visibleIds },
 
     update(next) {
-      state = next;
+      if (disposed) return false;
+      state = pane.hidden ? null : next;
       trigger.disabled = false;
       render();
       return !pane.hidden;

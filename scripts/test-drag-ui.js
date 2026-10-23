@@ -5,6 +5,22 @@ import { startUiTest } from './ui-test.js';
 const { page, close, base } = await startUiTest({ viewport: { width: 320, height: 820 } });
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
+const pointerSource = await readFile('extension/src/pointer-move.js', 'utf8');
+await page.route('**/extension/src/pointer-move.js', (route) =>
+  route.fulfill({
+    contentType: 'application/javascript',
+    body: pointerSource.replace(
+      '  return {\n    project,',
+      `  window.pointerLifecycleProbe = () => ({
+        pressed: Boolean(session), active: Boolean(session?.active),
+        retainedState: Boolean(session?.checkedState), frame: Boolean(frame),
+        hover: Boolean(hoverTimer),
+      });
+  return {
+    project,`,
+    ),
+  }),
+);
 const demo = await readFile('preview/demo.js', 'utf8');
 await page.route('**/preview/demo.js', (route) =>
   route.fulfill({
@@ -331,6 +347,52 @@ try {
   }
   console.log(
     '✓ Search-origin drags, pointer cancellation, window blur and outside release clean up reliably',
+  );
+
+  for (const active of [false, true]) {
+    await reset();
+    const before = await state();
+    if (active) {
+      await begin(tab(2), group('research'));
+      await expect
+        .poll(() => page.evaluate(() => pointerLifecycleProbe().retainedState))
+        .toBe(true);
+    } else {
+      const bounds = await tab(2).boundingBox();
+      await page.mouse.move(bounds.x + 45, bounds.y + bounds.height / 2);
+      await page.mouse.down();
+    }
+    expect(await page.evaluate(() => pointerLifecycleProbe())).toMatchObject({
+      pressed: true,
+      active,
+    });
+    const disposal = await page.evaluate(() => {
+      const focusChanges = [];
+      const record = (event) => focusChanges.push(event.target.id || event.target.className);
+      document.addEventListener('focusin', record);
+      window.dispatchEvent(new Event('pagehide'));
+      document.removeEventListener('focusin', record);
+      return { ...pointerLifecycleProbe(), focusChanges };
+    });
+    expect(disposal).toEqual({
+      pressed: false,
+      active: false,
+      retainedState: false,
+      frame: false,
+      hover: false,
+      focusChanges: [],
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(650);
+    await expect(page.locator('.move-preview, .move-marker, .dragging, .drop-inside')).toHaveCount(
+      0,
+    );
+    const after = await state();
+    expect(after.tabs).toEqual(before.tabs);
+    expect(after.view).toEqual(before.view);
+  }
+  console.log(
+    '✓ Page disposal cancels pressed and active drags, releases retained state and timers, and never commits or restores focus',
   );
 
   expect(errors).toEqual([]);

@@ -61,8 +61,15 @@ export function visualChoices(key, title, choices, current) {
   return field;
 }
 
-export function createContainerManagement({ showDialog, request, onChange, isCurrent }) {
+export function createContainerManagement({
+  showDialog,
+  request,
+  onChange,
+  isCurrent,
+  canShow = () => true,
+}) {
   async function editContainerDialog(identity, back, { draft, onBack, onCancel } = {}) {
+    if (!canShow()) return;
     const fields = el('div', 'container-fields');
     const current = identity ?? draft;
     let choices;
@@ -127,6 +134,7 @@ export function createContainerManagement({ showDialog, request, onChange, isCur
   }
 
   function removeContainerDialog(identity, back) {
+    if (!canShow()) return;
     showDialog({
       title: `Remove “${identity.name}”?`,
       description:
@@ -145,6 +153,7 @@ export function createContainerManagement({ showDialog, request, onChange, isCur
   }
 
   async function manageContainersDialog(back) {
+    if (!canShow()) return;
     const list = el('div', 'container-management-list');
     const loading = el('p', '', 'Loading containers…');
     loading.setAttribute('role', 'status');

@@ -73,6 +73,13 @@ export function createRowCache({ retain = 0 } = {}) {
       used.clear();
     },
 
+    clear() {
+      for (const { row } of rows.values()) row.remove();
+      rows.clear();
+      used.clear();
+      clock = 0;
+    },
+
     detach,
   };
 }

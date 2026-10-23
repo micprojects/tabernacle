@@ -8,6 +8,16 @@ page.on('pageerror', (error) => errors.push(error.message));
 try {
   // Expose timing only in the served test response, never in the extension.
   const source = await readFile('extension/src/sidebar.js', 'utf8');
+  const transferSource = await readFile('extension/src/snapshot-transfer.js', 'utf8');
+  await page.route('**/extension/src/snapshot-transfer.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: transferSource.replace(
+        '  return read;',
+        '  window.sidebarReaderProbe = () => ({ retained: Boolean(previous), epoch }); return read;',
+      ),
+    }),
+  );
   await page.route('**/extension/src/sidebar.js', (route) =>
     route.fulfill({
       contentType: 'application/javascript',
@@ -17,7 +27,37 @@ try {
           'window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1; index = createTreeIndex(state, query);',
         ) +
         '\nwindow.measureSidebarUpdate = (next) => { acceptState(next); const start = performance.now(); render(); return performance.now() - start; };' +
-        '\nwindow.forceFullSidebarRender = () => { previousRender = null; render(); };',
+        '\nwindow.forceFullSidebarRender = () => { previousRender = null; render(); };' +
+        '\nwindow.sidebarVisibilityTest = { action, domain: filterByDomain, leaveDomain, state: () => ({ generation: state.generation, focused: windowFocused }) };' +
+        String.raw`
+window.sidebarReleaseProbe = {
+  refresh,
+  request: (...args) => request(...args),
+  action: (...args) => action(...args),
+  pendingClick: () => { clickGroup('g0', { detail: 1 }); return Boolean(pendingGroupClick); },
+  hasPendingClick: () => Boolean(pendingGroupClick),
+  queueIsEmpty: () => actionQueue.then(value => value === undefined),
+  inspect: () => ({ disposed, hasState: Boolean(state), hasConfirmed: Boolean(confirmedState) }),
+};` +
+        String.raw`
+window.measureSidebarLookupReads = (next) => {
+  acceptState(next);
+  const reads = { tabs: 0, collapsed: 0 };
+  const track = (values, kind) => new Proxy(values, {
+    get(target, property, receiver) {
+      if (typeof property === 'string' && /^\d+$/.test(property)) reads[kind]++;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  state = {
+    ...state,
+    tabs: track(state.tabs, 'tabs'),
+    view: { ...state.view, collapsed: track(state.view.collapsed, 'collapsed') },
+  };
+  previousRender = null;
+  render();
+  return reads;
+};`,
     }),
   );
   await page.addInitScript(() => {
@@ -27,7 +67,16 @@ try {
       delay: false,
       fail: false,
       navigationRequests: [],
+      hidden: false,
     });
+    Object.defineProperty(document, 'hidden', { get: () => testing.hidden });
+    testing.closeFilter = async () => {
+      for (const listener of listeners) {
+        const reply = listener({ type: 'tabernacle:getCloseFilter', windowId: 1 });
+        if (reply !== undefined) return reply;
+      }
+      throw new Error('Sidebar close-filter listener was not registered');
+    };
     const ready = Promise.all([
       import('/preview/browser.js'),
       import('/extension/src/controller.js'),
@@ -119,7 +168,15 @@ try {
               });
             if (type === 'enterGroup' && testing.failNavigation)
               throw new Error('Test navigation failed');
-            return { ok: true, data: await (await ready).request({ ...message, type }) };
+            const data = await (await ready).request({ ...message, type });
+            if (type === 'snapshot' && testing.holdSnapshot) {
+              testing.holdSnapshot = false;
+              await new Promise((resolve) => {
+                testing.releaseSnapshot = resolve;
+              });
+              if (testing.failHeldSnapshot) throw new Error('Late snapshot failure');
+            }
+            return { ok: true, data };
           } catch (error) {
             return { ok: false, error: error.message };
           }
@@ -129,6 +186,117 @@ try {
   });
   await page.goto(`${base}/extension/sidebar.html`);
   await expect(page.locator('.tab-row')).toHaveCount(1000);
+  await page.waitForTimeout(60);
+  const priorGeneration = await page.evaluate(() => sidebarVisibilityTest.state().generation);
+  await page.evaluate(async () => {
+    perfTest.calls = {};
+    perfTest.hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    perfTest.restart();
+    for (let i = 0; i < 20; i++) await perfTest.api.tabs.update(2, { title: 'Hidden title ' + i });
+  });
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => perfTest.calls.snapshot || 0)).toBe(0);
+  await expect(page.locator('.tab-row')).toHaveCount(1000);
+  await expect(page.locator('[data-key="tab:2"] .label')).toHaveText('Tab 1');
+  await page.evaluate(() => {
+    perfTest.hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.locator('[data-key="tab:2"] .label')).toHaveText('Hidden title 19');
+  expect(await page.evaluate(() => perfTest.calls.snapshot)).toBe(1);
+  expect(await page.evaluate(() => sidebarVisibilityTest.state().generation)).not.toBe(
+    priorGeneration,
+  );
+  expect(await page.evaluate(() => sidebarVisibilityTest.state().focused)).toBe(false);
+  await page.evaluate(() => perfTest.api.tabs.update(2, { title: 'Tab 1' }));
+  await expect(page.locator('[data-key="tab:2"] .label')).toHaveText('Tab 1');
+
+  // UI actions and their recovery reads complete even while passive refresh is paused.
+  for (const fail of [false, true]) {
+    await page.evaluate((fail) => {
+      perfTest.calls = {};
+      perfTest.delay = true;
+      perfTest.fail = fail;
+      perfTest.release = null;
+      window.hiddenActionDone = false;
+      window.hiddenAction = sidebarVisibilityTest
+        .action('toggleGroup', { id: 'g0' })
+        .then((next) => {
+          hiddenActionDone = true;
+          return next !== null;
+        });
+    }, fail);
+    await page.waitForFunction(() => Boolean(perfTest.release));
+    await page.evaluate(() => {
+      perfTest.hidden = true;
+      document.dispatchEvent(new Event('visibilitychange'));
+      perfTest.delay = false;
+      perfTest.release();
+    });
+    await page.waitForFunction(() => hiddenActionDone);
+    expect(await page.evaluate(() => hiddenAction)).toBe(!fail);
+    expect(await page.evaluate(() => perfTest.calls.toggleGroup)).toBe(1);
+    if (fail) expect(await page.evaluate(() => perfTest.calls.snapshot)).toBe(1);
+    await page.evaluate(() => {
+      perfTest.fail = false;
+      perfTest.hidden = false;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect(page.locator('[data-key="group:g0"]')).toHaveAttribute(
+      'aria-expanded',
+      fail ? 'true' : 'false',
+    );
+    if (!fail) {
+      await page.evaluate(() => sidebarVisibilityTest.action('toggleGroup', { id: 'g0' }));
+      await expect(page.locator('[data-key="group:g0"]')).toHaveAttribute('aria-expanded', 'true');
+    }
+  }
+
+  // Search, domain and Later close criteria remain synchronous and current while hidden.
+  const checkHiddenFilter = async (expected) => {
+    await expect
+      .poll(() => page.evaluate(async () => (await perfTest.closeFilter())?.tabIds?.length || 0))
+      .toBeGreaterThan(0);
+    const shown = await page.evaluate(() => perfTest.closeFilter());
+    expect(shown.tabIds.length).toBeGreaterThan(0);
+    await page.evaluate(() => {
+      perfTest.calls = {};
+      perfTest.hidden = true;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(await page.evaluate(() => perfTest.closeFilter())).toEqual(expected);
+    expect(await page.evaluate(() => perfTest.calls)).toEqual({});
+    await page.evaluate(() => {
+      perfTest.hidden = false;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect
+      .poll(() => page.evaluate(async () => (await perfTest.closeFilter())?.tabIds?.length || 0))
+      .toBeGreaterThan(0);
+  };
+
+  await page.locator('#search-toggle').click();
+  await page.locator('#search').fill('Tab 9');
+  await expect(page.locator('#tree')).toHaveClass(/searching/);
+  await checkHiddenFilter({ search: true, query: 'Tab 9', scopeId: null });
+  await page.locator('#search-close').click();
+  await page.evaluate(() => sidebarVisibilityTest.domain('example.com', 2));
+  await expect(page.locator('#domain-header')).toBeVisible();
+  await checkHiddenFilter({ domain: 'example.com', query: '', sort: 'newest' });
+  await page.evaluate(() => sidebarVisibilityTest.leaveDomain());
+  await page.evaluate(() => sidebarVisibilityTest.action('saveForLater', { id: 2 }));
+  await page.locator('#later-toggle').click();
+  await expect(page.locator('.later-row')).toHaveCount(1);
+  await checkHiddenFilter({ later: true, query: '', sort: 'newest' });
+  await page.locator('#later-close').click();
+  await page.evaluate(() => sidebarVisibilityTest.action('returnFromLater', { id: 2 }));
+  await expect(page.locator('.tab-row')).toHaveCount(1000);
+  await page.waitForTimeout(60);
+  console.log(
+    '✓ Hidden sidebar coalesces changes, catches background restarts, preserves full DOM, completes actions/recovery and supplies live close criteria; visible unfocused sidebar refreshes',
+  );
+
   await page.evaluate(() => {
     window.retainedRow = document.querySelector('[data-key="tab:500"]');
     window.retainedLabel = retainedRow.querySelector('.label');
@@ -193,6 +361,70 @@ try {
     root.remove();
   });
   console.log('✓ Hidden row retention is bounded, detached, and prunes closed items');
+
+  const lookupReads = await page.evaluate(async () => {
+    const original = await perfTest.snapshot();
+    const field = document.getElementById('search');
+    const saved = {
+      ...original,
+      tabs: original.tabs.map((tab) => ({
+        ...tab,
+        title: 'Saved lookup ' + tab.id,
+        savedForLaterAt: 1000 + tab.id,
+      })),
+    };
+    field.value = 'Saved lookup';
+    measureSidebarUpdate(saved);
+    const survivor = document.querySelector('[data-key="tab:500"]');
+    const removed = document.querySelector('[data-key="tab:501"]');
+    field.value = 'No matching lookup';
+    const hiddenReads = measureSidebarLookupReads({
+      ...saved,
+      tabs: saved.tabs.filter((tab) => tab.id !== 501),
+    });
+    field.value = 'Saved lookup';
+    measureSidebarUpdate(saved);
+    const retained = survivor === document.querySelector('[data-key="tab:500"]');
+    const evicted = removed !== document.querySelector('[data-key="tab:501"]');
+    field.value = '';
+    const groups = Array.from({ length: 300 }, (_, i) => ({
+      id: 'lookup-group-' + i,
+      name: 'Lookup folder ' + i,
+      parentId: null,
+    }));
+    const folders = {
+      ...original,
+      tabs: [],
+      groups,
+      pins: [],
+      folderPins: [],
+      view: { ...original.view, scopeId: null, collapsed: groups.map((group) => group.id) },
+    };
+    const foldedReads = measureSidebarLookupReads(folders);
+    const foldedCount = document.querySelectorAll('.group-row').length;
+    const allFolded = [...document.querySelectorAll('.group-row')].every(
+      (row) => row.getAttribute('aria-expanded') === 'false',
+    );
+    folders.view.collapsed.splice(10, 1);
+    measureSidebarUpdate(folders);
+    const reopened =
+      document.querySelector('[data-key="group:lookup-group-10"]').getAttribute('aria-expanded') ===
+      'true';
+    measureSidebarUpdate(original);
+    return { hiddenReads, foldedReads, foldedCount, retained, evicted, allFolded, reopened };
+  });
+  expect(lookupReads.hiddenReads.tabs).toBeLessThan(12_000);
+  expect(lookupReads.foldedReads.collapsed).toBeLessThan(3000);
+  expect(lookupReads).toMatchObject({
+    foldedCount: 300,
+    retained: true,
+    evicted: true,
+    allFolded: true,
+    reopened: true,
+  });
+  console.log(
+    '✓ Hidden saved rows and collapsed folders use bounded lookup work without stale state',
+  );
 
   await page.evaluate(() => {
     perfTest.calls = {};
@@ -451,6 +683,197 @@ try {
     }
   });
   console.log('✓ Patched metadata matches full rendering for pins, nested and hidden tabs');
+
+  const laterPage = await page.context().browser().newPage();
+  try {
+    await laterPage.route('**/lookup-fixture', (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><section id="root"><button id="tree-toggle">Fold</button><footer><button id="domains-toggle">Domains</button></footer></section>',
+      }),
+    );
+    await laterPage.goto(base + '/lookup-fixture');
+    const result = await laterPage.evaluate(async () => {
+      const { createLaterView } = await import('/extension/src/later-view.js');
+      const reads = { tabs: 0, groups: 0 };
+      const track = (values, kind) =>
+        new Proxy(values, {
+          get(target, property, receiver) {
+            if (typeof property === 'string' && /^\d+$/.test(property)) reads[kind]++;
+            return Reflect.get(target, property, receiver);
+          },
+        });
+      const tabs = Array.from({ length: 300 }, (_, i) => ({
+        id: i + 1,
+        index: i,
+        title: 'Saved ' + (i + 1),
+        url: 'https://example.com/' + i,
+        groupId: 'group-' + i,
+        savedForLaterAt: 1000 + i,
+      }));
+      const groups = tabs.slice(0, -1).map((tab, i) => ({ id: tab.groupId, name: 'Folder ' + i }));
+      const state = { tabs: track(tabs, 'tabs'), groups: track(groups, 'groups') };
+      let reviewed;
+      const view = createLaterView({
+        root: document.getElementById('root'),
+        getState: () => state,
+
+        onOpen() {},
+
+        onClose() {},
+
+        onActions(_event, items, scope) {
+          reviewed = {
+            ids: items.map((tab) => tab.id),
+            titles: items.map((tab) => tab.title),
+            scope,
+          };
+        },
+      });
+      view.update(state);
+      view.open();
+      const renderReads = { ...reads };
+      const pane = document.getElementById('later-view');
+      const actions = pane.querySelector('[aria-label="Saved tabs actions"]');
+      const fallback =
+        pane.querySelector('.later-row[data-id="300"] [aria-label="Return to Home"]') !== null;
+      reads.tabs = 0;
+      actions.click();
+      const actionReads = reads.tabs;
+      const newest = reviewed.ids;
+      groups[0].name = 'Renamed folder';
+      tabs[0].title = 'Updated saved title';
+      view.update(state);
+      const renamed =
+        pane.querySelector('.later-row[data-id="1"] [aria-label="Return to Renamed folder"]') !==
+        null;
+      const sort = pane.querySelector('select');
+      sort.value = 'oldest';
+      sort.dispatchEvent(new Event('change'));
+      actions.click();
+      const oldest = reviewed.ids;
+      const currentTitle = reviewed.titles[0];
+      const search = pane.querySelector('input');
+      search.value = 'Saved 2';
+      search.dispatchEvent(new Event('input'));
+      actions.click();
+      const filtered = reviewed;
+      view.close();
+      const releasedRows = pane.querySelectorAll('.later-row').length;
+      state.tabs = track(
+        tabs.filter((tab) => tab.id !== 2),
+        'tabs',
+      );
+      view.update(state);
+      view.open();
+      actions.click();
+      const afterClose = reviewed.ids;
+      const filterIds = view.closeFilter().tabIds;
+      view.dispose();
+      view.update(state);
+      view.open();
+      const disposed =
+        !pane.isConnected && !document.getElementById('later-toggle') && !view.isOpen;
+      return {
+        releasedRows,
+        disposed,
+        renderReads,
+        actionReads,
+        newest,
+        oldest,
+        currentTitle,
+        filtered,
+        afterClose,
+        filterIds,
+        renamed,
+        fallback,
+      };
+    });
+    expect(result.renderReads.groups).toBeLessThan(3000);
+    expect(result.actionReads).toBeLessThan(3000);
+    expect(result.newest).toEqual(Array.from({ length: 300 }, (_, i) => 300 - i));
+    expect(result.oldest).toEqual(Array.from({ length: 300 }, (_, i) => i + 1));
+    expect(result).toMatchObject({
+      releasedRows: 0,
+      disposed: true,
+      currentTitle: 'Updated saved title',
+      renamed: true,
+      fallback: true,
+    });
+    const filtered = Array.from({ length: 300 }, (_, i) => i + 1).filter((id) =>
+      String(id).startsWith('2'),
+    );
+    expect(result.filtered.ids).toEqual(filtered);
+    expect(result.filtered.scope).toEqual({ kind: 'later', query: 'Saved 2' });
+    expect(result.afterClose).toEqual(filtered.filter((id) => id !== 2));
+    expect(result.filterIds).toEqual(result.afterClose);
+    console.log('✓ Later actions keep live ordered targets with linear tab and folder lookups');
+  } finally {
+    await laterPage.close();
+  }
+  const queue = await page.evaluate(async () => {
+    const result = await sidebarReleaseProbe.action('toggleGroup', { id: 'g0' });
+    return { resultTabs: result.tabs.length, empty: await sidebarReleaseProbe.queueIsEmpty() };
+  });
+  expect(queue).toEqual({ resultTabs: 1000, empty: true });
+  for (const rejected of [false, true]) {
+    if (rejected) {
+      await page.reload();
+      await expect(page.locator('.tab-row')).toHaveCount(1000);
+    }
+    await page.evaluate((rejected) => {
+      perfTest.holdSnapshot = true;
+      perfTest.failHeldSnapshot = rejected;
+      window.pendingSidebarRefresh = sidebarReleaseProbe.refresh();
+    }, rejected);
+    await page.waitForFunction(() => Boolean(perfTest.releaseSnapshot));
+    const closed = await page.evaluate(async () => {
+      const retainedBefore = sidebarReaderProbe().retained;
+      const encoded = Boolean(perfTest.transfer?.token);
+      const pendingClickBefore = sidebarReleaseProbe.pendingClick();
+      window.dispatchEvent(new Event('pagehide'));
+      const cleared = sidebarReaderProbe();
+      perfTest.releaseSnapshot();
+      await pendingSidebarRefresh;
+      const afterPending = sidebarReaderProbe();
+      // An already queued action may still need a recovery snapshot after
+      // disposal. It receives the response, but the closed reader keeps no base.
+      const recovery = await sidebarReleaseProbe.request('snapshot');
+      return {
+        retainedBefore,
+        encoded,
+        pendingClickBefore,
+        pendingClickAfter: sidebarReleaseProbe.hasPendingClick(),
+        cleared: cleared.retained,
+        afterPending: afterPending.retained,
+        afterRecovery: sidebarReaderProbe().retained,
+        recoveryTabs: recovery.tabs.length,
+        ...sidebarReleaseProbe.inspect(),
+        rows: document.querySelectorAll('.tab-row, .group-row, #tree .loading').length,
+        lateError: document.body.textContent.includes('Late snapshot failure'),
+      };
+    });
+    expect(closed).toEqual({
+      retainedBefore: true,
+      encoded: true,
+      pendingClickBefore: true,
+      pendingClickAfter: false,
+      cleared: false,
+      afterPending: false,
+      afterRecovery: false,
+      recoveryTabs: 1000,
+      disposed: true,
+      hasState: false,
+      hasConfirmed: false,
+      rows: 0,
+      lateError: false,
+    });
+  }
+  // Let the original click grace period pass; a disposed page must not toggle or throw.
+  await page.waitForTimeout(150);
+  console.log(
+    '✓ Sidebar disposal releases reader and action tails without cancelling recovery or reviving late UI',
+  );
   expect(errors).toEqual([]);
   console.log(
     'Performance UI checks passed; timings are diagnostic, not machine-dependent pass thresholds.',
