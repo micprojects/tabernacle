@@ -38,6 +38,7 @@ export const uiSuites = [
   'test-neutral-ui',
   'test-performance-ui',
   'test-cold-render-ui',
+  'test-viewport-ui',
   'test-refresh-ui',
 ];
 

@@ -45,6 +45,15 @@ try {
     await send('toggleTab', { id: parent.id });
     await send('toggleGroup', { id: inner });
     await send('toggleGroup', { id: destination });
+    // Home must virtualise while the drag crosses into it. These real,
+    // discarded tabs avoid loading extra pages in the isolated profile.
+    for (let i = 0; i < 150; i++)
+      await browser.tabs.create({
+        url,
+        title: `Viewport filler ${i}`,
+        active: false,
+        discarded: true,
+      });
     await send('enterGroup', { id: source });
     return { source, destination, inner, moving: moving.id, parent: parent.id, child: child.id };
   }, `http://127.0.0.1:${server.address().port}/preview/index.html`);
@@ -98,6 +107,12 @@ try {
   await begin(tab(fixture.moving));
   await hover('#home');
   await visible(group(fixture.destination));
+  assert.equal(
+    await browser.evaluate(() =>
+      document.querySelector('#tree').classList.contains('viewport-tree'),
+    ),
+    true,
+  );
   await hover(group(fixture.destination));
   await visible(group(fixture.inner));
   await hover(group(fixture.inner));
@@ -147,6 +162,60 @@ try {
     await browser.screenshot({ sourceSize: size, scale: 2 }),
   );
   console.log('✓ Actual Firefox sidebar: Escape restores the view and removes all drag feedback');
+
+  await browser.evaluate(() => window.dragCheckSend('enterGroup', { id: null }));
+  await wait(() => document.getElementById('tree').classList.contains('viewport-tree'));
+  const focus = await browser.evaluate(async () => {
+    const tree = document.getElementById('tree');
+    tree.scrollTop = 0;
+    tree.dispatchEvent(new Event('scroll'));
+    const control = tree.querySelector('.tab-row .close-tab');
+    control.focus();
+    window.viewportFocusControl = control;
+    let blurred = 0;
+    let detached = 0;
+    control.addEventListener('blur', () => blurred++);
+    const observer = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.removedNodes)
+          if (node === control || node.contains?.(control)) detached++;
+    });
+    observer.observe(tree, { childList: true, subtree: true });
+    const limit = tree.scrollHeight - tree.clientHeight;
+    const step = Math.max(1, tree.clientHeight - 60);
+    for (let top = 0; top <= limit + step; top += step) {
+      tree.scrollTop = Math.min(limit, top);
+      tree.dispatchEvent(new Event('scroll'));
+      await new Promise(window.requestAnimationFrame);
+    }
+    observer.disconnect();
+    return {
+      same: document.activeElement === control,
+      connected: control.isConnected,
+      blurred,
+      detached,
+      mounted: tree.querySelectorAll('.tab-row').length,
+    };
+  });
+  assert.deepEqual(
+    { ...focus, mounted: undefined },
+    { same: true, connected: true, blurred: 0, detached: 0, mounted: undefined },
+  );
+  assert(focus.mounted < 100);
+  const scrolledId = await browser.evaluate(() => {
+    const row = [...document.querySelectorAll('#tree .tab-row')].at(-1);
+    const id = Number(row.dataset.id);
+    row.querySelector('.close-tab').click();
+    return id;
+  });
+  await wait(
+    async (id) => !(await window.dragCheckSend('snapshot')).tabs.some((tab) => tab.id === id),
+    scrolledId,
+  );
+  assert.equal(await browser.evaluate(() => viewportFocusControl === document.activeElement), true);
+  console.log(
+    '✓ Actual Firefox sidebar: viewport scrolling keeps the focused control attached; closing a newly mounted row targets the correct tab',
+  );
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));

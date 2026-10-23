@@ -97,8 +97,8 @@
 }
 .later-row {
   display: flex;
-  align-items: stretch;
-  min-height: 32px;
+  align-items: center;
+  min-height: 30px;
   border-radius: 6px;
 }
 .later-row:hover,
@@ -113,9 +113,10 @@
   display: flex;
   flex: 1;
   min-width: 0;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 6px 6px 8px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 6px 0 9px;
+  height: 30px;
   text-align: left;
   border-radius: 6px;
   width: 100%;
@@ -135,18 +136,15 @@
   flex: 1;
   min-width: 0;
   text-align: left;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
   overflow: hidden;
-  overflow-wrap: anywhere;
-  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
 }
 .later-row-actions {
   display: flex;
   flex-shrink: 0;
-  align-self: flex-start;
-  padding: 3px 4px 0 0;
+  padding: 0 6px 0 0;
   opacity: 0;
 }
 .later-row:hover .later-row-actions,
@@ -156,8 +154,8 @@
 .later-row-actions button {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 4px;
   border-radius: 4px;
   color: var(--muted);

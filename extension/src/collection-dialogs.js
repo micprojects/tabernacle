@@ -112,6 +112,7 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
           item.check.checked = selected.has(tab.id);
           item.check.setAttribute('aria-label', `Close ${tab.title || sourceUrl(tab)}`);
           item.title.textContent = tab.title || sourceUrl(tab);
+          item.title.title = item.title.textContent;
           item.details.textContent = [
             ['Home', ...groupPath(state, tab.groupId).map((group) => group.name)].join(' / '),
             isSavedForLater(tab) ? 'Saved for Later' : 'In tree',
@@ -124,9 +125,10 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
             .filter(Boolean)
             .join(' · ');
           item.details.title =
-            Number.isFinite(tab.lastAccessed) && tab.lastAccessed > 0
-              ? new Date(tab.lastAccessed).toLocaleString()
-              : '';
+            item.details.textContent +
+            (Number.isFinite(tab.lastAccessed) && tab.lastAccessed > 0
+              ? `\n${new Date(tab.lastAccessed).toLocaleString()}`
+              : '');
           block.append(item.row);
         }
         fragments.push(block);

@@ -309,7 +309,10 @@ try {
       .toBeGreaterThan(100);
     await page.keyboard.press('Escape');
     await page.mouse.up();
-    await tab(count).scrollIntoViewIfNeeded();
+    await page.locator('#tree').evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+    await expect(tab(count)).toBeInViewport();
     const bottom = await page.locator('#tree').evaluate((node) => node.scrollTop);
     await begin(tab(count), page.locator('#tree'), 0.01);
     await expect

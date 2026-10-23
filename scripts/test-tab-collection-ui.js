@@ -198,13 +198,34 @@ try {
   await expect(large).toBeVisible();
   await large.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Filter by domain', exact: true }).click();
-  await expect(page.locator('#tree .tab-row')).toHaveCount(240);
+  await expect(page.locator('#tree')).toHaveClass(/viewport-tree/);
+  expect(await page.locator('#tree .tab-row').count()).toBeLessThan(100);
+  const traverseResults = () =>
+    page.evaluate(async () => {
+      const tree = document.getElementById('tree');
+      const titles = new Set();
+      for (let top = 0; top < tree.scrollHeight; top += tree.clientHeight / 2) {
+        tree.scrollTop = top;
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        for (const row of tree.querySelectorAll('.tab-row .label')) titles.add(row.textContent);
+      }
+      return [...titles];
+    });
+  expect((await traverseResults()).sort()).toEqual(
+    Array.from({ length: 240 }, (_, i) => `Large collection ${i}`).sort(),
+  );
   await page.locator('#domain-actions').click();
   await page.getByRole('menuitem', { name: 'Save 240 tabs for later', exact: true }).click();
   await expect(page.locator('#tree .tab-row')).toHaveCount(0);
   expect((await snapshot()).tabs.filter((tab) => tab.savedForLaterAt).length).toBe(240);
   await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(page.locator('#tree .tab-row')).toHaveCount(240);
+  await expect(page.locator('#tree')).toHaveClass(/viewport-tree/);
+  expect(await page.locator('#tree .tab-row').count()).toBeLessThan(100);
+
+  expect((await traverseResults()).sort()).toEqual(
+    Array.from({ length: 240 }, (_, i) => `Large collection ${i}`).sort(),
+  );
   await page.locator('#domain-close').click();
   await send('enterGroup', { id: null });
   const folderState = await snapshot();

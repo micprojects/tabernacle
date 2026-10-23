@@ -295,7 +295,11 @@ h2 {
   gap: 4px;
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+}
+.item-copy :is(strong, small) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .item-copy strong {
   font-size: 13px;

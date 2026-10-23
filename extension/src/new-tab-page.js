@@ -90,6 +90,7 @@ async function openFolder(group) {
 
 function entry(item, subtitle, action, key) {
   const row = button(item.title || item.name || item.url, 'entry', action, key);
+  row.title = `${item.title || item.name || item.url}\n${subtitle}`;
   const copy = el('span', 'item-copy');
   copy.append(el('strong', '', item.title || item.name || item.url), el('small', '', subtitle));
   row.append(favicon(item, 'entry-icon'), copy, icon('chevron'));

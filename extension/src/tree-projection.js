@@ -1,4 +1,5 @@
 import { domainResults } from './domain-filter.js';
+import { createTreeIndex } from './tree-index.js';
 import { savedSearchResults, matchesText } from './tab-collection.js';
 import { captureScroll, restoreScroll, captureFocus, restoreFocusToken } from './view-state.js';
 
@@ -46,10 +47,37 @@ const rowPrototype = {
 
 const record = (fields) => Object.assign(Object.create(rowPrototype), fields);
 
+// Keep one current collection, not a history of snapshots or query results.
+// Callers clear on accepted state, in-place changes and view release.
+export function createDomainTreeProjector() {
+  let cached = null;
+  return {
+    project(state, { domain, query = '', sort = 'newest' } = {}) {
+      if (typeof domain !== 'string' || !domain) throw new TypeError('A domain is required');
+      if (!cached || cached.state !== state || cached.domain !== domain || cached.sort !== sort) {
+        const index = cached?.state === state ? cached.index : createTreeIndex(state);
+        const tabs = Object.freeze(domainResults(index, domain, '', sort));
+        cached = { state, index, domain, sort, tabs };
+      }
+      return projectTree(state, cached.index, { query, domain, sort }, cached.tabs);
+    },
+
+    clear() {
+      cached = null;
+    },
+  };
+}
+
 // The existing index owns hierarchy, promotion of children of pinned tabs and
 // ordering. This projection never edits it. Logical rows include folded and
 // filtered-out items; visible rows are a separate rendering/navigation view.
-export function projectTree(state, index, { query = '', domain = null, sort = 'newest' } = {}) {
+// The state-bound domain projector may supply its owned, sorted collection.
+export function projectTree(
+  state,
+  index,
+  { query = '', domain = null, sort = 'newest' } = {},
+  domainCollection = null,
+) {
   query = query.trim().toLowerCase();
   const collapsed = new Set(state.view.collapsed);
 
@@ -82,7 +110,7 @@ export function projectTree(state, index, { query = '', domain = null, sort = 'n
       });
     let domainTabs = [];
     if (domain) {
-      domainTabs = domainResults(index, domain, '', sort);
+      domainTabs = domainCollection ?? domainResults(index, domain, '', sort);
       for (const tab of domainTabs) {
         const row = flatTab(tab, 'domain');
         row.matchesFilter = matchesText(tab, query);
@@ -391,6 +419,11 @@ export function createFullTreeRenderer({
 
     replaceTarget(key, target) {
       if (mounted.has(key)) mounted.set(key, target);
+    },
+
+    forget() {
+      projection = null;
+      mounted.clear();
     },
 
     suspend,

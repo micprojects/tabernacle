@@ -5,12 +5,22 @@ import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
 import { createTreeIndex, scopeBranches, updateTreeAudio } from './tree-index.js';
 import { domainForTab } from './domain-filter.js';
-import { projectTree, createFullTreeRenderer } from './tree-projection.js';
+import {
+  projectTree,
+  createFullTreeRenderer,
+  createDomainTreeProjector,
+} from './tree-projection.js';
+import { createViewportTreeRenderer } from './tree-viewport.js';
 import { captureScroll, restoreScroll } from './view-state.js';
 import { createDomainHeader } from './domain-header.js';
 import { createDomainsView } from './domains-view.js';
 import { createLaterView } from './later-view.js';
-import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
+import {
+  createRowCache,
+  reconcileChildren,
+  reconcileRetainedChildren,
+  setAttribute,
+} from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
 import { createFaviconTints } from './favicon-tint.js';
 import { createLabelColors } from './label-colors.js';
@@ -37,11 +47,21 @@ const tree = $('tree');
 let treeTabs = [];
 let index;
 let projection;
-const rowCache = createRowCache({ retain: 2048 });
+const domainProjector = createDomainTreeProjector();
+// Keep the previous 96-view dormant budget shared between identity caching
+// and cross-identity reuse. Mounted and interaction-owned rows remain separate.
+const pooledLeafLimit = 64;
+const virtualDormantLimit = 96;
+const rowCache = createRowCache({
+  retain: () => (treeRenderer.virtual ? virtualDormantLimit - leafPool.length : 2048),
+  owned: (node) => treeMotion.owns(node),
+});
 const faviconTint = createFaviconTints();
 const renderDomainHeader = createDomainHeader($('domain-header'));
 const labelColors = createLabelColors(document.documentElement, document.querySelector('.sidebar'));
 const wrappers = new Map();
+const leafPool = [];
+const pooledLeafParts = new WeakMap();
 const usedWrappers = new Set();
 const guideColorsApplied = new WeakMap();
 let breadcrumbKey;
@@ -67,13 +87,19 @@ function canToggleTabChildren() {
   return windowFocused && performance.now() - windowFocusedAt > 200;
 }
 
-function wrapperFor(kind, id, needsBranch = true) {
+function wrapperFor(kind, id, needsBranch = true, recyclable = false) {
   const key = `${kind}:${id}`;
   usedWrappers.add(key);
   if (!wrappers.has(key)) {
-    const node = el('div', `${kind}-node`);
-    node.setAttribute('role', 'none');
-    wrappers.set(key, { node });
+    const recycled = recyclable && !rowCache.has(key) && leafPool.pop();
+    if (recycled) {
+      wrappers.set(key, recycled.wrapper);
+      rowCache.adopt(key, recycled.entry);
+    } else {
+      const node = el('div', `${kind}-node`);
+      node.setAttribute('role', 'none');
+      wrappers.set(key, { node });
+    }
   }
   const wrapper = wrappers.get(key);
   if (needsBranch && !wrapper.branch) {
@@ -81,6 +107,39 @@ function wrapperFor(kind, id, needsBranch = true) {
     wrapper.branch.setAttribute('role', 'group');
   }
   return wrapper;
+}
+
+// Release only departing, unowned leaf views before assigning entering rows.
+// Overlapping keys retain their existing controls and loaded favicon.
+function prepareViewportRows(rows, pins, owners) {
+  const keep = new Set([
+    ...rows.map(({ row }) => row.key),
+    ...pins.map((row) => (row.kind === 'pin-tab' ? `pin:${row.id}` : row.key)),
+    // A removed tab may still own a press or menu. Detach its view normally,
+    // but never assign those outstanding controls to another logical tab.
+    ...owners,
+  ]);
+  wrappers.forEach((wrapper, key) => {
+    if (leafPool.length >= pooledLeafLimit || keep.has(key) || wrapper.branch) return;
+    const row = wrapper.node.firstElementChild;
+    if (!pooledLeafParts.has(row) || wrapper.node.contains(document.activeElement)) return;
+    if (
+      treeMotion.owns(wrapper.node) ||
+      wrapper.node.querySelector(
+        '.dragging, .drop-before, .drop-after, .drop-inside, .drop-invalid, .move-complete, [data-tree-motion]',
+      )
+    )
+      return;
+    const entry = rowCache.take(key);
+    if (!entry) return;
+    wrapper.node.remove();
+    wrappers.delete(key);
+    leafPool.push({ wrapper, entry });
+  });
+}
+
+function reconcileTreeChildren(parent, children) {
+  (treeRenderer.virtual ? reconcileRetainedChildren : reconcileChildren)(parent, children);
 }
 
 function markSelected(row) {
@@ -97,7 +156,10 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const treeMotion = createTreeMotion(
   tree,
   () => state?.look.animations !== false && !reducedMotion.matches,
-  () => rowCache.detach(),
+  () => {
+    rowCache.detach();
+    queueMicrotask(() => treeRenderer.refresh(true));
+  },
 );
 let motionContext;
 
@@ -198,6 +260,7 @@ async function returnSavedTab(id) {
 
 function acceptState(next) {
   if (disposed) return;
+  domainProjector.clear();
   confirmedState = next;
   const collapsed = new Set(next.view.collapsed);
   let scopeId = next.view.scopeId;
@@ -526,7 +589,8 @@ async function revealFolder(id) {
   $('search').value = '';
   const next = await action('revealGroup', { id });
   if (!next) return;
-  const row = tree.querySelector(`[data-key="group:${CSS.escape(id)}"]`);
+  treeRenderer.ensureVisible(`group:${id}`);
+  const row = treeRenderer.mount(`group:${id}`);
   if (row) {
     selectRow(row);
     row.scrollIntoView({ block: 'nearest' });
@@ -798,8 +862,9 @@ function groupNode({ group, expanded }, children) {
   node.style.setProperty('--item-colour', color);
   paintGuide(branch, appearance.color);
   const row = groupRow(group, expanded);
-  treeMotion.reconcile(node, row, branch, expanded, () => {
-    reconcileChildren(branch, children);
+  const showBranch = expanded && (!projection.query || children.length > 0);
+  treeMotion.reconcile(node, row, branch, showBranch, () => {
+    reconcileTreeChildren(branch, children);
     if (!branch.childElementCount) {
       const empty = el('div', 'empty-child', 'Drop tabs here');
       empty.setAttribute('role', 'none');
@@ -815,6 +880,13 @@ function fallbackFavicon(node) {
   node.setAttribute('aria-hidden', 'true');
 }
 
+function hasFavicon(tab) {
+  return (
+    typeof tab.favIconUrl === 'string' &&
+    /^(https?:|data:image\/|moz-extension:)/i.test(tab.favIconUrl)
+  );
+}
+
 function tabFavicon(tab) {
   const favicon = el('span', 'tab-icon');
   const tint = state.look.tintFavicons && faviconTint(tab.container?.colorCode);
@@ -823,10 +895,7 @@ function tabFavicon(tab) {
     favicon.style.setProperty('--favicon-colour', tint.color);
   }
   // Never fetch a third-party favicon service. Use only Firefox's supplied icon.
-  if (
-    typeof tab.favIconUrl === 'string' &&
-    /^(https?:|data:image\/|moz-extension:)/i.test(tab.favIconUrl)
-  ) {
+  if (hasFavicon(tab)) {
     const img = el('img');
     img.src = tab.favIconUrl;
     img.alt = '';
@@ -1083,13 +1152,12 @@ function createTabRow(tab, expanded, stats) {
   }
   row.append(tabLabel(tab));
   if (domainFilter && domainSort === 'least-viewed' && viewedAge(tab.lastAccessed)) {
-    const age = el('span', 'viewed-age', viewedAge(tab.lastAccessed));
-    age.title = `Last viewed ${new Date(tab.lastAccessed).toLocaleString()}`;
-    row.append(age);
+    const age = `Last viewed ${new Date(tab.lastAccessed).toLocaleString()}`;
+    row.title += `\n${age}`;
+    row.setAttribute('aria-description', `${row.getAttribute('aria-description')}. ${age}`);
   }
   if (isSavedForLater(tab)) {
     row.classList.add('saved-search-row');
-    row.append(el('span', 'saved-search-folder', tabFolderLabel(tab)));
     row.append(rowButton('Return to original folder', 'group', 'return-tab'));
   }
   if (childAudioCount(tab) && !playsAudio(tab))
@@ -1107,7 +1175,81 @@ function createTabRow(tab, expanded, stats) {
   return row;
 }
 
+function canPoolLeaf(tab, stats) {
+  return Boolean(
+    treeRenderer.virtual &&
+    !domainFilter &&
+    !state.look.domains &&
+    !stats.descendants &&
+    !isSavedForLater(tab) &&
+    !tab.audible &&
+    !tab.mutedInfo?.muted &&
+    !childAudioCount(tab),
+  );
+}
+
+function updatePooledLeaf(row, tab, expanded, stats) {
+  const parts = pooledLeafParts.get(row);
+  if (!parts) return false;
+  const key = `tab:${tab.id}`;
+  const reassigned = row.dataset.key !== key;
+  if (reassigned) {
+    rowPress.delete(row);
+    row.className = 'row tab-row';
+    row.dataset.key = key;
+    row.dataset.id = tab.id;
+    row.dataset.dropId = tab.id;
+  }
+  const tint = state.look.tintFavicons ? tab.container?.colorCode || null : null;
+  if (
+    parts.favIconUrl !== tab.favIconUrl ||
+    parts.tint !== tint ||
+    (reassigned && hasFavicon(tab) && parts.favicon.classList.contains('tab-globe'))
+  ) {
+    // Each replaced icon keeps its error callback attached to its own span.
+    // A late response cannot mutate the new owner's icon. A failed icon gets
+    // a fresh attempt for a new owner, even when its URL is unchanged.
+    const favicon = tabFavicon(tab);
+    parts.favicon.replaceWith(favicon);
+    parts.favicon = favicon;
+    parts.faviconText = favicon.firstChild?.nodeType === 3 ? favicon.firstChild : null;
+    parts.favIconUrl = tab.favIconUrl;
+    parts.tint = tint;
+  }
+  const title = tab.title || 'New tab';
+  const active = Boolean(tab.active);
+  const containsActive = Boolean(!expanded && stats.active);
+  const discarded = Boolean(tab.discarded);
+  if (row.classList.contains('active') !== active) row.classList.toggle('active', active);
+  if (row.classList.contains('contains-active') !== containsActive)
+    row.classList.toggle('contains-active', containsActive);
+  if (row.classList.contains('discarded') !== discarded)
+    row.classList.toggle('discarded', discarded);
+  setAttribute(row, 'aria-selected', active);
+  setAttribute(row, 'aria-label', title);
+  describeContainer(row, tab);
+  if (parts.label.data !== title) parts.label.data = title;
+  setAttribute(parts.close, 'aria-label', `Close ${title}`);
+  setAttribute(parts.close, 'title', `Close ${title}`);
+  if (demo && !hasFavicon(tab)) {
+    const letter = tab.title !== 'New tab';
+    const className = `tab-icon ${letter ? 'tab-fallback' : 'tab-globe'}`;
+    if (parts.favicon.className !== className) parts.favicon.className = className;
+    if (letter) parts.favicon.removeAttribute('aria-hidden');
+    else setAttribute(parts.favicon, 'aria-hidden', true);
+    if (!parts.faviconText && letter) {
+      parts.faviconText = document.createTextNode('');
+      parts.favicon.append(parts.faviconText);
+    }
+    const character = letter ? (tab.title || 'T').charAt(0) : '';
+    if (parts.faviconText && parts.faviconText.data !== character)
+      parts.faviconText.data = character;
+  }
+  return true;
+}
+
 function tabRow(tab, expanded, stats) {
+  const recyclable = canPoolLeaf(tab, stats);
   const row = markSelected(
     rowCache.get(
       `tab:${tab.id}`,
@@ -1123,10 +1265,76 @@ function tabRow(tab, expanded, stats) {
         domainSort === 'least-viewed' ? tab.lastAccessed : null,
       ],
       () => createTabRow(tab, expanded, stats),
+      recyclable
+        ? (row) => updatePooledLeaf(row, tab, expanded, stats)
+        : (row, previous, next) => patchTabRow(row, tab, expanded, stats, previous, next),
     ),
   );
+  if (recyclable && !pooledLeafParts.has(row)) {
+    const favicon = row.querySelector('.tab-icon');
+    pooledLeafParts.set(row, {
+      label: row.querySelector('.label').firstChild,
+      close: row.querySelector('.close-tab'),
+      favicon,
+      faviconText: favicon.firstChild?.nodeType === 3 ? favicon.firstChild : null,
+      favIconUrl: tab.favIconUrl,
+      tint: state.look.tintFavicons ? tab.container?.colorCode || null : null,
+    });
+  } else if (!recyclable) pooledLeafParts.delete(row);
   labelColors.apply(row, tab.container?.colorCode);
   return row;
+}
+
+function patchTabRow(row, tab, expanded, stats, previous, next) {
+  if (domainFilter || isSavedForLater(tab) || previous.length !== next.length) return false;
+  // These positions are title, URL, active, discarded, expanded and descendant
+  // activation in tabRow's presentation values. Every shape/icon/audio/colour
+  // change still uses the established builder and focus-preserving replacement.
+  if (
+    next.some(
+      (value, i) =>
+        value !== previous[i] && i !== 0 && i !== 1 && i !== 3 && i !== 4 && i !== 12 && i !== 14,
+    )
+  )
+    return false;
+  const title = tab.title || 'New tab';
+  row.classList.toggle('active', Boolean(tab.active));
+  row.classList.toggle('contains-active', !expanded && stats.active);
+  row.classList.toggle('discarded', Boolean(tab.discarded));
+  setAttribute(row, 'aria-selected', Boolean(tab.active));
+  setAttribute(row, 'aria-label', title);
+  describeContainer(row, tab);
+  describeAudio(row, audioDescription(tab));
+  if (stats.descendants) {
+    setAttribute(row, 'aria-expanded', expanded);
+    setAttribute(
+      row,
+      'aria-label',
+      `${row.getAttribute('aria-label')}, ${stats.descendants} nested ${stats.descendants === 1 ? 'tab' : 'tabs'}`,
+    );
+    const disclosure = row.querySelector('.disclosure');
+    const label = `${expanded ? 'Collapse' : 'Expand'} child tabs of ${title}`;
+    setAttribute(disclosure, 'aria-label', label);
+    setAttribute(disclosure, 'title', label);
+    if (disclosure.getAttribute('aria-expanded') !== String(expanded)) {
+      setAttribute(disclosure, 'aria-expanded', expanded);
+      disclosure
+        .querySelector('.tab-toggle-badge')
+        .replaceChildren(icon(expanded ? 'subtractCircle' : 'addCircle'));
+    }
+  }
+  const label = row.querySelector('.label');
+  if (label.textContent !== title) label.textContent = title;
+  const detail = row.querySelector('.row-detail');
+  if (detail && detail.textContent !== tabDomain(tab)) detail.textContent = tabDomain(tab);
+  const close = row.querySelector('.close-tab');
+  setAttribute(close, 'aria-label', `Close ${title}`);
+  setAttribute(close, 'title', `Close ${title}`);
+  // Demo letter icons depend on the title; native supplied images keep their
+  // existing load/error lifecycle when only a title or activation changes.
+  if (demo && !hasFavicon(tab) && previous[0] !== next[0])
+    row.querySelector('.tab-icon').replaceWith(tabFavicon(tab));
+  return true;
 }
 
 function tabFolderLabel(tab) {
@@ -1135,17 +1343,22 @@ function tabFolderLabel(tab) {
 }
 
 function tabNode({ tab, stats, expanded }, children) {
-  const { node, branch } = wrapperFor('tab', tab.id, stats.descendants > 0);
+  const { node, branch } = wrapperFor(
+    'tab',
+    tab.id,
+    stats.descendants > 0,
+    canPoolLeaf(tab, stats),
+  );
   // A tab owns its child rail, even when a child uses a different container.
   if (stats.descendants) paintGuide(branch, tab.container?.colorCode);
   node.classList.toggle('tab-parent', stats.descendants > 0);
   const row = tabRow(tab, expanded, stats);
   if (!branch) {
-    reconcileChildren(node, [row]);
+    reconcileTreeChildren(node, [row]);
     return node;
   }
   treeMotion.reconcile(node, row, branch, Boolean(stats.descendants && expanded), () => {
-    reconcileChildren(branch, children);
+    reconcileTreeChildren(branch, children);
   });
   return node;
 }
@@ -1190,7 +1403,8 @@ function newTabItem(groupId, parentTab = null) {
       if (event.key === 'ArrowLeft' && !event.altKey) {
         event.preventDefault();
         const parentKey = parentTabId !== null ? `tab:${parentTabId}` : `group:${groupId}`;
-        const parentRow = treeRenderer.target(parentKey);
+        treeRenderer.ensureVisible(parentKey);
+        const parentRow = treeRenderer.mount(parentKey);
         if (parentRow) selectRow(parentRow);
         else parent();
       }
@@ -1201,10 +1415,11 @@ function newTabItem(groupId, parentTab = null) {
   });
 }
 
-const treeRenderer = createFullTreeRenderer({
+let savedSearchSection;
+const treeRendererOptions = {
   tree,
   pins: $('pinned-tabs'),
-  reconcile: reconcileChildren,
+  reconcile: reconcileTreeChildren,
   // Pane callers own focus, including close({ restoreFocus: false }).
   captureView: () => ({ scroll: captureScroll(tree, '.row, .new-tab-action') }),
   restoreView: (saved) => restoreScroll(tree, saved.scroll),
@@ -1219,18 +1434,44 @@ const treeRenderer = createFullTreeRenderer({
     else if (row.mode === 'tree') node = tabNode(row, children);
     else node = target = tabRow(row.tab, true, row.stats);
     target ||= node.querySelector('.row, .new-tab-action');
+    if (!treeRenderer.virtual) {
+      for (const name of ['aria-level', 'aria-posinset', 'aria-setsize'])
+        target.closest('[role="treeitem"]')?.removeAttribute(name);
+    }
     return { node, target };
   },
 
   renderSaved(nodes) {
-    const section = el('div', 'saved-search-results');
-    section.setAttribute('role', 'group');
-    section.setAttribute('aria-label', 'Saved for Later');
-    const heading = el('h2', '', 'Saved for Later');
-    heading.setAttribute('role', 'presentation');
-    section.append(heading, ...nodes);
-    return section;
+    if (!savedSearchSection) {
+      savedSearchSection = el('div', 'saved-search-results');
+      savedSearchSection.setAttribute('role', 'group');
+      savedSearchSection.setAttribute('aria-label', 'Saved for Later');
+      const heading = el('h2', '', 'Saved for Later');
+      heading.setAttribute('role', 'presentation');
+      savedSearchSection.append(heading);
+    }
+    reconcileTreeChildren(savedSearchSection, [savedSearchSection.firstElementChild, ...nodes]);
+    return savedSearchSection;
   },
+};
+
+const treeRenderer = createViewportTreeRenderer({
+  ...treeRendererOptions,
+  full: createFullTreeRenderer(treeRendererOptions),
+  begin: () => rowCache.begin(),
+  prepare: prepareViewportRows,
+  finish: finishRows,
+
+  reuse: (row) => {
+    rowCache.reuse(row.key);
+    usedWrappers.add(row.key);
+  },
+
+  retained: () => [
+    selected,
+    menuReturnFocus?.closest('[data-key]')?.dataset.key,
+    ...[...tree.querySelectorAll('.dragging, .move-complete')].map((row) => row.dataset.key),
+  ],
 });
 
 function updateTreeToggle(query) {
@@ -1478,6 +1719,7 @@ function patchMetadata(context) {
       treeRenderer.replaceTarget(row.key, groupRow(row.group, row.expanded));
   }
   if (audio.groups.has(state.view.scopeId)) renderBreadcrumbs(index.groups.get(state.view.scopeId));
+  if (audioChanges.length) treeRenderer.refreshWidth();
   return true;
 }
 
@@ -1510,18 +1752,22 @@ function renderBreadcrumbs(scope) {
 }
 
 function restoreRowFocus(key) {
-  treeRenderer.target(key)?.focus({ preventScroll: true });
+  if (document.activeElement?.closest('[data-key]')?.dataset.key === key) return;
+  treeRenderer.mount(key)?.focus({ preventScroll: true });
 }
 
 function releaseTree() {
   treeMotion.finishAll();
   treeRenderer.suspend();
+  savedSearchSection = undefined;
   projection = null;
   rowCache.clear();
+  leafPool.length = 0;
   wrappers.clear();
   usedWrappers.clear();
   treeTabs = [];
   index = undefined;
+  domainProjector.clear();
   audioInTabs.clear();
   audioInGroups.clear();
   previousRender = null;
@@ -1555,6 +1801,27 @@ window.addEventListener(
   },
   { once: true },
 );
+
+function finishRows() {
+  if (!projection.saved.length) savedSearchSection = undefined;
+  if (!treeRenderer.virtual || domainFilter || state.look.domains) leafPool.length = 0;
+  const savedTabIds = new Set();
+  if (!treeRenderer.virtual || projection.saved.length)
+    for (const tab of state.tabs) if (isSavedForLater(tab)) savedTabIds.add(tab.id);
+  rowCache.finish((key) => {
+    if (key.startsWith('pin:group:')) return index.groups.has(key.slice('pin:group:'.length));
+    const separator = key.indexOf(':');
+    const kind = key.slice(0, separator);
+    const id = key.slice(separator + 1);
+    if (kind === 'tab' || kind === 'pin' || kind === 'new-child-tab')
+      return index.byId.has(Number(id)) || (kind === 'tab' && savedTabIds.has(Number(id)));
+    return (kind === 'new-tab' && id === 'null') || index.groups.has(id);
+  });
+  wrappers.forEach((wrapper, key) => {
+    if (!usedWrappers.has(key) && !treeMotion.owns(wrapper.node)) wrappers.delete(key);
+  });
+  usedWrappers.clear();
+}
 
 function render(motionKey = null) {
   if (!state || disposed) return;
@@ -1616,8 +1883,13 @@ function render(motionKey = null) {
   if (nextMotionContext !== motionContext) treeMotion.finishAll();
   motionContext = nextMotionContext;
   treeMotion.prepare(!filtering && !drag && !changingTree ? motionKey : null);
-  index = createTreeIndex(state, query);
-  projection = projectTree(state, index, { query, domain: domainFilter, sort: domainSort });
+  const options = { query, domain: domainFilter, sort: domainSort };
+  // Domain query changes only need fresh text matches, not another full-tree
+  // index, hostname scan and sort of the unchanged collection.
+  projection = domainFilter
+    ? domainProjector.project(state, options)
+    : projectTree(state, createTreeIndex(state, query), options);
+  index = projection.index;
   // Folder menus must not retain destinations renamed, moved or removed elsewhere.
   if (folderMenuKey && folderMenuKey !== folderHierarchyKey()) closeMenu(true);
   updateTreeToggle(query);
@@ -1683,23 +1955,12 @@ function render(motionKey = null) {
     );
     tree.prepend(empty);
   }
-  const savedTabIds = new Set();
-  for (const tab of state.tabs) if (isSavedForLater(tab)) savedTabIds.add(tab.id);
-  rowCache.finish((key) => {
-    if (key.startsWith('pin:group:')) return index.groups.has(key.slice('pin:group:'.length));
-    const separator = key.indexOf(':');
-    const kind = key.slice(0, separator);
-    const id = key.slice(separator + 1);
-    if (kind === 'tab' || kind === 'pin' || kind === 'new-child-tab')
-      return index.byId.has(Number(id)) || (kind === 'tab' && savedTabIds.has(Number(id)));
-    return (kind === 'new-tab' && id === 'null') || index.groups.has(id);
-  });
+  if (!treeRenderer.virtual) finishRows();
   // Native closes or another sidebar can remove the row owning an open menu.
   if (!$('menu').hidden && menuReturnFocus && !menuReturnFocus.isConnected) closeMenu();
-  for (const key of wrappers.keys()) if (!usedWrappers.has(key)) wrappers.delete(key);
-  usedWrappers.clear();
   $('new-tab').title = scope ? `New tab in ${scope.name}` : 'New tab';
   tree.scrollTop = searchScroll ?? scroll;
+  if (treeRenderer.virtual) treeRenderer.refresh();
   if (suspendedTree && searchScroll === undefined) treeRenderer.restore(suspendedTree);
   suspendedTree = undefined;
   searchScroll = undefined;
@@ -1755,6 +2016,7 @@ function leaveDomain({ restoreFocus = true } = {}) {
   cancelGroupClick();
   closeMenu();
   domainFilter = null;
+  domainProjector.clear();
   domainFromDirectory = false;
   domainVisibleTabs = [];
   $('domain-search').value = '';
@@ -1766,7 +2028,7 @@ function leaveDomain({ restoreFocus = true } = {}) {
   render();
   layoutBreadcrumbs();
   if (restoreFocus) {
-    const row = selected && treeRenderer.target(selected);
+    const row = selected && treeRenderer.mount(selected);
     (row || $('scope-heading') || $('home')).focus({ preventScroll: true });
   }
 }
@@ -1777,7 +2039,7 @@ async function showTabInFolder(id) {
   await enter(tab.groupId);
   const next = await action('activateTab', { id, reveal: true });
   if (!next) return;
-  const row = treeRenderer.target(`tab:${id}`);
+  const row = treeRenderer.mount(`tab:${id}`);
   if (row) {
     selectRow(row);
     treeRenderer.ensureVisible(`tab:${id}`);
@@ -1787,27 +2049,27 @@ async function showTabInFolder(id) {
 function moveTreeFocus(event, row) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return false;
   event.preventDefault();
-  const rows = (projection?.visibleRows || [])
-    .map((row) => treeRenderer.target(row.key))
-    .filter(Boolean);
-  const index = rows.indexOf(row);
+  const rows = projection?.visibleRows || [];
+  const position = rows.findIndex((item) => item.key === row.dataset.key);
   const next =
     event.key === 'Home'
       ? rows[0]
       : event.key === 'End'
         ? rows.at(-1)
-        : rows[index + (event.key === 'ArrowDown' ? 1 : -1)];
-  if (next) selectRow(next);
+        : rows[position + (event.key === 'ArrowDown' ? 1 : -1)];
+  if (next) {
+    treeRenderer.ensureVisible(next.key);
+    const target = treeRenderer.mount(next.key);
+    if (target) selectRow(target);
+  }
   return true;
 }
 
 function rowKey(event, row, kind, id) {
   cancelGroupClick();
   if (event.target !== row || moveTreeFocus(event, row)) return;
-  const rows = (projection?.visibleRows || [])
-    .map((row) => treeRenderer.target(row.key))
-    .filter(Boolean);
-  const index = rows.indexOf(row);
+  const rows = projection?.visibleRows || [];
+  const index = rows.findIndex((item) => item.key === row.dataset.key);
   const tab = kind === 'tab' ? state.tabs.find((tab) => tab.id === id) : null;
   const hasChildren =
     !domainFilter &&
@@ -1824,7 +2086,10 @@ function rowKey(event, row, kind, id) {
   } else if (event.key === 'ArrowRight' && hasChildren) {
     event.preventDefault();
     if (collapsed) toggle();
-    else if (rows[index + 1]) selectRow(rows[index + 1]);
+    else if (rows[index + 1]) {
+      treeRenderer.ensureVisible(rows[index + 1].key);
+      selectRow(treeRenderer.mount(rows[index + 1].key));
+    }
   } else if (event.key === 'ArrowLeft' && !event.altKey) {
     event.preventDefault();
     if (domainFilter) return;
@@ -1834,9 +2099,12 @@ function rowKey(event, row, kind, id) {
         tab?.parentTabId != null
           ? `tab:${tab.parentTabId}`
           : `group:${kind === 'group' ? groupById(state, id)?.parentId : tab?.groupId}`;
-      const parentRow = rows.find((item) => item.dataset.key === parentKey);
-      if (parentRow) selectRow(parentRow);
-      else parent();
+      const parentRow =
+        rows.some((item) => item.key === parentKey) && treeRenderer.mount(parentKey);
+      if (parentRow) {
+        treeRenderer.ensureVisible(parentKey);
+        selectRow(parentRow);
+      } else parent();
     }
   } else if (event.key === 'F2' && kind === 'group') {
     event.preventDefault();
@@ -2314,6 +2582,7 @@ function dropTarget(node, kind, id) {
 
 function showMovedItem(source) {
   if (!source) return false;
+  if (source.kind !== 'pin-group') treeRenderer.ensureVisible(`${source.kind}:${source.id}`);
   const selector =
     source.kind === 'pin-group'
       ? `[data-pin-kind="group"][data-pin-id="${CSS.escape(source.id)}"]`

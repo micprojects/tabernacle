@@ -8,6 +8,7 @@ page.on('pageerror', (error) => errors.push(error.message));
 try {
   // Expose timing only in the served test response, never in the extension.
   const source = await readFile('extension/src/sidebar.js', 'utf8');
+  expect(source.match(/createTreeIndex\(state, query\)/g)).toHaveLength(1);
   const transferSource = await readFile('extension/src/snapshot-transfer.js', 'utf8');
   await page.route('**/extension/src/snapshot-transfer.js', (route) =>
     route.fulfill({
@@ -26,8 +27,8 @@ try {
           .replace('const layoutValues =', 'let layoutValues =')
           .replace('const metadataValues =', 'let metadataValues =')
           .replace(
-            'index = createTreeIndex(state, query);',
-            'window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1; index = createTreeIndex(state, query);',
+            'createTreeIndex(state, query)',
+            '(window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1, createTreeIndex(state, query))',
           ) +
         String.raw`
 window.perfValueArrays = { layout: 0, metadata: 0 };
@@ -53,14 +54,16 @@ window.sidebarProjectionTest = {
     const visible = projection.visibleRows.map((row) => row.key);
     const mounted = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')]
       .map((row) => row.dataset.key);
-    if (JSON.stringify(visible) !== JSON.stringify(mounted))
-      throw new Error('Logical navigation differs from mounted visible row order');
-    for (const row of [...projection.visibleRows, ...projection.pins])
-      if (!treeRenderer.target(row.key)?.isConnected || treeRenderer.target(row.key).dataset.key !== row.key)
-        throw new Error('Renderer lost live target or stable key ' + row.key);
+    const expected = treeRenderer.virtual ? visible.filter(key => mounted.includes(key)) : visible;
+    if (JSON.stringify(expected) !== JSON.stringify(mounted))
+      throw new Error('Mounted rows differ from logical navigation order');
+    for (const key of [...mounted, ...projection.pins.map(row => row.key)])
+      if (!treeRenderer.target(key)?.isConnected || treeRenderer.target(key).dataset.key !== key)
+        throw new Error('Renderer lost live target or stable key ' + key);
     return {
       released: false,
       visible,
+      mounted,
       logicalTabs: projection.logicalRows.filter((row) => row.kind === 'tab').length,
       matching: projection.filterTabIds,
       close: projection.closeTabIds,
@@ -69,6 +72,8 @@ window.sidebarProjectionTest = {
     };
   },
   capture: () => treeRenderer.capture(),
+  reveal: key => treeRenderer.ensureVisible(key),
+  mount: key => treeRenderer.mount(key),
   panes: { later: laterView, domains: domainsView },
 };
 window.measureSidebarLookupReads = (next) => {
@@ -232,12 +237,20 @@ window.measureSidebarLookupReads = (next) => {
     };
   });
   await page.goto(`${base}/extension/sidebar.html`);
-  await expect(page.locator('.tab-row')).toHaveCount(1000);
+  await expect
+    .poll(async () => (await page.evaluate(() => sidebarProjectionTest.inspect())).matching?.length)
+    .toBe(1000);
+  expect(await page.locator('.tab-row').count()).toBeLessThan(100);
+  expect(await page.evaluate(() => window.perfIndexBuilds)).toBeGreaterThan(0);
   const checkProjection = () => page.evaluate(() => sidebarProjectionTest.inspect());
   expect((await checkProjection()).logicalTabs).toBe(1000);
   expect((await checkProjection()).matching).toHaveLength(1000);
-  // Full rendering preserves offscreen text for native browser Find.
-  expect(await page.evaluate(() => window.find('Tab 999', false, false, true))).toBe(true);
+  // Application search must include rows outside the mounted viewport.
+  await page.locator('#search-toggle').click();
+  await page.locator('#search').fill('Tab 999');
+  await expect(page.locator('[data-key="tab:1000"]')).toBeVisible();
+  expect((await checkProjection()).matching).toEqual([1000]);
+  await page.locator('#search-close').click();
   await page.evaluate(() => {
     getSelection().removeAllRanges();
     document.getElementById('tree').scrollTop = 0;
@@ -255,7 +268,10 @@ window.measureSidebarLookupReads = (next) => {
   });
   await page.waitForTimeout(100);
   expect(await page.evaluate(() => perfTest.calls.snapshot || 0)).toBe(0);
-  await expect(page.locator('.tab-row')).toHaveCount(1000);
+  await expect
+    .poll(async () => (await page.evaluate(() => sidebarProjectionTest.inspect())).matching?.length)
+    .toBe(1000);
+  expect(await page.locator('.tab-row').count()).toBeLessThan(100);
   await expect(page.locator('[data-key="tab:2"] .label')).toHaveText('Tab 1');
   await page.evaluate(() => {
     perfTest.hidden = false;
@@ -353,9 +369,10 @@ window.measureSidebarLookupReads = (next) => {
   );
   await page.evaluate(() => sidebarVisibilityTest.leaveDomain());
   await page.evaluate(() => sidebarVisibilityTest.action('saveForLater', { id: 2 }));
-  await page.evaluate(() =>
-    document.querySelector('[data-key="tab:500"]').scrollIntoView({ block: 'start' }),
-  );
+  await page.evaluate(() => {
+    sidebarProjectionTest.reveal('tab:500');
+    document.querySelector('[data-key="tab:500"]').scrollIntoView({ block: 'start' });
+  });
   const priorAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
   await page.locator('#later-toggle').click();
   expect(await checkProjection()).toEqual({ released: true, target: false });
@@ -422,14 +439,18 @@ window.measureSidebarLookupReads = (next) => {
     '✓ Renderer scroll restoration preserves explicit pane focus and never refocuses an old trigger during pane switches',
   );
   await page.evaluate(() => sidebarVisibilityTest.action('returnFromLater', { id: 2 }));
-  await expect(page.locator('.tab-row')).toHaveCount(1000);
+  await expect
+    .poll(async () => (await page.evaluate(() => sidebarProjectionTest.inspect())).matching?.length)
+    .toBe(1000);
+  expect(await page.locator('.tab-row').count()).toBeLessThan(100);
   await page.waitForTimeout(60);
   console.log(
-    '✓ Hidden sidebar coalesces changes, catches background restarts, preserves full DOM, completes actions/recovery and supplies live close criteria; visible unfocused sidebar refreshes',
+    '✓ Hidden sidebar coalesces changes, catches background restarts, preserves its mounted rows, completes actions/recovery and supplies live close criteria; visible unfocused sidebar refreshes',
   );
 
   await page.evaluate(() => {
-    window.retainedRow = document.querySelector('[data-key="tab:500"]');
+    sidebarProjectionTest.reveal('tab:3');
+    window.retainedRow = document.querySelector('[data-key="tab:3"]');
     window.retainedLabel = retainedRow.querySelector('.label');
     window.perfTest.calls = {};
     window.perfIndexBuilds = 0;
@@ -439,7 +460,7 @@ window.measureSidebarLookupReads = (next) => {
   expect(
     await page.evaluate(
       () =>
-        retainedRow === document.querySelector('[data-key="tab:500"]') &&
+        retainedRow === document.querySelector('[data-key="tab:3"]') &&
         retainedLabel === retainedRow.querySelector('.label'),
     ),
   ).toBe(true);
@@ -455,11 +476,14 @@ window.measureSidebarLookupReads = (next) => {
   await page.locator('#search').fill('Updated title');
   await expect(page.locator('.tab-row')).toHaveCount(1);
   await page.locator('#search').fill('');
-  await expect(page.locator('.tab-row')).toHaveCount(1000);
+  await expect
+    .poll(async () => (await page.evaluate(() => sidebarProjectionTest.inspect())).matching?.length)
+    .toBe(1000);
+  expect(await page.locator('.tab-row').count()).toBeLessThan(100);
   expect(
     await page.evaluate(
       () =>
-        retainedRow === document.querySelector('[data-key="tab:500"]') &&
+        retainedRow === document.querySelector('[data-key="tab:3"]') &&
         retainedLabel === retainedRow.querySelector('.label'),
     ),
   ).toBe(true);
@@ -506,8 +530,10 @@ window.measureSidebarLookupReads = (next) => {
     };
     field.value = 'Saved lookup';
     measureSidebarUpdate(saved);
-    const survivor = document.querySelector('[data-key="tab:500"]');
-    const removed = document.querySelector('[data-key="tab:501"]');
+    const survivor = sidebarProjectionTest.mount('tab:3');
+    const removed = sidebarProjectionTest.mount('tab:501');
+    if (!survivor || !removed)
+      throw new Error('Saved lookup rows must mount before retention checks');
     field.value = 'No matching lookup';
     const hiddenReads = measureSidebarLookupReads({
       ...saved,
@@ -515,8 +541,8 @@ window.measureSidebarLookupReads = (next) => {
     });
     field.value = 'Saved lookup';
     measureSidebarUpdate(saved);
-    const retained = survivor === document.querySelector('[data-key="tab:500"]');
-    const evicted = removed !== document.querySelector('[data-key="tab:501"]');
+    const retained = survivor === sidebarProjectionTest.mount('tab:3');
+    const evicted = removed !== sidebarProjectionTest.mount('tab:501');
     field.value = '';
     const groups = Array.from({ length: 300 }, (_, i) => ({
       id: 'lookup-group-' + i,
@@ -532,7 +558,9 @@ window.measureSidebarLookupReads = (next) => {
       view: { ...original.view, scopeId: null, collapsed: groups.map((group) => group.id) },
     };
     const foldedReads = measureSidebarLookupReads(folders);
-    const foldedCount = document.querySelectorAll('.group-row').length;
+    const foldedCount = sidebarProjectionTest
+      .inspect()
+      .visible.filter((key) => key.startsWith('group:')).length;
     const allFolded = [...document.querySelectorAll('.group-row')].every(
       (row) => row.getAttribute('aria-expanded') === 'false',
     );
@@ -651,7 +679,7 @@ window.measureSidebarLookupReads = (next) => {
       return document.querySelector('#scope-heading')?.textContent;
     }),
   ).toBe('Group 0');
-  await expect(page.locator('.tab-row')).toHaveCount(100);
+  await expect.poll(async () => (await checkProjection()).matching.length).toBe(100);
   await page.evaluate(async () => {
     measureSidebarUpdate(await perfTest.snapshot());
     perfTest.delay = false;
@@ -666,13 +694,14 @@ window.measureSidebarLookupReads = (next) => {
   await page.locator('#home').click();
   await expect(page.locator('#scope-heading')).toHaveCount(0);
   await expect(group).toHaveAttribute('aria-expanded', 'true');
+  await page.evaluate(() => sidebarProjectionTest.reveal('group:g1'));
   await page.locator('[data-key="group:g1"]').dblclick();
   await expect(page.locator('#scope-heading')).toHaveText('Group 1');
   for (const id of [null, 'g1']) {
     await page.evaluate(() => perfTest.navigationRequests.shift().resolve());
     await page.waitForFunction((id) => perfTest.navigationRequests[0]?.id === id, id);
     await expect(page.locator('#scope-heading')).toHaveText('Group 1');
-    await expect(page.locator('.tab-row')).toHaveCount(100);
+    await expect.poll(async () => (await checkProjection()).matching.length).toBe(100);
   }
   await page.evaluate(() => {
     perfTest.delayNavigation = false;
@@ -693,6 +722,7 @@ window.measureSidebarLookupReads = (next) => {
     perfTest.delayNavigation = true;
     perfTest.failNavigation = true;
   });
+  await page.evaluate(() => sidebarProjectionTest.reveal('group:g2'));
   await page.locator('[data-key="group:g2"]').dblclick();
   await expect(page.locator('#scope-heading')).toHaveText('Group 2');
   await page.waitForFunction(() => perfTest.navigationRequests.length === 1);
@@ -709,6 +739,7 @@ window.measureSidebarLookupReads = (next) => {
   console.log('✓ Failed navigation restores the confirmed folder and reports the error');
 
   await page.evaluate(() => {
+    sidebarProjectionTest.reveal('group:g9');
     const row = document.querySelector('[data-key="group:g9"]');
     row.scrollIntoView({ block: 'start' });
   });
@@ -721,6 +752,7 @@ window.measureSidebarLookupReads = (next) => {
   await expect(page.locator('#scope-heading')).toBeHidden();
   await page.waitForTimeout(60);
   await page.evaluate(() => {
+    sidebarProjectionTest.reveal('tab:2');
     perfTest.restart();
     return perfTest.api.tabs.update(2, { title: 'Changed after background restart' });
   });
@@ -1185,7 +1217,12 @@ window.measureSidebarLookupReads = (next) => {
   for (const rejected of [false, true]) {
     if (rejected) {
       await page.reload();
-      await expect(page.locator('.tab-row')).toHaveCount(1000);
+      await expect
+        .poll(
+          async () => (await page.evaluate(() => sidebarProjectionTest.inspect())).matching?.length,
+        )
+        .toBe(1000);
+      expect(await page.locator('.tab-row').count()).toBeLessThan(100);
     }
     await page.evaluate((rejected) => {
       perfTest.holdSnapshot = true;
