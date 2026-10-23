@@ -26,6 +26,58 @@ const summaries = (index) => ({
   groups: [...index.groupStats].map(([id, stats]) => [id, stats.audio]),
 });
 
+test('audio totals ignore sibling order while visible rows keep their declared order', () => {
+  const state = fixture();
+  state.tabs = [
+    state.tabs[4],
+    state.tabs[2],
+    state.tabs[5],
+    state.tabs[3],
+    state.tabs[1],
+    state.tabs[0],
+  ];
+  const original = structuredClone(state);
+  const index = createTreeIndex(state);
+  assert.deepEqual(
+    [...index.audio].sort(([a], [b]) => a - b),
+    [
+      [1, 2],
+      [2, 1],
+      [3, 0],
+      [4, 1],
+      [5, 0],
+    ],
+  );
+  assert.deepEqual(
+    [...index.groupStats].map(([id, stats]) => [id, stats.audio]),
+    [
+      ['a', 2],
+      ['b', 2],
+      ['c', 0],
+    ],
+  );
+  assert.deepEqual(
+    index.roots.get('b').map((tab) => tab.id),
+    [1, 5],
+  );
+  assert.deepEqual(
+    index.children.get(1).map((tab) => tab.id),
+    [2],
+  );
+  assert.deepEqual(state, original);
+
+  const silent = createTreeIndex({
+    ...state,
+    tabs: state.tabs.map((tab) => ({ ...tab, mutedInfo: { muted: true } })),
+  });
+  assert([...silent.audio.values()].every((count) => count === 0));
+  assert([...silent.groupStats.values()].every((stats) => stats.audio === 0));
+  assert.deepEqual(
+    silent.roots.get('b').map((tab) => tab.id),
+    [1, 5],
+  );
+});
+
 test('audio deltas match full summaries for nested tabs, pins, muted states and saved tabs', () => {
   let state = fixture();
   const index = createTreeIndex(state);

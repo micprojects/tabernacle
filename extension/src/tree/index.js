@@ -4,13 +4,17 @@ import { isSavedForLater, sortTabs, unpinnedTabTree } from '../model.js';
 
 function indexTabs(tabs) {
   const byId = new Map(tabs.map((tab) => [tab.id, tab]));
+  return { byId, children: indexChildren(sortTabs(tabs), byId) };
+}
+
+function indexChildren(tabs, byId) {
   const children = new Map();
-  for (const tab of sortTabs(tabs)) {
+  for (const tab of tabs) {
     const parent = byId.has(tab.parentTabId) ? tab.parentTabId : null;
     if (!children.has(parent)) children.set(parent, []);
     children.get(parent).push(tab);
   }
-  return { byId, children };
+  return children;
 }
 
 // Iterative traversal avoids a stack limit for long chains of opener tabs.
@@ -34,7 +38,7 @@ export function createTreeIndex(state, query = '') {
   state = { ...state, tabs: state.tabs.filter((tab) => !isSavedForLater(tab)) };
   const tabs = unpinnedTabTree(state.tabs);
   const visible = indexTabs(tabs);
-  const all = indexTabs(state.tabs);
+  const all = new Map(state.tabs.map((tab) => [tab.id, tab]));
   const tabStats = new Map(
     tabs.map((tab) => [
       tab.id,
@@ -57,9 +61,14 @@ export function createTreeIndex(state, query = '') {
   const audio = new Map(
     state.tabs.map((tab) => [tab.id, Number(Boolean(tab.audible && !tab.mutedInfo?.muted))]),
   );
-  for (const tab of descendantsFirst(all.children.get(null) || [], all.children)) {
-    if (all.byId.has(tab.parentTabId))
-      audio.set(tab.parentTabId, audio.get(tab.parentTabId) + audio.get(tab.id));
+  // Audio totals do not depend on sibling order. Silent trees need no second
+  // child index or traversal; every tab's count is already zero.
+  if (state.tabs.some((tab) => tab.audible && !tab.mutedInfo?.muted)) {
+    const children = indexChildren(state.tabs, all);
+    for (const tab of descendantsFirst(children.get(null) || [], children)) {
+      if (all.has(tab.parentTabId))
+        audio.set(tab.parentTabId, audio.get(tab.parentTabId) + audio.get(tab.id));
+    }
   }
   const folders = createFolderIndex(state);
   const groups = folders.byId;
@@ -98,7 +107,7 @@ export function createTreeIndex(state, query = '') {
   }
   return {
     tabs,
-    byId: all.byId,
+    byId: all,
     children: visible.children,
     roots,
     groups,
