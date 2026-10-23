@@ -75,6 +75,64 @@ test('one metadata change replaces one immutable row and preserves older snapsho
   assert(Object.isFrozen(after.tabs[0].futureNativeField.nested));
 });
 
+test('unchanged pin snapshots avoid rescanning tabs without caching session reads', async (t) => {
+  const f = fixture(t);
+  const first = await f.read();
+  await f.read();
+  let scans = 0;
+  const filter = Array.prototype.filter;
+  Array.prototype.filter = function (...args) {
+    if (this === first.tabs) scans++;
+    return filter.apply(this, args);
+  };
+  try {
+    assert.equal((await f.read()).pins, first.pins);
+    assert.equal(scans, 0, 'Unchanged pins do not scan every tab');
+  } finally {
+    Array.prototype.filter = filter;
+  }
+  const get = f.api.sessions.getWindowValue;
+  f.api.sessions.getWindowValue = async () => {
+    throw new Error('Window session unavailable');
+  };
+  await assert.rejects(f.read(), /Window session unavailable/);
+  f.api.sessions.getWindowValue = get;
+  assert.deepEqual((await f.read()).pins, first.pins);
+
+  await f.api.tabs.update(1, { pinned: false });
+  const after = await f.read();
+  assert(!after.pins.some((pin) => pin.id === first.tabs[0].treeId));
+  assert(first.pins.some((pin) => pin.id === first.tabs[0].treeId));
+});
+
+test('warm pin snapshots honour new session layouts and retry failed reconciliation writes', async (t) => {
+  const f = fixture(t);
+  const id = f.setup.groups[0].id;
+  await f.controller.request({ type: 'setGroupPin', windowId: 1, id, action: 'open' });
+  const before = await f.read();
+  await f.read();
+  const group = { kind: 'group', id };
+  const waiting = { kind: 'tab', id: 'not-restored-yet' };
+  await f.api.sessions.setWindowValue(1, 'tabernacle.view.v1', {
+    ...before.view,
+    pinLayout: [waiting, group],
+  });
+  const save = f.api.sessions.setWindowValue;
+  f.api.sessions.setWindowValue = async () => {
+    throw new Error('Pin layout save failed');
+  };
+  await assert.rejects(f.read(), /Pin layout save failed/);
+  f.api.sessions.setWindowValue = save;
+  const after = await f.read();
+  assert.deepEqual(after.pins[0], group);
+  assert.deepEqual(after.view.pinLayout.slice(0, 2), [waiting, group]);
+  assert(!after.pins.some((pin) => pin.id === waiting.id));
+  assert.deepEqual((await f.read()).pins, after.pins);
+  const other = await f.controller.request({ type: 'snapshot', windowId: 2 });
+  assert.notDeepEqual(other.pins, after.pins);
+  assert.deepEqual((await f.read()).pins, after.pins);
+});
+
 test('transport clones no unchanged tab rows and only one changed metadata row', async (t) => {
   const f = fixture(t);
   await f.read();
