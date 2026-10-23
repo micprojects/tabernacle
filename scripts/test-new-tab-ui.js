@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { startUiTest } from './ui-test.js';
 
 const { page, base, close } = await startUiTest({ viewport: { width: 1440, height: 1080 } });
@@ -6,6 +7,18 @@ const errors = [];
 page.context().on('page', (page) => page.on('pageerror', (error) => errors.push(error.message)));
 page.on('pageerror', (error) => errors.push(error.message));
 try {
+  const source = await readFile('extension/src/new-tab-page.js', 'utf8');
+  await page.context().route('**/extension/src/new-tab-page.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body:
+        source.replace(
+          'function domain(url) {',
+          'function domain(url) { window.faviconDomainCalls = (window.faviconDomainCalls || 0) + 1;',
+        ) +
+        '\nwindow.faviconLookupTest = (next) => { state = { ...next, newTab: normalizeNewTab(next.newTab) }; draft = undefined; window.faviconDomainCalls = 0; render(); return window.faviconDomainCalls; };',
+    }),
+  );
   await page.goto(`${base}/extension/settings.html?demo#new-tab`);
   await expect(page.locator('#new-tab-fields')).toBeEnabled();
   await expect(page.getByRole('switch')).not.toBeChecked();
@@ -127,6 +140,83 @@ try {
   await expect(live.locator('html')).toHaveAttribute('data-color-scheme', 'light');
   await live.screenshot({ path: 'test-results/new-tab-light.png', fullPage: true });
   await page.screenshot({ path: 'test-results/new-tab-settings.png', fullPage: true });
+  const faviconLookup = await live.evaluate(() => {
+    const art = (colour) =>
+      'data:image/svg+xml,' +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="' +
+          colour +
+          '"/></svg>',
+      );
+    const tabs = Array.from({ length: 1000 }, (_, i) => ({
+      id: i + 1,
+      title: 'Tab ' + i,
+      url: 'https://host' + i + '.example.com/',
+      favIconUrl: art('red'),
+    }));
+    tabs[0].url = 'https://www.duplicate.example.com/first';
+    tabs[0].favIconUrl = undefined;
+    tabs[1].url = 'https://duplicate.example.com/second';
+    tabs[1].favIconUrl = art('blue');
+    const links = [
+      { id: 'duplicate', name: 'Duplicate', url: 'https://duplicate.example.com/' },
+      ...Array.from({ length: 59 }, (_, i) => ({
+        id: 'site' + i,
+        name: 'Site ' + i,
+        url: tabs[999 - i].url,
+      })),
+    ];
+    const next = {
+      tabs,
+      groups: [],
+      folderPins: [],
+      containers: [],
+      recentlyClosed: [],
+      look: { colorScheme: 'light' },
+      newTab: { links, weatherEnabled: false },
+    };
+    const read = (key) =>
+      document.querySelector('[data-key="link-' + key + '"] img')?.getAttribute('src') || null;
+    const domainCalls = faviconLookupTest(next);
+    const firstMissing = read('duplicate');
+    const farMatch = read('site0');
+    [tabs[0], tabs[1]] = [tabs[1], tabs[0]];
+    faviconLookupTest(next);
+    const reordered = read('duplicate');
+    tabs.at(-1).favIconUrl = art('green');
+    faviconLookupTest(next);
+    const updated = read('site0');
+    tabs.pop();
+    faviconLookupTest(next);
+    const removed = read('site0');
+    next.newTab.links = [links[0]];
+    const firstMatchCalls = faviconLookupTest(next);
+    next.newTab.links = [];
+    const noLinkCalls = faviconLookupTest(next);
+    return {
+      domainCalls,
+      firstMissing,
+      farMatch,
+      reordered,
+      updated,
+      removed,
+      firstMatchCalls,
+      noLinkCalls,
+      expected: { red: art('red'), blue: art('blue'), green: art('green') },
+    };
+  });
+  expect(faviconLookup.domainCalls).toBeLessThan(1200);
+  expect(faviconLookup.firstMissing).toBeNull();
+  expect(faviconLookup.farMatch).toBe(faviconLookup.expected.red);
+  expect(faviconLookup.reordered).toBe(faviconLookup.expected.blue);
+  expect(faviconLookup.updated).toBe(faviconLookup.expected.green);
+  expect(faviconLookup.removed).toBeNull();
+  expect(faviconLookup.firstMatchCalls).toBe(2);
+  expect(faviconLookup.noLinkCalls).toBe(0);
+  console.log(
+    '✓ New tab favicon matching stays linear and preserves first-match, reorder, edit and removal behaviour',
+  );
+
   expect(errors).toEqual([]);
   console.log(
     '✓ New tab UI: links CRUD/reorder, unsafe URL validation, drafts/preview/discard, local search, live preferences, weather setup, light/dark and 320px layout',

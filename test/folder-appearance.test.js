@@ -190,3 +190,28 @@ test('customisation creates no container and validates before any folder or cont
   assert.deepEqual(await api.contextualIdentities.query({}), []);
   controller.dispose();
 });
+
+test('row masks preserve the canonical Acorn path geometry and fill rules', async () => {
+  const sprite = await readFile(
+    new URL('../extension/icons/ui/acorn.svg', import.meta.url),
+    'utf8',
+  );
+  for (const name of ['close-12', 'globe-16']) {
+    const standalone = await readFile(
+      new URL(`../extension/icons/ui/${name}.svg`, import.meta.url),
+      'utf8',
+    );
+    const symbol = sprite.match(
+      new RegExp(`<symbol id="${name}" viewBox="([^"]+)">([\\s\\S]*?)</symbol>`),
+    );
+    assert(symbol, name);
+    assert.equal(standalone.match(/viewBox="([^"]+)"/)[1], symbol[1]);
+    const paths = (source) =>
+      [...source.matchAll(/<path\s+([\s\S]*?)\/>/g)].map(([, attributes]) =>
+        Object.fromEntries(
+          [...attributes.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, key, value]) => [key, value]),
+        ),
+      );
+    assert.deepEqual(paths(standalone), paths(symbol[2]), name);
+  }
+});

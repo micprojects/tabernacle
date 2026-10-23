@@ -22,10 +22,17 @@ try {
     route.fulfill({
       contentType: 'application/javascript',
       body:
-        source.replace(
-          'index = createTreeIndex(state, query);',
-          'window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1; index = createTreeIndex(state, query);',
-        ) +
+        source
+          .replace('const layoutValues =', 'let layoutValues =')
+          .replace('const metadataValues =', 'let metadataValues =')
+          .replace(
+            'index = createTreeIndex(state, query);',
+            'window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1; index = createTreeIndex(state, query);',
+          ) +
+        String.raw`
+window.perfValueArrays = { layout: 0, metadata: 0 };
+layoutValues = ((read) => (tab) => { perfValueArrays.layout++; return read(tab); })(layoutValues);
+metadataValues = ((read) => (tab) => { perfValueArrays.metadata++; return read(tab); })(metadataValues);` +
         '\nwindow.measureSidebarUpdate = (next) => { acceptState(next); const start = performance.now(); render(); return performance.now() - start; };' +
         '\nwindow.forceFullSidebarRender = () => { previousRender = null; render(); };' +
         '\nwindow.sidebarVisibilityTest = { action, domain: filterByDomain, leaveDomain, state: () => ({ generation: state.generation, focused: windowFocused }) };' +
@@ -40,6 +47,30 @@ window.sidebarReleaseProbe = {
   inspect: () => ({ disposed, hasState: Boolean(state), hasConfirmed: Boolean(confirmedState) }),
 };` +
         String.raw`
+window.sidebarProjectionTest = {
+  inspect() {
+    if (!projection) return { released: true, target: Boolean(treeRenderer.target('tab:1')) };
+    const visible = projection.visibleRows.map((row) => row.key);
+    const mounted = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')]
+      .map((row) => row.dataset.key);
+    if (JSON.stringify(visible) !== JSON.stringify(mounted))
+      throw new Error('Logical navigation differs from mounted visible row order');
+    for (const row of [...projection.visibleRows, ...projection.pins])
+      if (!treeRenderer.target(row.key)?.isConnected || treeRenderer.target(row.key).dataset.key !== row.key)
+        throw new Error('Renderer lost live target or stable key ' + row.key);
+    return {
+      released: false,
+      visible,
+      logicalTabs: projection.logicalRows.filter((row) => row.kind === 'tab').length,
+      matching: projection.filterTabIds,
+      close: projection.closeTabIds,
+      pins: projection.pins.map((row) => row.key),
+      saved: projection.saved.map((row) => row.id),
+    };
+  },
+  capture: () => treeRenderer.capture(),
+  panes: { later: laterView, domains: domainsView },
+};
 window.measureSidebarLookupReads = (next) => {
   acceptState(next);
   const reads = { tabs: 0, collapsed: 0 };
@@ -62,6 +93,22 @@ window.measureSidebarLookupReads = (next) => {
   );
   await page.addInitScript(() => {
     const listeners = new Set();
+    const addListener = EventTarget.prototype.addEventListener;
+    const rowListeners = new WeakMap();
+    window.rowListenerCount = () =>
+      [
+        ...document.querySelectorAll(
+          '.row, .row *, .later-row, .later-row *, .domains-row, .domains-row *',
+        ),
+      ].reduce((sum, node) => sum + (rowListeners.get(node) || 0), 0);
+    window.treeListenerAdds = 0;
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      if (this instanceof Element) {
+        if (this.id === 'tree') treeListenerAdds++;
+        if (type !== 'error') rowListeners.set(this, (rowListeners.get(this) || 0) + 1);
+      }
+      return addListener.call(this, type, listener, options);
+    };
     const testing = (window.perfTest = {
       calls: {},
       delay: false,
@@ -186,6 +233,17 @@ window.measureSidebarLookupReads = (next) => {
   });
   await page.goto(`${base}/extension/sidebar.html`);
   await expect(page.locator('.tab-row')).toHaveCount(1000);
+  const checkProjection = () => page.evaluate(() => sidebarProjectionTest.inspect());
+  expect((await checkProjection()).logicalTabs).toBe(1000);
+  expect((await checkProjection()).matching).toHaveLength(1000);
+  // Full rendering preserves offscreen text for native browser Find.
+  expect(await page.evaluate(() => window.find('Tab 999', false, false, true))).toBe(true);
+  await page.evaluate(() => {
+    getSelection().removeAllRanges();
+    document.getElementById('tree').scrollTop = 0;
+  });
+  expect(await page.evaluate(() => rowListenerCount())).toBe(0);
+  const initialRootListeners = await page.evaluate(() => treeListenerAdds);
   await page.waitForTimeout(60);
   const priorGeneration = await page.evaluate(() => sidebarVisibilityTest.state().generation);
   await page.evaluate(async () => {
@@ -280,16 +338,89 @@ window.measureSidebarLookupReads = (next) => {
   await page.locator('#search').fill('Tab 9');
   await expect(page.locator('#tree')).toHaveClass(/searching/);
   await checkHiddenFilter({ search: true, query: 'Tab 9', scopeId: null });
+  expect((await checkProjection()).matching).toEqual(
+    await page.evaluate(async () => {
+      const { searchTabOrder } = await import('/extension/src/tab-collection.js');
+      return searchTabOrder(await perfTest.snapshot(), 'Tab 9');
+    }),
+  );
   await page.locator('#search-close').click();
   await page.evaluate(() => sidebarVisibilityTest.domain('example.com', 2));
   await expect(page.locator('#domain-header')).toBeVisible();
   await checkHiddenFilter({ domain: 'example.com', query: '', sort: 'newest' });
+  expect((await checkProjection()).matching).toEqual(
+    (await page.evaluate(() => perfTest.closeFilter())).tabIds,
+  );
   await page.evaluate(() => sidebarVisibilityTest.leaveDomain());
   await page.evaluate(() => sidebarVisibilityTest.action('saveForLater', { id: 2 }));
+  await page.evaluate(() =>
+    document.querySelector('[data-key="tab:500"]').scrollIntoView({ block: 'start' }),
+  );
+  const priorAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
   await page.locator('#later-toggle').click();
+  expect(await checkProjection()).toEqual({ released: true, target: false });
   await expect(page.locator('.later-row')).toHaveCount(1);
   await checkHiddenFilter({ later: true, query: '', sort: 'newest' });
   await page.locator('#later-close').click();
+  const restoredAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
+  expect(restoredAnchor.key).toBe(priorAnchor.key);
+  expect(Math.abs(restoredAnchor.offset - priorAnchor.offset)).toBeLessThan(1);
+  await checkProjection();
+  const paneFocus = await page.evaluate(() => {
+    const panes = sidebarProjectionTest.panes;
+    // The header (including Home) is hidden while either pane is open.
+    // Use a visible footer control to prove close(false) preserves caller focus.
+    const external = document.getElementById('settings');
+    const results = [];
+    for (const name of ['later', 'domains']) {
+      document.getElementById(name + '-toggle').focus();
+      panes[name].open();
+      external.focus();
+      if (document.activeElement !== external)
+        throw new Error('Visible external focus target was not focused');
+      const changes = [];
+      const record = (event) =>
+        changes.push(event.target.id || event.target.dataset.key || event.target.className);
+      document.addEventListener('focusin', record);
+      panes[name].close({ restoreFocus: false });
+      document.removeEventListener('focusin', record);
+      results.push({ name, selected: document.activeElement.id, changes });
+    }
+    const switches = [];
+    for (const [from, to] of [
+      ['later', 'domains'],
+      ['domains', 'later'],
+    ]) {
+      document.getElementById(from + '-toggle').focus();
+      panes[from].open();
+      const changes = [];
+      const record = (event) =>
+        changes.push(event.target.id || event.target.dataset.key || event.target.className);
+      document.addEventListener('focusin', record);
+      panes[to].open();
+      document.removeEventListener('focusin', record);
+      switches.push({
+        from,
+        to,
+        selected: document.activeElement.id || document.activeElement.className,
+        changes,
+      });
+      external.focus();
+      panes[to].close({ restoreFocus: false });
+    }
+    return { results, switches };
+  });
+  expect(paneFocus.results).toEqual([
+    { name: 'later', selected: 'settings', changes: [] },
+    { name: 'domains', selected: 'settings', changes: [] },
+  ]);
+  expect(paneFocus.switches).toEqual([
+    { from: 'later', to: 'domains', selected: 'domains-close', changes: ['domains-close'] },
+    { from: 'domains', to: 'later', selected: 'later-close', changes: ['later-close'] },
+  ]);
+  console.log(
+    '✓ Renderer scroll restoration preserves explicit pane focus and never refocuses an old trigger during pane switches',
+  );
   await page.evaluate(() => sidebarVisibilityTest.action('returnFromLater', { id: 2 }));
   await expect(page.locator('.tab-row')).toHaveCount(1000);
   await page.waitForTimeout(60);
@@ -435,6 +566,17 @@ window.measureSidebarLookupReads = (next) => {
   const group = page.locator('[data-key="group:g0"]');
   await group.locator('.label').click();
   await expect(group).toHaveAttribute('aria-expanded', 'false');
+  const foldedProjection = await checkProjection();
+  expect(foldedProjection.logicalTabs).toBe(1000);
+  expect(foldedProjection.matching).toHaveLength(1000);
+  expect(foldedProjection.visible.filter((key) => key.startsWith('tab:'))).toHaveLength(900);
+  await group.focus();
+  await group.press('ArrowDown');
+  await expect(page.locator('[data-key="group:g1"]')).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.locator('[data-key="new-tab:null"]')).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(group).toBeFocused();
   await page.waitForTimeout(60);
   expect(await page.evaluate(() => perfTest.calls)).toEqual({ toggleGroup: 1 });
   await group.locator('.label').click();
@@ -586,6 +728,22 @@ window.measureSidebarLookupReads = (next) => {
     'Changed after background restart',
   );
   console.log('✓ A new background generation refreshes an already-open sidebar');
+  const staleTreeCalls = await page.evaluate(async () => {
+    const row = document.querySelector('[data-key="tab:2"]');
+    row.remove();
+    perfTest.calls = {};
+    row.querySelector('.close-tab').click();
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    row.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    row.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Delete' }));
+    await Promise.resolve();
+    const calls = { ...perfTest.calls };
+    measureSidebarUpdate(await perfTest.snapshot());
+    forceFullSidebarRender();
+    return calls;
+  });
+  expect(staleTreeCalls).toEqual({});
+  await expect(page.locator('[data-key="tab:2"]')).toHaveCount(1);
   for (const [size, shape] of [
     [100, 'flat'],
     [500, 'flat'],
@@ -635,6 +793,8 @@ window.measureSidebarLookupReads = (next) => {
       { size, shape },
     );
     console.log(JSON.stringify(result));
+    expect(await page.evaluate(() => rowListenerCount())).toBe(0);
+    expect(await page.evaluate(() => treeListenerAdds)).toBe(initialRootListeners);
   }
   await page.evaluate(() => {
     const state = {
@@ -663,23 +823,41 @@ window.measureSidebarLookupReads = (next) => {
     measureSidebarUpdate(state);
     for (const collapsed of [false, true, false]) {
       state.tabs[0].collapsed = collapsed;
-      measureSidebarUpdate(structuredClone(state));
+      measureSidebarUpdate(state);
       const builds = perfIndexBuilds;
+      document.querySelector('#pinned-tabs [data-key="tab:3"]').focus();
       for (const tab of state.tabs) {
         tab.title += ' updated';
         tab.url = 'https://updated.example.org/page';
         tab.discarded = !tab.discarded;
+        tab.cookieStoreId = tab.cookieStoreId === 'work' ? 'personal' : 'work';
         tab.container = tab.container ? null : { name: 'Work', colorCode: '#37adff' };
         tab.favIconUrl = tab.favIconUrl
           ? null
           : 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
       }
-      measureSidebarUpdate(structuredClone(state));
+      window.perfValueArrays = { layout: 0, metadata: 0 };
+      measureSidebarUpdate(state);
+      if (perfValueArrays.layout !== 0 || perfValueArrays.metadata !== state.tabs.length)
+        throw new Error('Metadata allocated comparison arrays for unchanged layout');
+      window.perfValueArrays = { layout: 0, metadata: 0 };
+      measureSidebarUpdate(state);
+      if (perfValueArrays.layout !== 0 || perfValueArrays.metadata !== 0)
+        throw new Error('Unchanged metadata allocated comparison arrays');
       if (perfIndexBuilds !== builds) throw new Error('Metadata rebuilt the tree index');
+      if (document.activeElement?.dataset.key !== 'tab:3')
+        throw new Error('Pinned focus lost after metadata replacement');
+      sidebarProjectionTest.inspect();
       const patched = markup();
       forceFullSidebarRender();
+      sidebarProjectionTest.inspect();
       if (JSON.stringify(patched) !== JSON.stringify(markup()))
         throw new Error('Metadata patch differs from full rendering');
+      state.tabs[0].title += ' single update';
+      window.perfValueArrays = { layout: 0, metadata: 0 };
+      measureSidebarUpdate(state);
+      if (perfValueArrays.layout !== 0 || perfValueArrays.metadata !== 1)
+        throw new Error('One changed title should allocate one metadata record');
     }
   });
   console.log('✓ Patched metadata matches full rendering for pins, nested and hidden tabs');
@@ -808,6 +986,194 @@ window.measureSidebarLookupReads = (next) => {
     expect(result.afterClose).toEqual(filtered.filter((id) => id !== 2));
     expect(result.filterIds).toEqual(result.afterClose);
     console.log('✓ Later actions keep live ordered targets with linear tab and folder lookups');
+    const paneEvents = await laterPage.evaluate(async () => {
+      const { createLaterView } = await import('/extension/src/later-view.js');
+      const { createDomainsView } = await import('/extension/src/domains-view.js');
+      const calls = [];
+      const adds = new WeakMap();
+      const addListener = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function (type, listener, options) {
+        if (type !== 'error') adds.set(this, (adds.get(this) || 0) + 1);
+        return addListener.call(this, type, listener, options);
+      };
+      const count = (root) =>
+        [...root.querySelectorAll('.later-row, .later-row *, .domains-row, .domains-row *')].reduce(
+          (sum, node) => sum + (adds.get(node) || 0),
+          0,
+        );
+      const root = document.getElementById('root');
+      root.innerHTML =
+        '<button id="tree-toggle">Fold</button><footer><button id="domains-toggle">Domains</button><button id="recently-closed-toggle">Closed</button></footer>';
+      const state = {
+        tabs: Array.from({ length: 300 }, (_, i) => ({
+          id: i + 1,
+          title: 'Saved ' + i,
+          url: 'https://example.com/' + i,
+          savedForLaterAt: 1000 + i,
+        })),
+        groups: [],
+      };
+      let release;
+      let fail = false;
+      const view = createLaterView({
+        root,
+        getState: () => state,
+
+        onOpen() {},
+
+        onClose() {},
+
+        onActivate: (id) => calls.push(['activate', id]),
+
+        onReturn: (id) => {
+          calls.push(['return', id]);
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+
+        onCloseTab: async (id) => {
+          calls.push(['close', id]);
+          if (fail) throw new Error('failed');
+        },
+
+        onMenu: (id) => calls.push(['menu', id]),
+        onError: (message) => calls.push(['error', message]),
+      });
+      view.update(state);
+      view.open();
+      const listenersAt300 = count(root);
+      const row = root.querySelector('.later-row[data-id="1"]');
+      const open = row.querySelector('.later-open-tab');
+      const restore = row.querySelector('[data-row-action="return"]');
+      const close = row.querySelector('[data-row-action="close"]');
+      open.querySelector('span').click();
+      restore.click();
+      restore.click();
+      const returnBusy = restore.getAttribute('aria-disabled');
+      release();
+      await Promise.resolve();
+      const returnReady = !restore.hasAttribute('aria-disabled');
+      fail = true;
+      close.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      const errorReady = !close.hasAttribute('aria-disabled');
+      fail = false;
+      close.click();
+      await Promise.resolve();
+      row.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+      await Promise.resolve();
+      open.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Delete' }));
+      await Promise.resolve();
+      row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      open.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, key: 'F10', shiftKey: true }),
+      );
+      const menuFocus = document.activeElement === open;
+      const liveCalls = calls.slice();
+      state.tabs = state.tabs.filter((tab) => tab.id !== 1);
+      open.click(); // A stale connected row must also fail authoritative ID validation.
+      view.update(state);
+      open.click();
+      close.click();
+      view.close();
+      restore.click();
+      const staleLaterCalls = calls.length - liveCalls.length;
+      view.open();
+      const reopenedListenerCount = count(root);
+      view.dispose();
+      document.getElementById('domains-toggle').remove();
+      state.tabs = Array.from({ length: 600 }, (_, i) => ({
+        id: i + 1,
+        title: 'Domain ' + i,
+        url: 'https://host' + Math.floor(i / 2) + '.example.com/',
+      }));
+      state.domainPins = [];
+      const domains = createDomainsView({
+        root,
+        getState: () => state,
+
+        onOpen() {},
+
+        onClose() {},
+
+        onSelect: (domain, id) => calls.push(['select', domain, id]),
+
+        onPin: (domain, value) => {
+          calls.push(['pin', domain, value]);
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+      });
+      domains.update(state);
+      domains.open();
+      const domainListenersAt300 = count(root);
+      const domainRow = root.querySelector('[data-domain="host0.example.com"]');
+      const pin = domainRow.querySelector('.domains-pin');
+      pin.querySelector('svg').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      pin.click();
+      const pinBusy = pin.getAttribute('aria-disabled');
+      release();
+      await Promise.resolve();
+      const pinReady = !pin.hasAttribute('aria-disabled');
+      state.tabs[0].id = 1000;
+      domains.update(state);
+      domainRow.querySelector('.domains-label').click();
+      const selected = calls.at(-1);
+      const currentCalls = calls.length;
+      pin.click();
+      domainRow.querySelector('.domains-open-domain').click();
+      domains.dispose();
+      const staleDomainCalls = calls.length - currentCalls;
+      EventTarget.prototype.addEventListener = addListener;
+      return {
+        listenersAt300,
+        domainListenersAt300,
+        reopenedListenerCount,
+        returnBusy,
+        returnReady,
+        errorReady,
+        menuFocus,
+        liveCalls,
+        staleLaterCalls,
+        pinBusy,
+        pinReady,
+        selected,
+        staleDomainCalls,
+        pins: calls.filter(([type]) => type === 'pin'),
+      };
+    });
+    expect(paneEvents).toMatchObject({
+      listenersAt300: 0,
+      domainListenersAt300: 0,
+      reopenedListenerCount: 0,
+      returnBusy: 'true',
+      returnReady: true,
+      errorReady: true,
+      menuFocus: true,
+      staleLaterCalls: 0,
+      pinBusy: 'true',
+      pinReady: true,
+      selected: ['select', 'host0.example.com', 1000],
+      staleDomainCalls: 0,
+      pins: [['pin', 'host0.example.com', true]],
+    });
+    expect(paneEvents.liveCalls).toEqual([
+      ['activate', 1],
+      ['return', 1],
+      ['close', 1],
+      ['error', 'Could not update this tab. Try again.'],
+      ['close', 1],
+      ['close', 1],
+      ['close', 1],
+      ['menu', 1],
+      ['menu', 1],
+    ]);
+    console.log(
+      '✓ Delegated pane controls preserve nested clicks, busy guards, retry, middle/keyboard close and stale targets without row listeners',
+    );
   } finally {
     await laterPage.close();
   }

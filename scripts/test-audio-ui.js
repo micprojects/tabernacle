@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { startUiTest } from './ui-test.js';
 
 const { server, page, close } = await startUiTest({
@@ -15,6 +16,28 @@ const check = (message) => {
 };
 
 try {
+  const source = await readFile('extension/src/sidebar.js', 'utf8');
+  expect(source.match(/index = createTreeIndex\(state, query\);/g)).toHaveLength(1);
+  await page.route('**/extension/src/sidebar.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body:
+        source.replace(
+          'index = createTreeIndex(state, query);',
+          'window.audioIndexBuilds = (window.audioIndexBuilds || 0) + 1; index = createTreeIndex(state, query);',
+        ) +
+        `
+window.audioSync = refresh;
+window.audioParity = () => {
+  treeMotion.finishAll();
+  const markup = () => ['tree', 'pinned-tabs', 'scope-heading'].map(id => document.getElementById(id)?.outerHTML);
+  const before = JSON.stringify(markup());
+  previousRender = null;
+  render();
+  if (JSON.stringify(markup()) !== before) throw new Error('Audio patch differs from full rendering');
+};`,
+    }),
+  );
   await page.addInitScript(() => {
     const listeners = new Set();
     const testing = (window.audioTest = {});
@@ -26,7 +49,10 @@ try {
     const ready = Promise.all([
       import('/preview/browser.js'),
       import('/extension/src/controller.js'),
-    ]).then(([{ memoryBrowser }, { createController }]) => {
+      import('/extension/src/snapshot-transfer.js'),
+    ]).then(([{ memoryBrowser }, { createController }, { createSnapshotEncoder }]) => {
+      testing.encoder = createSnapshotEncoder();
+      testing.actionDeltas = 0;
       const api = memoryBrowser({
         groups: [
           { id: 'work', name: 'Work', parentId: null },
@@ -63,7 +89,23 @@ try {
       };
       return createController(api, notify);
     });
-    testing.send = async (type, args = {}) => (await ready).request({ type, windowId: 1, ...args });
+    testing.send = async (type, args = {}) => {
+      const value = await (await ready).requestForTransport({ type, windowId: 1, ...args });
+      if (
+        (type === 'snapshot' && args.incremental) ||
+        (args.incremental === 2 && Array.isArray(value?.tabs))
+      ) {
+        const wire = testing.encoder.encode(
+          1,
+          value,
+          args.snapshotToken,
+          args.incremental === 2 ? 2 : 1,
+        );
+        if (type !== 'snapshot' && wire.baseToken) testing.actionDeltas++;
+        return structuredClone(wire);
+      }
+      return structuredClone(value);
+    };
     window.browser = {
       windows: { getCurrent: async () => ({ id: 1 }) },
       runtime: {
@@ -124,16 +166,23 @@ try {
   await work.getByRole('button', { name: 'Collapse Work', exact: true }).click();
   await expect(parent).toHaveCount(0);
   await expect(work.locator('.audio-indicator')).toBeVisible();
+  const builds = await page.evaluate(() => window.audioIndexBuilds);
   await page.evaluate(() => window.audioTest.update(2, { audible: false }));
   await expect(work.locator('.audio-indicator')).toHaveAttribute(
     'title',
     '1 tab playing audio in this folder',
   );
+  expect(await page.evaluate(() => window.audioIndexBuilds)).toBe(builds);
+  await page.evaluate(() => window.audioParity());
   await pin.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Mute tab', exact: true }).click();
   await expect(work.locator('.audio-indicator')).toHaveCount(0);
   await expect(pin.locator('.audio-indicator')).toHaveAttribute('title', 'This tab is muted');
-  check('Collapsed groups update as audio stops or pins are muted');
+  await page.evaluate(() => window.audioParity());
+  expect(await page.evaluate(() => window.audioTest.actionDeltas)).toBeGreaterThan(0);
+  check(
+    'Collapsed groups update through incremental action replies as audio stops or pins are muted',
+  );
 
   await page.evaluate(() => window.audioTest.update(3, { muted: false }));
   await expect(work.locator('.audio-indicator')).toHaveAttribute(
@@ -160,6 +209,7 @@ try {
     'Parent page, This tab is muted · 1 tab playing audio in this tab’s children, 2 nested tabs',
   );
   await expect(parent).not.toHaveAttribute('title');
+  await page.evaluate(() => window.audioParity());
   check(
     'Muting a parent affects only that page; child audio stays visible and the accessible label describes both states',
   );
@@ -173,6 +223,23 @@ try {
   );
   await page.keyboard.press('Escape');
   await media.dblclick();
+  await expect(page.locator('#scope-heading .audio-indicator')).toHaveAttribute(
+    'title',
+    '1 tab playing audio in this folder',
+  );
+  await page.evaluate(() => window.audioTest.update(3, { muted: true }));
+  await expect(page.locator('#scope-heading .audio-indicator')).toHaveCount(0);
+  await page.evaluate(() => window.audioParity());
+  await page.evaluate(() => window.audioTest.update(3, { muted: false }));
+  await expect(page.locator('#scope-heading .audio-indicator')).toHaveAttribute(
+    'title',
+    '1 tab playing audio in this folder',
+  );
+  await page.evaluate(async () => {
+    await window.audioTest.update(6, { audible: false });
+    await window.audioSync();
+    window.audioParity();
+  });
   await expect(page.locator('#scope-heading .audio-indicator')).toHaveAttribute(
     'title',
     '1 tab playing audio in this folder',
@@ -198,6 +265,18 @@ try {
     await window.audioTest.update(2, { audible: true });
     await window.audioTest.update(4, { muted: false });
   });
+  await parent.focus();
+  const focusedBuilds = await page.evaluate(() => window.audioIndexBuilds);
+  await page.evaluate(() => window.audioTest.update(2, { audible: false }));
+  await expect(parent).toBeFocused();
+  await expect(child.getByRole('button', { name: 'Mute tab', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.audioIndexBuilds)).toBe(focusedBuilds);
+  await page.evaluate(() => window.audioParity());
+  await expect(parent).toBeFocused();
+  await page.evaluate(() => window.audioTest.update(2, { audible: true }));
+  await expect(child.getByRole('button', { name: 'Mute tab', exact: true })).toBeVisible();
+  await expect(parent).toBeFocused();
+  check('Audio-only refreshes preserve row focus and match the full rendering fallback');
   await page.setViewportSize({ width: 240, height: 540 });
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(pin.locator('.audio-indicator')).toBeVisible();

@@ -32,23 +32,18 @@ export function activityItems(state, { folderEvent = 'all', pageUrl = '' } = {})
     return paths.get(id);
   };
 
-  return activityEntries(state, { folderEvent, pageUrl }).map((item) => {
-    if (item.kind === 'folder')
-      return {
-        ...item,
-        detail: item.detail || 'Top level',
-        tabCount: counts.get(item.id) || 0,
-      };
-    return {
-      ...item,
-      detail: item.detail.replace(/^www\./, ''),
-      ...(item.kind === 'viewed'
-        ? {
-            path: path(item.groupId),
-          }
-        : {}),
-    };
-  });
+  const items = activityEntries(state, { folderEvent, pageUrl });
+  // activityEntries creates these records for this call; enrich them in place.
+  for (const item of items) {
+    if (item.kind === 'folder') {
+      item.detail ||= 'Top level';
+      item.tabCount = counts.get(item.id) || 0;
+    } else {
+      item.detail = item.detail.replace(/^www\./, '');
+      if (item.kind === 'viewed') item.path = path(item.groupId);
+    }
+  }
+  return items;
 }
 
 export function filterActivity(

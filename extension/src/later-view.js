@@ -117,62 +117,105 @@ export function createLaterView({
     const row = element('li', 'later-row');
     row.dataset.id = id;
     const open = button('Open saved tab', null, 'later-open-tab');
+    open.dataset.rowAction = 'activate';
     const favicon = element('span', 'later-favicon');
     const label = element('span', 'later-label');
     open.append(favicon, label);
     const actions = element('div', 'later-row-actions');
     const restore = button('Return to original folder', 'group');
     const remove = button('Close tab', 'closeSmall');
+    restore.dataset.rowAction = 'return';
+    remove.dataset.rowAction = 'close';
     actions.append(restore, remove);
     row.append(open, actions);
     const item = { row, open, favicon, label, restore };
-    open.addEventListener('click', () => onActivate(id));
-
-    async function run(control, action) {
-      if (control.getAttribute('aria-disabled') === 'true') return;
-      control.setAttribute('aria-disabled', 'true');
-      try {
-        await action(id);
-      } catch {
-        onError('Could not update this tab. Try again.');
-      } finally {
-        control.removeAttribute('aria-disabled');
-      }
-    }
-
-    restore.addEventListener('click', () => run(restore, onReturn));
-    remove.addEventListener('click', () => run(remove, onCloseTab));
-    row.addEventListener('mousedown', (event) => {
-      if (event.button === 1) event.preventDefault();
-    });
-    row.addEventListener('auxclick', (event) => {
-      if (event.button !== 1) return;
-      event.preventDefault();
-      run(remove, onCloseTab);
-    });
-
-    function context(event) {
-      event.preventDefault();
-      event.stopPropagation();
-      open.focus({ preventScroll: true });
-      const rect = open.getBoundingClientRect();
-      onMenu(
-        id,
-        event.type === 'keydown' ? rect.left : event.clientX,
-        event.type === 'keydown' ? rect.bottom : event.clientY,
-      );
-    }
-
-    row.addEventListener('contextmenu', context);
-    row.addEventListener('keydown', (event) => {
-      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) context(event);
-      if (event.key === 'Delete' && !event.ctrlKey && !event.metaKey) {
-        event.preventDefault();
-        run(remove, onCloseTab);
-      }
-    });
     return item;
   }
+
+  function rowTarget(event) {
+    const row = event.target.closest('.later-row');
+    const id = Number(row?.dataset.id);
+    const item = rows.get(id);
+    if (pane.hidden || !item || item.row !== row || !list.contains(row)) return null;
+    if (!state?.tabs.some((tab) => tab.id === id && isSavedForLater(tab))) return null;
+    return { item, id };
+  }
+
+  async function run(control, id, action) {
+    if (control.getAttribute('aria-disabled') === 'true') return;
+    control.setAttribute('aria-disabled', 'true');
+    try {
+      await action(id);
+    } catch {
+      onError('Could not update this tab. Try again.');
+    } finally {
+      control.removeAttribute('aria-disabled');
+    }
+  }
+
+  function context(event, target) {
+    event.preventDefault();
+    event.stopPropagation();
+    target.item.open.focus({ preventScroll: true });
+    const rect = target.item.open.getBoundingClientRect();
+    onMenu(
+      target.id,
+      event.type === 'keydown' ? rect.left : event.clientX,
+      event.type === 'keydown' ? rect.bottom : event.clientY,
+    );
+  }
+
+  list.addEventListener(
+    'click',
+    (event) => {
+      const target = rowTarget(event);
+      const control = event.target.closest('button');
+      if (!target || !control) return;
+      if (control.dataset.rowAction === 'activate') onActivate(target.id);
+      else if (control.dataset.rowAction === 'return') run(control, target.id, onReturn);
+      else if (control.dataset.rowAction === 'close') run(control, target.id, onCloseTab);
+    },
+    { signal: events.signal },
+  );
+  list.addEventListener(
+    'mousedown',
+    (event) => {
+      if (event.button === 1 && rowTarget(event)) event.preventDefault();
+    },
+    { signal: events.signal },
+  );
+  list.addEventListener(
+    'auxclick',
+    (event) => {
+      const target = rowTarget(event);
+      if (event.button !== 1 || !target) return;
+      event.preventDefault();
+      run(target.item.row.querySelector('[data-row-action="close"]'), target.id, onCloseTab);
+    },
+    { signal: events.signal },
+  );
+  list.addEventListener(
+    'contextmenu',
+    (event) => {
+      const target = rowTarget(event);
+      if (target) context(event, target);
+    },
+    { signal: events.signal },
+  );
+  list.addEventListener(
+    'keydown',
+    (event) => {
+      const target = rowTarget(event);
+      if (!target) return;
+      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+        context(event, target);
+      if (event.key === 'Delete' && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        run(target.item.row.querySelector('[data-row-action="close"]'), target.id, onCloseTab);
+      }
+    },
+    { signal: events.signal },
+  );
 
   function render() {
     if (pane.hidden || !state) return;
@@ -182,8 +225,9 @@ export function createLaterView({
     const total = saved.length;
     const groupsById = new Map(state.groups.map((group) => [group.id, group]));
     const focused = document.activeElement;
-    const oldRows = [...list.children];
-    const focusedIndex = oldRows.findIndex((row) => row.contains(focused));
+    const focusedIndex = list.contains(focused)
+      ? [...list.children].findIndex((row) => row.contains(focused))
+      : -1;
     const alive = new Set();
     for (const tab of entries) {
       alive.add(tab.id);
@@ -191,15 +235,32 @@ export function createLaterView({
       const item = rows.get(tab.id);
       const source = sourceUrl(tab);
       const label = tab.title || source || 'New tab';
-      item.label.textContent = label;
-      item.open.setAttribute('aria-label', label);
-      item.open.title = source && source !== label ? `${label}\n${source}` : label;
-      if (tab.active) item.open.setAttribute('aria-current', 'true');
-      else item.open.removeAttribute('aria-current');
-      item.row.classList.toggle('active', Boolean(tab.active));
+      // Keep unchanged text nodes connected for selection and native Find.
+      // Saved rows stay mounted; a metadata refresh need only paint its changes.
+      if (item.labelText !== label) {
+        item.labelText = label;
+        item.label.textContent = label;
+        item.open.setAttribute('aria-label', label);
+      }
+      const title = source && source !== label ? `${label}\n${source}` : label;
+      if (item.titleText !== title) {
+        item.titleText = title;
+        item.open.title = title;
+      }
+      const active = Boolean(tab.active);
+      if (item.active !== active) {
+        item.active = active;
+        if (active) item.open.setAttribute('aria-current', 'true');
+        else item.open.removeAttribute('aria-current');
+        item.row.classList.toggle('active', active);
+      }
       const folder = groupsById.get(tab.groupId)?.name || 'Home';
-      item.restore.title = `Return to ${tab.pinned ? 'pinned tabs' : folder}`;
-      item.restore.setAttribute('aria-label', item.restore.title);
+      const returnLabel = `Return to ${tab.pinned ? 'pinned tabs' : folder}`;
+      if (item.returnLabel !== returnLabel) {
+        item.returnLabel = returnLabel;
+        item.restore.title = returnLabel;
+        item.restore.setAttribute('aria-label', returnLabel);
+      }
       if (item.url !== tab.favIconUrl || !item.favicon.childNodes.length) {
         item.url = tab.favIconUrl;
         let image = icon('globe');

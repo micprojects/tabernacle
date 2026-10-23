@@ -1,7 +1,7 @@
 import { icon } from './icons.js';
 import { groupById } from './model.js';
 import { folderContainer, folderIcon } from './folder-icons.js';
-import { recentItems, recentTime } from './recent-history.js';
+import { recentPreviewItems, recentTime } from './recent-history.js';
 
 const itemLimit = 50;
 const kinds = {
@@ -118,7 +118,7 @@ export function createRecentActivity({
   function render() {
     if (popup.hidden) return;
     const state = getState();
-    const items = recentItems(state, filter).slice(0, itemLimit);
+    const items = recentPreviewItems(state, filter, itemLimit);
     const error = (filter === 'all' || filter === 'closed') && state.recentlyClosedError;
     const now = Date.now();
     const key = JSON.stringify([

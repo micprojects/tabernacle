@@ -246,3 +246,50 @@ test('page excludes itself and private tabs, searches folder paths, and uses loc
   assert.equal(filterActivity(items, { period: 'yesterday', now })[0].kind, 'viewed');
   assert.equal(activityDay(now - 1200000, now), 'Yesterday');
 });
+
+test('activity enrichment preserves frozen source records and returns independent items', () => {
+  const opaque = Object.freeze({ sentinel: 'keep' });
+  const state = Object.freeze({
+    groups: Object.freeze(groups.map((group) => Object.freeze({ ...group }))),
+    tabs: Object.freeze([
+      Object.freeze({
+        id: 1,
+        groupId: 'design',
+        title: 'Notes',
+        url: 'https://www.example.com/notes',
+        lastAccessed: 3000,
+        opaque,
+      }),
+    ]),
+    recentlyClosed: Object.freeze([
+      Object.freeze({
+        sessionId: 'closed',
+        title: 'Closed notes',
+        url: 'https://www.example.org/closed',
+        closedAt: 2000,
+        opaque,
+      }),
+    ]),
+    view: Object.freeze({ recentFolders: Object.freeze([{ id: 'work', enteredAt: 1000 }]) }),
+  });
+  const before = structuredClone(state);
+  const items = activityItems(state);
+  assert.deepEqual(
+    items.map(({ kind }) => kind),
+    ['viewed', 'closed', 'folder'],
+  );
+  assert.equal(items[0].path, 'Work / Design');
+  assert.equal(items[0].detail, 'example.com');
+  assert.equal(items[1].detail, 'example.org');
+  assert.equal(items[2].detail, 'Top level');
+  assert.equal(items[2].tabCount, 1);
+  assert.deepEqual(items[0].opaque, opaque);
+  assert.deepEqual(items[1].opaque, opaque);
+  const expected = structuredClone(items);
+  for (const item of items) {
+    item.title = 'Changed result';
+    item.detail = 'Changed detail';
+  }
+  assert.deepEqual(activityItems(state), expected);
+  assert.deepEqual(state, before);
+});

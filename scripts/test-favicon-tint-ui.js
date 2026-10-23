@@ -313,11 +313,31 @@ try {
     await window.tintApi.tabs.update(1, { favIconUrl: 'data:image/png;base64,bad' });
   });
   await send('setLook', { partial: true, value: { domains: true } });
-  await expect(red.locator('svg')).toBeVisible();
-  await expect(red.locator('svg')).toHaveCSS(
-    'color',
-    await red.evaluate((node) => getComputedStyle(node).color),
-  );
+  await expect(red).toHaveClass(/tab-globe/);
+  await expect(red).toHaveAttribute('aria-hidden', 'true');
+
+  const checkGlobe = async () => {
+    await expect(red).toHaveCSS('mask-image', /globe-16\.svg/);
+    const colour = await red.evaluate((node) => getComputedStyle(node).color);
+    await expect(red).toHaveCSS('background-color', colour);
+    const rgb = colour
+      .match(/[\d.]+/g)
+      .slice(0, 3)
+      .map(Number);
+    const { data, info } = await sharp(await red.screenshot())
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let ink = 0;
+    for (let offset = 0; offset < data.length; offset += info.channels)
+      if (rgb.every((value, i) => Math.abs(value - data[offset + i]) <= 3)) ink++;
+    expect(ink, 'The fallback mask must actually paint its inherited colour').toBeGreaterThan(16);
+  };
+
+  await checkGlobe();
+  await page.emulateMedia({ forcedColors: 'active' });
+  await checkGlobe();
+  await checkCaptionContrast(red);
+  await page.emulateMedia({ forcedColors: 'none' });
   await tint.uncheck();
   await settings.locator('#appearance-save').click();
   await expect(blue.locator('img')).toHaveCSS('filter', 'none');

@@ -92,6 +92,27 @@ export function recentItems(state, filter = 'all', query = '') {
   });
 }
 
+// Each category contributes at most the displayed count to the merged preview.
+// Sort native references first so older tabs need no copied record or URL parsing.
+export function recentPreviewItems(state, filter = 'all', limit = 50) {
+  const newest = (items, field, requireTime) =>
+    (items ?? [])
+      .filter((item) => !item.incognito && (!requireTime || validTime(item[field])))
+      .sort((a, b) => validTime(b[field]) - validTime(a[field]))
+      .slice(0, limit);
+  return recentItems(
+    {
+      ...state,
+      tabs: filter === 'all' || filter === 'viewed' ? newest(state.tabs, 'lastAccessed', true) : [],
+      recentlyClosed:
+        filter === 'all' || filter === 'closed'
+          ? newest(state.recentlyClosed, 'closedAt', false)
+          : [],
+    },
+    filter,
+  ).slice(0, limit);
+}
+
 export function recentTime(timestamp, now = Date.now()) {
   if (!timestamp) return '';
   const elapsed = Math.max(0, now - timestamp);
