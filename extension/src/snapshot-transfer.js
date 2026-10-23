@@ -76,12 +76,16 @@ export function createSnapshotEncoder(options = {}) {
         before &&
         before.windowId === windowId &&
         before.generation === state.generation &&
-        before.tabs.length === state.tabs.length &&
-        state.tabs.every((tab, i) => tab.id === before.tabs[i].id)
+        (before.tabs === state.tabs ||
+          (before.tabs.length === state.tabs.length &&
+            state.tabs.every((tab, i) => tab.id === before.tabs[i].id)))
       ) {
         const changes = [];
-        for (const [index, tab] of state.tabs.entries())
-          if (!sameValue(tab, before.tabs[index])) changes.push({ index, tab });
+        // The controller reuses its immutable tab array for unchanged reads.
+        // Its identity already proves that every row and position is unchanged.
+        if (state.tabs !== before.tabs)
+          for (const [index, tab] of state.tabs.entries())
+            if (!sameValue(tab, before.tabs[index])) changes.push({ index, tab });
         // Large structural changes are cheaper and simpler to send in full.
         if (changes.length < state.tabs.length / 2) {
           const { tabs, ...rest } = state;
