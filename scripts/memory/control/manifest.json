@@ -1,0 +1,7 @@
+{
+  "manifest_version": 2,
+  "name": "Tabernacle memory benchmark control",
+  "version": "1.0",
+  "browser_specific_settings": { "gecko": { "id": "tabernacle-memory-control@fixture.invalid" } },
+  "permissions": ["tabs", "sessions"]
+}

@@ -50,6 +50,17 @@ validation commands and release procedures.
   data from a published version in an isolated Firefox profile. Verify preserved
   structure, identities, membership and settings after upgrade and reload; a
   fresh-install test alone is insufficient.
+- Use `npm run benchmark:optim` as the default for performance and memory work.
+  It compares HEAD with a frozen working tree using the bounded iteration workload.
+  Read the optimisation benchmark section in `DEVELOPMENT.md`: screen changes,
+  reuse matching A/A calibration, then confirm promising changes with `--confirm`
+  and the relevant functional suites before keeping them. Node heap is not Firefox
+  RAM, and uncalibrated timing/memory differences are not demonstrated improvements.
+- Larger workloads, including 60,000 tabs, are exceptions for a specific capacity
+  question or an explicitly requested stress/release investigation. Do not run the
+  old large matrix routinely during optimisation, automatically escalate a small
+  run, or raise safety limits. Use the explicitly named `:stress` commands and
+  record resource stops as inconclusive. Keep ordinary regression suites in place.
 - Run `npm run qa:release` before preparing a release. Add the documented stress
   checks when changes affect large collections or performance.
 - Do not weaken or delete tests merely to make a change pass. Update expectations

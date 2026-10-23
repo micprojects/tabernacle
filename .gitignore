@@ -15,7 +15,12 @@ test-results/
 /.npmrc
 /.aws/
 /.codex/
-/.agents/
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/tabernacle-benchmark/
+/.agents/skills/tabernacle-benchmark/*
+!/.agents/skills/tabernacle-benchmark/SKILL.md
 /mockups/
 /assets/mockups/
 /design/mockups/
