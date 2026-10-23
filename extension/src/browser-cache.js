@@ -458,7 +458,9 @@ export function createBrowserCache(api, changed = () => {}) {
     },
 
     history() {
-      const fetch = () => api.sessions.getRecentlyClosed();
+      // Closed windows can contain thousands of tabs, but only standalone closed
+      // tabs are displayed. Do not retain those unused window trees in the cache.
+      const fetch = async () => (await api.sessions.getRecentlyClosed()).filter(({ tab }) => tab);
       return api.sessions.onChanged ? read(ancillary, 'history', fetch) : fetch();
     },
 

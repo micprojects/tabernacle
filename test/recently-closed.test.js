@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createController } from '../extension/src/controller.js';
+import { createBrowserCache } from '../extension/src/browser-cache.js';
 import { memoryBrowser } from '../preview/browser.js';
 
 function fixture() {
@@ -18,6 +20,108 @@ function fixture() {
   const controller = createController(api);
   return { api, send: (type, args = {}) => controller.request({ type, windowId: 1, ...args }) };
 }
+
+for (const events of [true, false]) {
+  test(`history retains standalone tabs without closed-window trees (events: ${events})`, async (t) => {
+    const api = memoryBrowser({ events });
+    const cache = createBrowserCache(api);
+    t.after(() => cache.dispose());
+    const closedTab = {
+      lastModified: 1000,
+      tab: { sessionId: 'tab', windowId: 1, title: 'Preserved', futureField: { value: 1 } },
+    };
+    const closedWindow = { window: { sessionId: 'window', tabs: [{ title: 'Unused' }] } };
+    const sessions = [closedWindow, closedTab];
+    let reads = 0;
+    api.sessions.getRecentlyClosed = async () => {
+      reads++;
+      return sessions;
+    };
+    const first = await cache.history();
+    assert.deepEqual(first, [closedTab]);
+    assert.equal(first[0], closedTab, 'Keep the full standalone record without another copy');
+    assert.deepEqual(sessions, [closedWindow, closedTab], 'Leave the native result intact');
+    assert.deepEqual(await cache.history(), first);
+    assert.equal(reads, events ? 1 : 2);
+    if (events) api.sessions.onChanged.emit();
+    api.sessions.getRecentlyClosed = async () => {
+      throw new Error('History unavailable');
+    };
+    await assert.rejects(cache.history(), /History unavailable/);
+    api.sessions.getRecentlyClosed = async () => [closedTab];
+    assert.deepEqual(await cache.history(), [closedTab], 'Retry a failed read');
+  });
+}
+
+test('a warm history cache releases unused windows while retaining restorable tabs', () => {
+  execFileSync(
+    process.execPath,
+    [
+      '--expose-gc',
+      '--input-type=module',
+      '-e',
+      `
+        import assert from 'node:assert/strict';
+        import { createBrowserCache } from ${JSON.stringify(new URL('../extension/src/browser-cache.js', import.meta.url).href)};
+        import { memoryBrowser } from ${JSON.stringify(new URL('../preview/browser.js', import.meta.url).href)};
+        const api = memoryBrowser({ events: true });
+        let windowRef, tabRef, reads = 0;
+        api.sessions.getRecentlyClosed = async () => {
+          reads++;
+          const window = { sessionId: 'window', tabs: [{ title: 'Unused window tab' }] };
+          const tab = { sessionId: 'tab', windowId: 1, title: 'Keep' };
+          windowRef = new WeakRef(window);
+          tabRef = new WeakRef(tab);
+          return [{ window }, { tab }];
+        };
+        const collect = async () => {
+          for (let i = 0; i < 5; i++) {
+            await new Promise(setImmediate);
+            global.gc();
+          }
+        };
+        const cache = createBrowserCache(api);
+        await cache.history();
+        await cache.history();
+        assert.equal(reads, 1);
+        await collect();
+        assert.equal(windowRef.deref(), undefined, 'A cached native promise must not retain the unused window');
+        assert.equal(tabRef.deref()?.title, 'Keep');
+        cache.dispose();
+        await collect();
+        assert.equal(tabRef.deref(), undefined, 'Disposal releases the retained tab too');
+      `,
+    ],
+    { timeout: 10000, stdio: 'pipe' },
+  );
+});
+
+test('history changes during a pending read retry without retaining stale windows or tabs', async (t) => {
+  const api = memoryBrowser({ events: true });
+  const cache = createBrowserCache(api);
+  t.after(() => cache.dispose());
+  let release, started;
+  const pending = new Promise((resolve) => {
+    release = resolve;
+  });
+  const entering = new Promise((resolve) => {
+    started = resolve;
+  });
+  api.sessions.getRecentlyClosed = () => {
+    started();
+    return pending;
+  };
+  const reading = cache.history();
+  await entering;
+  api.sessions.onChanged.emit();
+  const current = { tab: { sessionId: 'current', windowId: 2 }, lastModified: 2000 };
+  api.sessions.getRecentlyClosed = async () => [current];
+  release([{ window: { tabs: [] } }, { tab: { sessionId: 'stale' } }]);
+  assert.deepEqual(await reading, [current]);
+  assert.deepEqual(await cache.history(), [current]);
+  cache.dispose();
+  assert.equal(cache.stats().ancillary, 0);
+});
 
 test('recently closed tabs are ordered by closure time and exclude windows and private tabs', async () => {
   const { api, send } = fixture();

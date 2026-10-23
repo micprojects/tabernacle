@@ -77,6 +77,22 @@ try {
     'Load the fixture tab before closing it',
   );
   await send('closeTab', { id: closed.id });
+  const closedWindow = await call(
+    `const win=await browser.windows.create({url:'about:blank',focused:false});
+     for(let i=0;i<2;i++)await browser.tabs.create({windowId:win.id,url:arguments[0]+'?closed-window='+i,title:'Closed window tab '+i,discarded:true,active:false});
+     await browser.windows.remove(win.id);
+     return win.id;`,
+    fixtureUrl,
+  );
+  const windowSession = await driver.wait(
+    () =>
+      call(
+        'return (await browser.sessions.getRecentlyClosed()).find(session=>session.window?.tabs.some(tab=>tab.url?.includes("?closed-window"))) || false;',
+      ),
+    5000,
+    'Firefox retains the closed window and its tabs',
+  );
+  assert(windowSession.window.tabs.length >= 2);
   const before = await driver.wait(
     async () => {
       const state = await send('snapshot');
@@ -84,6 +100,16 @@ try {
     },
     5000,
     'Closed fixture tab appears in the session list',
+  );
+  assert(before.recentlyClosed.every((tab) => tab.sessionId !== windowSession.window.sessionId));
+  assert(!before.tabs.some((tab) => tab.windowId === closedWindow));
+  assert.deepEqual(
+    await call(
+      'return (await browser.sessions.getRecentlyClosed()).find(session=>session.window?.sessionId===arguments[0]);',
+      windowSession.window.sessionId,
+    ),
+    windowSession,
+    'Reading Tabernacle history preserves Firefox’s closed window for native restoration',
   );
   const sessionId = before.recentlyClosed[0].sessionId;
   await driver.switchTo().window(sidebar);
