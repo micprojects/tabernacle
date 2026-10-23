@@ -3,12 +3,14 @@ dist/
 test-results/
 # Local mockups, scratch work and generated previews; see AGENTS.md.
 /output/
+# Development documentation is local-only under output/docs/.
+/DEVELOPMENT.md
+/docs/
 /firefox/
 .DS_Store
 *.log
 
 # Keep profiling reports and recordings local; see AGENTS.md.
-/docs/performance/*profil*.md
 *.cpuprofile
 *.heapprofile
 *.heapsnapshot

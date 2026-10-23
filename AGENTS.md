@@ -1,11 +1,12 @@
 # Tabernacle project guidance
 
 Tabernacle is a published Firefox extension. Protect existing installations and
-their data in every change. Use [DEVELOPMENT.md](DEVELOPMENT.md) for architecture,
-validation commands and release procedures. Detailed current ownership contracts live in
-[docs/architecture.md](docs/architecture.md); testing and benchmark procedures live in
-[docs/testing.md](docs/testing.md) and [docs/benchmarks.md](docs/benchmarks.md).
-Dated experiments in `docs/performance/` describe historical source layouts.
+their data in every change. Development documentation is kept locally in the
+Git-ignored `output/docs/` directory and is not included in fresh clones.
+Detailed current ownership contracts live in
+[output/docs/architecture.md](output/docs/architecture.md); testing and benchmark procedures live in
+[output/docs/testing.md](output/docs/testing.md) and [output/docs/benchmarks.md](output/docs/benchmarks.md).
+Dated experiments in `output/docs/performance/` describe historical source layouts.
 
 ## Data and compatibility
 
@@ -44,7 +45,7 @@ Dated experiments in `docs/performance/` describe historical source layouts.
 ## Validation
 
 - For code changes, run `npm run check` and the relevant UI and native Firefox
-  suites for the affected behaviour. Use the suite guidance in `DEVELOPMENT.md`.
+  suites for the affected behaviour. Use the suite guidance in `output/docs/testing.md`.
   Documentation-only changes need formatting and diff checks, not browser tests.
 - Changes to persistence, hierarchy, containers or destructive operations require
   coverage for failed reads/writes, partial completion, retries, restarts and
@@ -55,7 +56,7 @@ Dated experiments in `docs/performance/` describe historical source layouts.
   fresh-install test alone is insufficient.
 - Use `npm run benchmark:optim` as the default for performance and memory work.
   It compares HEAD with a frozen working tree using the bounded iteration workload.
-  Read the optimisation benchmark section in `DEVELOPMENT.md`: screen changes,
+  Read the optimisation benchmark section in `output/docs/benchmarks.md`: screen changes,
   reuse matching A/A calibration, then confirm promising changes with `--confirm`
   and the relevant functional suites before keeping them. Node heap is not Firefox
   RAM, and uncalibrated timing/memory differences are not demonstrated improvements.
@@ -87,6 +88,8 @@ Dated experiments in `docs/performance/` describe historical source layouts.
 
 - Use the existing repo-root `output/` directory (singular) for exploratory work.
   It is ignored by Git, ESLint and Prettier.
+- Keep development documentation in `output/docs/`; do not commit it or recreate
+  a root `DEVELOPMENT.md` or `docs/` directory.
 - Put mockup images, generation prompts and mockup-only HTML or scripts in
   `output/mockups/<topic-date>/`.
 - Put one-off scripts, investigation notes, plans, downloaded references and
@@ -120,6 +123,6 @@ Dated experiments in `docs/performance/` describe historical source layouts.
 - Stage explicit paths after reviewing them. Do not force-add ignored artifacts
   unless the user explicitly requests it.
 - Run `git diff --cached --check` and the checks appropriate to the change. See
-  `DEVELOPMENT.md` for the existing validation and screenshot workflows.
+  `output/docs/testing.md` for the existing validation and screenshot workflows.
 - Confirm `git ls-files -- output/ outputs/ design/mockups/ test-results/ dist/ firefox/`
   is empty. Keep unrelated work out of the commit.
