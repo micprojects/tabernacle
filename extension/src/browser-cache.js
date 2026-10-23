@@ -63,7 +63,8 @@ export function createBrowserCache(api, changed = () => {}) {
 
   // These events carry all changed values and cannot move tabs or alter which
   // tabs belong to a window. Keep old arrays immutable for in-flight snapshots.
-  // Navigation, structural changes, unknown fields and pending reads still query.
+  // Structural changes, unknown fields and pending reads still query. Fragment
+  // navigation takes a complete bounded native read before reusing topology.
   const metadataProperties = new Set([
     'title',
     'favIconUrl',
@@ -73,6 +74,27 @@ export function createBrowserCache(api, changed = () => {}) {
     'discarded',
   ]);
   const selectionProperties = new Set(['active', 'highlighted', 'lastAccessed']);
+
+  const samePageAddress = (left, right) =>
+    typeof left === 'string' &&
+    typeof right === 'string' &&
+    /^https?:\/\//.test(left) &&
+    left.split('#', 1)[0] === right.split('#', 1)[0];
+
+  function fragmentChanged(id, properties, windowId) {
+    if (
+      !Object.hasOwn(properties, 'url') ||
+      !Object.keys(properties).every((key) => key === 'url' || metadataProperties.has(key))
+    )
+      return false;
+    const cached = tabSnapshots.get(tabLists.get(windowId));
+    const before = cached?.tabs[cached.positions.get(id)];
+    if (!samePageAddress(before?.url, properties.url)) return false;
+    selectionChanged(windowId, [id]);
+    if (tabSnapshots.get(tabLists.get(windowId)) === cached)
+      (cached.fragmentIds ??= new Set()).add(id);
+    return true;
+  }
 
   function selectionChanged(windowId, ids) {
     const cached = tabSnapshots.get(tabLists.get(windowId));
@@ -108,18 +130,32 @@ export function createBrowserCache(api, changed = () => {}) {
     // and read() retries authoritative data, just like a cold tabs.query().
     const pending = Promise.resolve().then(async () => {
       const settled = await Promise.allSettled(ids.map((id) => api.tabs.get(id)));
-      const structural = (tab) =>
+      const structural = (tab, fragment) =>
         JSON.stringify(
           Object.entries(tab).filter(
-            ([key]) => !metadataProperties.has(key) && !selectionProperties.has(key),
+            ([key]) =>
+              !metadataProperties.has(key) &&
+              !selectionProperties.has(key) &&
+              !(fragment && key === 'url'),
           ),
         );
       if (
-        settled.some(
-          (result, i) =>
-            result.status === 'rejected' ||
-            structural(result.value) !== structural(cached.tabs[cached.positions.get(ids[i])]),
-        )
+        settled.some((result, i) => {
+          if (result.status === 'rejected') return true;
+          const before = cached.tabs[cached.positions.get(ids[i])];
+          const fragment =
+            cached.fragmentIds?.has(ids[i]) && samePageAddress(before.url, result.value.url);
+          // Resolved metadata merges cannot remove a formerly present field.
+          // Navigation that loses a favicon or other optional data must rebuild.
+          if (
+            fragment &&
+            [...metadataProperties, ...selectionProperties].some(
+              (key) => Object.hasOwn(before, key) && !Object.hasOwn(result.value, key),
+            )
+          )
+            return true;
+          return structural(result.value, fragment) !== structural(before, fragment);
+        })
       )
         return api.tabs.query({ windowId });
       const tabs = cached.tabs.slice();
@@ -338,7 +374,11 @@ export function createBrowserCache(api, changed = () => {}) {
       keys.every((key) => selectionProperties.has(key) || metadataProperties.has(key))
     )
       selectionChanged(tab.windowId, [id]);
-    else if (!updateMetadata(id, properties, tab.windowId)) invalidateTabs(tab.windowId);
+    else if (
+      !fragmentChanged(id, properties, tab.windowId) &&
+      !updateMetadata(id, properties, tab.windowId)
+    )
+      invalidateTabs(tab.windowId);
     // Domain headings can resolve a site name once its page title has settled.
     if (
       properties.status === 'complete' ||
