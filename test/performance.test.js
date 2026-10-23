@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { createBrowserCache } from '../extension/src/browser-cache.js';
 import { createTreeIndex } from '../extension/src/tree-index.js';
+import { captureTarget } from '../extension/src/tab-collection.js';
 import {
   insertionOrder,
   sortTabs,
@@ -80,6 +81,53 @@ test('warm snapshots and group toggles reuse metadata, native tabs, containers a
   assert.equal(state.tabs.find((tab) => tab.id === 2).active, true);
   assert.equal(f.calls()['sessions.getTabValue'] || 0, 0);
   assert.deepEqual(f.queries, []);
+});
+
+test('closing a reviewed inactive batch rebuilds the window only for its final reply', async (t) => {
+  const f = fixture();
+  t.after(() => f.controller.dispose());
+  const before = await f.send('snapshot');
+  const targets = before.tabs.slice(1, 21).map(captureTarget);
+  f.reset();
+  const after = await f.send('closeTabSet', { scope: { kind: 'window' }, targets });
+  assert.deepEqual(
+    after.batchResult.completed,
+    targets.map((tab) => tab.id),
+  );
+  assert.deepEqual(after.batchResult.failed, []);
+  assert.equal(after.tabs.length, before.tabs.length - targets.length);
+  assert.equal(after.tabs.find((tab) => tab.active).id, 1);
+  assert.equal(f.calls()['tabs.query'], 1);
+  assert.equal(f.calls()['sessions.getWindowValue'], 1);
+  assert.equal(f.calls()['tabs.remove'], targets.length);
+});
+
+test('duplicate batches bound native reads by matching keepers, not unrelated URL pairs', async (t) => {
+  const f = fixture(400);
+  t.after(() => f.controller.dispose());
+  for (let id = 1; id <= 200; id++)
+    await f.api.tabs.update(id, { url: `https://example.com/pair/${Math.floor((id - 1) / 2)}` });
+  const before = await f.send('snapshot');
+  const targets = before.tabs.filter((tab) => tab.id % 2 === 0).map(captureTarget);
+  const keepers = before.tabs
+    .filter((tab) => tab.id % 2 === 1)
+    .map(captureTarget)
+    .reverse();
+  f.reset();
+  const after = await f.send('closeDuplicateTabs', { scope: { kind: 'window' }, targets, keepers });
+  assert.deepEqual(
+    after.batchResult.completed,
+    targets.map((tab) => tab.id),
+  );
+  assert.deepEqual(after.batchResult.skipped, []);
+  assert.deepEqual(after.batchResult.failed, []);
+  assert.deepEqual(
+    after.tabs.map((tab) => tab.id),
+    keepers.map((tab) => tab.id).reverse(),
+  );
+  assert((f.calls()['tabs.get'] || 0) <= targets.length * 8);
+  assert.equal(f.calls()['tabs.remove'], targets.length);
+  assert.equal((await f.api.tabs.query({ windowId: 2 })).length, 200);
 });
 
 test('native changes invalidate only their window; irrelevant updates do not notify sidebars', async () => {

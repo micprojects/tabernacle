@@ -1,13 +1,7 @@
 import { createCollectionDialogs } from './collection-dialogs.js';
+import { createFolderIndex } from './folder-index.js';
 import { icon } from './icons.js';
-import {
-  children,
-  groupById,
-  groupContainer,
-  isWithin,
-  isSavedForLater,
-  tabSubtree,
-} from './model.js';
+import { groupById, groupContainer, isSavedForLater, tabSubtree } from './model.js';
 import { createContainerManagement } from './container-dialogs.js';
 import { populateContainerPicker } from './container-picker.js';
 import { createGroupCreation } from './group-creation.js';
@@ -412,8 +406,9 @@ export function createDialogs({
     const state = getState();
     const group = groupById(state, id);
     if (!group) return;
+    const folders = createFolderIndex(state);
     const tabs = state.tabs.filter(
-      (tab) => !isSavedForLater(tab) && isWithin(state, tab.groupId, id),
+      (tab) => !isSavedForLater(tab) && folders.isWithin(tab.groupId, id),
     );
     const pinned = tabs.filter((tab) => tab.pinned).length;
     const count = `${tabs.length} ${tabs.length === 1 ? 'tab' : 'tabs'}`;
@@ -499,24 +494,24 @@ export function createDialogs({
       picker.focus();
       return;
     }
+    const state = getState();
+    const folders = createFolderIndex(state);
     const current =
       kind !== 'tab'
-        ? groupById(getState(), id).parentId
-        : getState().tabs.find((tab) => tab.id === id).groupId;
+        ? folders.byId.get(id).parentId
+        : state.tabs.find((tab) => tab.id === id).groupId;
     const choices = [{ value: '', label: 'Home' }];
-
-    function walk(parentId, depth) {
-      for (const group of children(getState(), parentId)) {
-        if (kind !== 'tab' && isWithin(getState(), group.id, id)) continue;
-        choices.push({
-          value: group.id,
-          label: `${'　'.repeat(depth)}${group.name}`,
-        });
-        walk(group.id, depth + 1);
+    const pending = [{ parentId: null, depth: 0 }];
+    while (pending.length) {
+      const { parentId, depth, group } = pending.pop();
+      if (group) {
+        if (kind !== 'tab' && folders.isWithin(group.id, id)) continue;
+        choices.push({ value: group.id, label: `${'　'.repeat(depth)}${group.name}` });
       }
+      const nested = folders.children.get(group ? group.id : parentId) || [];
+      for (let i = nested.length - 1; i >= 0; i--)
+        pending.push({ group: nested[i], depth: group ? depth + 1 : depth });
     }
-
-    walk(null, 0);
     showDialog({
       title:
         kind === 'contents'

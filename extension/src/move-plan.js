@@ -2,7 +2,6 @@ import {
   children,
   groupById,
   groupPath,
-  isWithin,
   isSavedForLater,
   sortTabs,
   tabAncestors,
@@ -10,6 +9,7 @@ import {
   unpinnedTabTree,
 } from './model.js';
 import { movePin, pinKey } from './pinned-items.js';
+import { createFolderIndex } from './folder-index.js';
 
 export function moveSource(state, kind, id) {
   if (kind === 'tab') {
@@ -24,25 +24,25 @@ export function moveSource(state, kind, id) {
   return { kind, id };
 }
 
-function folderDestinationName(state, id) {
-  return ['Home', ...groupPath(state, id).map((group) => group.name)].join(' / ');
+function folderDestinationName(state, id, folderIndex) {
+  return ['Home', ...groupPath(state, id, folderIndex).map((group) => group.name)].join(' / ');
 }
 
 function placement(tab) {
   return [tab.treeId, tab.groupId, tab.parentTabId, tab.ancestors, tab.order, Boolean(tab.pinned)];
 }
 
-export function sourcePlacement(state, source) {
+export function sourcePlacement(state, source, folderIndex) {
   if (source.kind === 'tab') {
     const tab = state.tabs.find((tab) => tab.id === source.id && tab.treeId === source.treeId);
     if (!tab) throw new Error('The source tab has changed. Try again.');
     return JSON.stringify(tabSubtree(state.tabs, tab.id).map(placement));
   }
-  const group = groupById(state, source.id);
+  const group = groupById(state, source.id, folderIndex);
   if (!group) throw new Error('That folder no longer exists.');
   return JSON.stringify([
     source.kind,
-    groupPath(state, group.id).map((group) => group.id),
+    groupPath(state, group.id, folderIndex).map((group) => group.id),
     children(state, group.parentId).map((group) => group.id),
   ]);
 }
@@ -54,14 +54,18 @@ export function resolveMove(state, source, intent) {
   if (source.kind === 'tab' && identity.treeId !== source.treeId)
     throw new Error('The source tab has changed. Try again.');
   const tab = source.kind === 'tab' ? state.tabs.find((tab) => tab.id === source.id) : null;
-  const title = tab?.title || groupById(state, source.id)?.name || 'New tab';
+  // Keep this index local to the plan: a new destination or in-place folder
+  // edit must use the current hierarchy, including in the controller.
+  const folders = tab ? undefined : createFolderIndex(state);
+  const folderIndex = folders?.byId;
+  const title = tab?.title || groupById(state, source.id, folderIndex)?.name || 'New tab';
   const branch = tab ? tabSubtree(state.tabs, tab.id) : [];
   const moving = new Set(branch.map((tab) => tab.id));
   const count = tab
     ? branch.length
-    : state.tabs.filter((tab) => !isSavedForLater(tab) && isWithin(state, tab.groupId, source.id))
+    : state.tabs.filter((tab) => !isSavedForLater(tab) && folders.isWithin(tab.groupId, source.id))
         .length;
-  const sourceState = sourcePlacement(state, source);
+  const sourceState = sourcePlacement(state, source, folderIndex);
   let destination,
     siblings,
     parent,
@@ -83,7 +87,7 @@ export function resolveMove(state, source, intent) {
     const followingName =
       following?.kind === 'tab'
         ? state.tabs.find((tab) => tab.treeId === following.id)?.title || 'New tab'
-        : groupById(state, following?.id)?.name;
+        : groupById(state, following?.id, folderIndex)?.name;
     return {
       source: identity,
       destination,
@@ -100,7 +104,7 @@ export function resolveMove(state, source, intent) {
     throw new Error('Drag this shortcut within pinned items. Move the folder from the tree.');
 
   if (intent?.kind === 'group') {
-    target = groupById(state, intent.id);
+    target = groupById(state, intent.id, folderIndex);
     if (!target) throw new Error('That folder no longer exists.');
     if (tab || position === 'inside') {
       destination = tab
@@ -155,7 +159,7 @@ export function resolveMove(state, source, intent) {
   } else throw new Error('Choose a destination in this sidebar.');
 
   const groupId = tab ? destination.groupId : destination.parentId;
-  if (groupId !== null && !groupById(state, groupId))
+  if (groupId !== null && !groupById(state, groupId, folderIndex))
     throw new Error('That folder no longer exists.');
   if (tab) {
     parent = state.tabs.find((tab) => tab.id === destination.parentTabId);
@@ -172,7 +176,7 @@ export function resolveMove(state, source, intent) {
       ),
     );
   } else {
-    if (isWithin(state, groupId, source.id))
+    if (folders.isWithin(groupId, source.id))
       throw new Error('A folder cannot go inside itself or one of its subfolders.');
     siblings = children(state, groupId);
   }
@@ -191,9 +195,9 @@ export function resolveMove(state, source, intent) {
   next.splice(insertion, 0, source.id);
   const sameParent = tab
     ? !tab.pinned && tab.groupId === groupId && tab.parentTabId === destination.parentTabId
-    : groupById(state, source.id).parentId === groupId;
+    : groupById(state, source.id, folderIndex).parentId === groupId;
   const noOp = sameParent && JSON.stringify(ids) === JSON.stringify(next);
-  const path = folderDestinationName(state, groupId);
+  const path = folderDestinationName(state, groupId, folderIndex);
   const parentPath = parent
     ? [...tabAncestors(state.tabs, parent.id).reverse(), parent]
         .map((tab) => tab.title || 'New tab')
@@ -218,7 +222,7 @@ export function resolveMove(state, source, intent) {
     expected: JSON.stringify([
       sourceState,
       destination,
-      groupPath(state, groupId).map((group) => group.id),
+      groupPath(state, groupId, folderIndex).map((group) => group.id),
       parent ? placement(parent) : null,
       siblings.map((item) => (tab ? placement(item) : [item.id, item.parentId])),
     ]),

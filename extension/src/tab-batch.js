@@ -1,5 +1,6 @@
 import { matchesTarget, inCollection, duplicateKey } from './tab-collection.js';
 import { isSavedForLater } from './model.js';
+import { createFolderIndex } from './folder-index.js';
 
 // Runs inside the controller queue. Native state is checked again for every
 // target; a failure never expands the reviewed set or hides partial success.
@@ -19,10 +20,21 @@ export async function applyTabBatch(
   const undoing = type === 'undoSaveTabsForLater';
   const duplicate = type === 'closeDuplicateTabs';
   if (duplicate && !Array.isArray(message.keepers)) throw new Error('Choose a copy to keep.');
+  // Folder topology is fixed by the controller queue for this operation.
+  // Native tab membership is still checked afresh before each write.
+  const folders = !undoing && scope?.kind === 'folder' ? createFolderIndex(state) : undefined;
   let time =
     state.tabs.reduce((latest, tab) => Math.max(latest, tab.savedForLaterAt || 0), Date.now()) +
     targets.length;
   const selected = new Set(targets.map((target) => target.id));
+  const keepers = new Map();
+  if (duplicate)
+    for (const expected of message.keepers) {
+      const key = duplicateKey(expected);
+      if (!key || selected.has(expected.id)) continue;
+      if (!keepers.has(key)) keepers.set(key, []);
+      keepers.get(key).push(expected);
+    }
   for (const target of targets) {
     let attempted = false;
     try {
@@ -30,7 +42,7 @@ export async function applyTabBatch(
         const tab = await freshTab(target.id);
         if (
           !matchesTarget(tab, target) ||
-          (!undoing && !inCollection(state, tab, scope)) ||
+          (!undoing && !inCollection(state, tab, scope, folders)) ||
           (saving && isSavedForLater(tab)) ||
           (undoing && !isSavedForLater(tab))
         ) {
@@ -39,12 +51,13 @@ export async function applyTabBatch(
         if (duplicate) {
           const key = duplicateKey(tab);
           let keeper = false;
-          for (const expected of message.keepers) {
-            if (selected.has(expected.id)) continue;
+          // The index narrows reviewed candidates only. Read matching keepers
+          // again on every validation, including immediately before removal.
+          for (const expected of keepers.get(key) || []) {
             const candidate = await freshTab(expected.id);
             if (
               matchesTarget(candidate, expected) &&
-              inCollection(state, candidate, scope) &&
+              inCollection(state, candidate, scope, folders) &&
               key &&
               duplicateKey(candidate) === key
             ) {
@@ -58,7 +71,10 @@ export async function applyTabBatch(
         }
         // Keeper and metadata reads can yield to a native navigation or move.
         const current = await freshTab(target.id);
-        return matchesTarget(current, target) && (undoing || inCollection(state, current, scope));
+        return (
+          matchesTarget(current, target) &&
+          (undoing || inCollection(state, current, scope, folders))
+        );
       };
 
       if (!(await validate())) {

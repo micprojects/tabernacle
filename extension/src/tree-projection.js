@@ -245,7 +245,7 @@ export function projectTree(
   const { roots, byKey, domainTabs } = shown;
   const saved = domain
     ? []
-    : savedSearchResults(state, query).map((tab) =>
+    : savedSearchResults(state, query, state.view.scopeId, index.folders).map((tab) =>
         record({
           key: `tab:${tab.id}`,
           kind: 'tab',

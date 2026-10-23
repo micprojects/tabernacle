@@ -8,7 +8,8 @@ import {
   sourceUrl,
   viewedAge,
 } from './tab-collection.js';
-import { groupPath, isSavedForLater } from './model.js';
+import { isSavedForLater } from './model.js';
+import { createFolderIndex } from './folder-index.js';
 
 const element = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -66,15 +67,28 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
     let currentGroups = [],
       busy = false;
 
+    const updateSelection = () => {
+      if (busy) return;
+      const allSelected = currentGroups.some((group) => group.every((tab) => selected.has(tab.id)));
+      note.textContent = !currentGroups.length
+        ? 'No exact duplicates in these tabs.'
+        : allSelected
+          ? 'Keep at least one copy of each page.'
+          : 'Review the suggested copies to close. Keep at least one copy of each page.';
+      submitButton().textContent = `Close ${selected.size} ${selected.size === 1 ? 'tab' : 'tabs'}`;
+      submitButton().disabled = !selected.size || allSelected;
+    };
+
     const update = () => {
       if (busy) return;
       const state = getState();
+      const folders = createFolderIndex(state);
       const byId = new Map(state.tabs.map((tab) => [tab.id, tab]));
       const candidates = initial
         .filter(
           (target) =>
             matchesTarget(byId.get(target.id), target) &&
-            inCollection(state, byId.get(target.id), scope),
+            inCollection(state, byId.get(target.id), scope, folders),
         )
         .map((target) => byId.get(target.id));
       currentGroups = duplicateGroups(candidates);
@@ -99,7 +113,9 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
               automatic.delete(tab.id);
               if (check.checked) selected.add(tab.id);
               else selected.delete(tab.id);
-              update();
+              // State refreshes and submission revalidate the reviewed targets.
+              // A selection change only needs to update the summary and keeper warning.
+              updateSelection();
             });
             const copy = element('span', '');
             const title = element('span', 'duplicate-title');
@@ -114,7 +130,7 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
           item.title.textContent = tab.title || sourceUrl(tab);
           item.title.title = item.title.textContent;
           item.details.textContent = [
-            ['Home', ...groupPath(state, tab.groupId).map((group) => group.name)].join(' / '),
+            ['Home', ...folders.path(tab.groupId).map((group) => group.name)].join(' / '),
             isSavedForLater(tab) ? 'Saved for Later' : 'In tree',
             tab.container?.name || 'No container',
             tab.pinned ? 'Pinned' : '',
@@ -143,14 +159,7 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
         ).focus({ preventScroll: true });
       if (previousFocus?.isConnected && content.contains(previousFocus))
         previousFocus.focus({ preventScroll: true });
-      const allSelected = currentGroups.some((group) => group.every((tab) => selected.has(tab.id)));
-      note.textContent = !currentGroups.length
-        ? 'No exact duplicates in these tabs.'
-        : allSelected
-          ? 'Keep at least one copy of each page.'
-          : 'Review the suggested copies to close. Keep at least one copy of each page.';
-      submitButton().textContent = `Close ${selected.size} ${selected.size === 1 ? 'tab' : 'tabs'}`;
-      submitButton().disabled = !selected.size || allSelected;
+      updateSelection();
     };
 
     showDialog({
