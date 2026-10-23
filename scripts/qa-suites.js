@@ -62,3 +62,16 @@ export const firefoxSuites = [
   'test-pinned-folders-firefox',
   'test-toolbar-icon-firefox',
 ];
+
+// Identifiers also name reports and select native resource guards.
+export const suiteFiles = new Map([
+  ...uiSuites.map((name) => [name, `test/ui/${name}.js`]),
+  ...firefoxSuites.map((name) => [name, `test/firefox/${name}.js`]),
+  ['stress-firefox', 'scripts/stress-firefox.js'],
+]);
+
+export function suiteFile(name) {
+  const file = suiteFiles.get(name);
+  if (!file) throw new Error(`Unknown browser suite: ${name}`);
+  return file;
+}

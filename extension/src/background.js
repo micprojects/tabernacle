@@ -1,7 +1,7 @@
 import { createController } from './controller.js';
 import { createSnapshotEncoder } from './snapshot-transfer.js';
-import { createNewTabRouting } from './new-tab-routing.js';
-import { createWeatherService } from './new-tab-weather.js';
+import { createNewTabRouting } from './new-tab/routing.js';
+import { createWeatherService } from './new-tab/weather.js';
 
 const weather = createWeatherService(browser);
 

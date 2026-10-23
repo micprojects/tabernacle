@@ -11,7 +11,7 @@ import {
   suggestedDuplicates,
   viewedAge,
 } from '../extension/src/tab-collection.js';
-import { createTreeIndex } from '../extension/src/tree-index.js';
+import { createTreeIndex } from '../extension/src/tree/index.js';
 import { domainResults } from '../extension/src/domain-filter.js';
 import { listDomains } from '../extension/src/domains.js';
 import { createController } from '../extension/src/controller.js';

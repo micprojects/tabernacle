@@ -6,7 +6,7 @@ import {
   matchesDomain,
   domainResults,
 } from '../extension/src/domain-filter.js';
-import { createTreeIndex } from '../extension/src/tree-index.js';
+import { createTreeIndex } from '../extension/src/tree/index.js';
 
 test('domains normalise hosts and reject URLs, ports and incomplete syntax', () => {
   assert.equal(normaliseDomain('WWW.YouTube.COM.'), 'youtube.com');

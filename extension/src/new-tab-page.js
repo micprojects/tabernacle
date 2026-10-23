@@ -3,9 +3,9 @@ import { icon } from './icons.js';
 import { folderIcon } from './folder-icons.js';
 import { isSavedForLater, groupPath } from './model.js';
 import { createFolderIndex } from './folder-index.js';
-import { normalizeNewTab, isNewTabPage, searchAddress } from './new-tab-preferences.js';
+import { normalizeNewTab, isNewTabPage, searchAddress } from './new-tab/preferences.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
-import { weatherLabel } from './new-tab-weather.js';
+import { weatherLabel } from './new-tab/weather.js';
 import { captureFocus, restoreFocusToken, captureScroll, restoreScroll } from './view-state.js';
 
 const $ = (id) => document.getElementById(id);

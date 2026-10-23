@@ -105,6 +105,7 @@ export async function iterationHarness() {
   }
 
   await walk('scripts/memory');
+  await walk('scripts/instrumentation');
   files.sort();
   const hash = createHash('sha256');
   for (const path of files) {

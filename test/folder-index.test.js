@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createFolderIndex } from '../extension/src/folder-index.js';
 import { folderAppearance } from '../extension/src/folder-appearance.js';
 import { groupContainer, groupPath, isWithin } from '../extension/src/model.js';
-import { createTreeIndex } from '../extension/src/tree-index.js';
+import { createTreeIndex } from '../extension/src/tree/index.js';
 
 function fixture() {
   return {

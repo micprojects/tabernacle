@@ -1,9 +1,10 @@
+import { createFullTreeRenderer } from '../extension/src/tree/full-renderer.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTreeIndex } from '../extension/src/tree-index.js';
+import { createTreeIndex } from '../extension/src/tree/index.js';
 import { searchTabOrder } from '../extension/src/tab-collection.js';
 import { domainResults } from '../extension/src/domain-filter.js';
-import { projectTree, createFullTreeRenderer } from '../extension/src/tree-projection.js';
+import { projectTree } from '../extension/src/tree/projection.js';
 
 function fixture() {
   const tab = (id, groupId, fields = {}) => ({

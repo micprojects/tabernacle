@@ -2,7 +2,10 @@
 
 Tabernacle is a published Firefox extension. Protect existing installations and
 their data in every change. Use [DEVELOPMENT.md](DEVELOPMENT.md) for architecture,
-validation commands and release procedures.
+validation commands and release procedures. Detailed current ownership contracts live in
+[docs/architecture.md](docs/architecture.md); testing and benchmark procedures live in
+[docs/testing.md](docs/testing.md) and [docs/benchmarks.md](docs/benchmarks.md).
+Dated experiments in `docs/performance/` describe historical source layouts.
 
 ## Data and compatibility
 

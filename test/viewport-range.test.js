@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bufferRange } from '../extension/src/viewport-range.js';
+import { bufferRange } from '../extension/src/tree/viewport-range.js';
 
 const range = (startIndex, endIndex, count = 1000, overscan = 12) => ({
   startIndex,

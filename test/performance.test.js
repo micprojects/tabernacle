@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { createBrowserCache } from '../extension/src/browser-cache.js';
-import { createTreeIndex } from '../extension/src/tree-index.js';
+import { createTreeIndex } from '../extension/src/tree/index.js';
 import { captureTarget } from '../extension/src/tab-collection.js';
 import {
   insertionOrder,

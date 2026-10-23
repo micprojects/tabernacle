@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { memoryBrowser } from '../preview/browser.js';
 import { createController } from '../extension/src/controller.js';
 import { TAB_KEY, isSavedForLater } from '../extension/src/model.js';
-import { createTreeIndex } from '../extension/src/tree-index.js';
+import { createTreeIndex } from '../extension/src/tree/index.js';
 import { listDomains } from '../extension/src/domains.js';
 import { domainResults } from '../extension/src/domain-filter.js';
 import { laterResults } from '../extension/src/later.js';

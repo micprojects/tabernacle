@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
+import { suiteFile } from './qa-suites.js';
 
 export function runBrowserSuites(names) {
   for (const name of names) {
-    const result = spawnSync(process.execPath, [`scripts/${name}.js`], {
+    const result = spawnSync(process.execPath, [suiteFile(name)], {
       stdio: 'inherit',
       timeout: 180_000,
     });

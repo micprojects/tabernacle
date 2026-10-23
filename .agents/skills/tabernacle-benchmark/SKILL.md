@@ -6,7 +6,7 @@ description: Run reproducible Tabernacle version comparisons and generate a Mark
 # Tabernacle benchmark report
 
 Use the maintained runner in this repository; read the **Benchmark reports for posting**
-and **Optimisation benchmarks** sections of [DEVELOPMENT.md](../../../DEVELOPMENT.md)
+and **Optimisation benchmarks** sections of [docs/benchmarks.md](../../../docs/benchmarks.md)
 for the command, measurement limits and evidence policy. Run from the repository root
 with Node 24 from `.nvmrc` and the locked dependencies.
 

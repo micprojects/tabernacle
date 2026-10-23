@@ -1,3 +1,4 @@
+import { sourceFile } from '../instrumentation/source.js';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
@@ -20,9 +21,7 @@ const [sourceRoot, tabsText, windowsText] = process.argv.slice(2),
   windowCount = Number(windowsText);
 const browser = new FrameBrowser(),
   source = await fingerprintSource(sourceRoot);
-const { createTreeIndex } = await import(
-  pathToFileURL(resolve(sourceRoot, 'extension/src/tree-index.js'))
-);
+const { createTreeIndex } = await import(pathToFileURL(await sourceFile(sourceRoot, 'treeIndex')));
 let searchTabOrder;
 try {
   ({ searchTabOrder } = await import(

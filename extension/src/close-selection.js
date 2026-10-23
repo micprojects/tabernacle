@@ -1,5 +1,5 @@
 import { searchTabOrder } from './tab-collection.js';
-import { createTreeIndex } from './tree-index.js';
+import { createTreeIndex } from './tree/index.js';
 import { domainResults, normaliseDomain } from './domain-filter.js';
 import { laterResults } from './later.js';
 
