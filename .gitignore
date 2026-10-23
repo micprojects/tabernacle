@@ -7,6 +7,12 @@ test-results/
 .DS_Store
 *.log
 
+# Keep profiling reports and recordings local; see AGENTS.md.
+/docs/performance/*profil*.md
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+
 # Local credentials, agent state and legacy design locations.
 .env
 .env.*

@@ -91,6 +91,8 @@ Dated experiments in `docs/performance/` describe historical source layouts.
   `output/mockups/<topic-date>/`.
 - Put one-off scripts, investigation notes, plans, downloaded references and
   temporary reports in `output/scratch/<task>/`. Keep related files together.
+- Keep profiling reports and recordings in ignored local output. Never commit
+  them to the repository.
 - Existing tools may continue using their ignored `test-results/`, `dist/` and
   `firefox/` directories for test evidence, build packages and test profiles.
 - Do not create a parallel `outputs/` directory or put experiments in `design/`,
