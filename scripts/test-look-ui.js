@@ -232,7 +232,7 @@ try {
       value: { connectingLines: false, domains: false },
     });
   });
-  await expect(parent.locator('.tab-disclosure .tab-icon svg')).toBeVisible();
+  await expect(parent.locator('.tab-disclosure .tab-icon.tab-globe')).toBeVisible();
   await parent.locator('.tab-icon').click();
   await expect(parent).toHaveAttribute('aria-expanded', 'false');
   await parent.locator('.tab-icon').click();

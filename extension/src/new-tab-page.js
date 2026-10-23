@@ -170,6 +170,16 @@ function render() {
     $('preview-notice').textContent =
       'Preview with example tabs. Changes here do not affect Firefox.';
   const available = tabs();
+  // Match the first available tab, including a missing favicon, as before.
+  // Index only requested link hosts, stopping when each has its first match.
+  const linkDomains = value.links.map((link) => domain(link.url));
+  const remainingDomains = new Set(linkDomains);
+  const tabsByDomain = new Map();
+  for (const tab of available) {
+    if (!remainingDomains.size) break;
+    const key = domain(tab.url);
+    if (remainingDomains.delete(key)) tabsByDomain.set(key, tab);
+  }
   const folderIndex = createFolderIndex(state);
   const counts = new Map();
   for (const tab of available)
@@ -180,11 +190,11 @@ function render() {
   }
   $('links').classList.toggle('list-style', value.linkStyle === 'list');
   $('links').replaceChildren(
-    ...value.links.map((link) => {
+    ...value.links.map((link, i) => {
       const node = el('a', 'site');
       node.href = link.url;
       node.dataset.key = `link-${link.id}`;
-      const known = available.find((tab) => domain(tab.url) === domain(link.url));
+      const known = tabsByDomain.get(linkDomains[i]);
       node.append(favicon(known, 'site-icon'), el('span', 'site-label', link.name));
       return node;
     }),

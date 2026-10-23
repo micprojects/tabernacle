@@ -1,23 +1,17 @@
 import { batchSummary } from './collection-dialogs.js';
-import {
-  savedSearchResults,
-  folderCollection,
-  sourceUrl,
-  viewedAge,
-  matchesText,
-  captureTarget,
-} from './tab-collection.js';
+import { folderCollection, sourceUrl, viewedAge, captureTarget } from './tab-collection.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
-import { createTreeIndex, scopeBranches } from './tree-index.js';
-import { domainForTab, domainResults } from './domain-filter.js';
+import { createTreeIndex, scopeBranches, updateTreeAudio } from './tree-index.js';
+import { domainForTab } from './domain-filter.js';
+import { projectTree, createFullTreeRenderer } from './tree-projection.js';
+import { captureScroll, restoreScroll } from './view-state.js';
 import { createDomainHeader } from './domain-header.js';
 import { createDomainsView } from './domains-view.js';
 import { createLaterView } from './later-view.js';
 import { createRowCache, reconcileChildren, setAttribute } from './dom.js';
 import { createTreeMotion } from './tree-motion.js';
-import { captureScroll, restoreScroll } from './view-state.js';
 import { createFaviconTints } from './favicon-tint.js';
 import { createLabelColors } from './label-colors.js';
 import { guideColors } from './appearance-colors.js';
@@ -42,7 +36,7 @@ const $ = (id) => document.getElementById(id);
 const tree = $('tree');
 let treeTabs = [];
 let index;
-let collapsedGroups = new Set();
+let projection;
 const rowCache = createRowCache({ retain: 2048 });
 const faviconTint = createFaviconTints();
 const renderDomainHeader = createDomainHeader($('domain-header'));
@@ -258,10 +252,11 @@ function button(label, iconName, handler, className = 'icon-button') {
   const node = buttonTemplates.get(key).cloneNode(true);
   node.title = label;
   node.setAttribute('aria-label', label);
-  node.addEventListener('click', (event) => {
-    event.stopPropagation();
-    handler(event);
-  });
+  if (handler)
+    node.addEventListener('click', (event) => {
+      event.stopPropagation();
+      handler(event);
+    });
   return node;
 }
 
@@ -546,10 +541,6 @@ function count(id) {
   return id === null ? treeTabs.length : index.groupStats.get(id)?.count || 0;
 }
 
-function searchVisible(id) {
-  return index.groupStats.get(id)?.match;
-}
-
 function selectRow(row) {
   selected = row.dataset.key;
   tree.querySelectorAll('.selected').forEach((node) => node.classList.remove('selected'));
@@ -572,17 +563,110 @@ function rowBase(kind, id) {
   row.dataset.key = `${kind}:${id}`;
   row.dataset.id = id;
   row.classList.toggle('selected', selected === row.dataset.key);
-  row.addEventListener('click', () => selectRow(row));
-  row.addEventListener('contextmenu', (event) => {
-    cancelGroupClick();
-    event.preventDefault();
-    selectRow(row);
-    contextMenu(kind, id, event.clientX, event.clientY);
-  });
-  row.addEventListener('keydown', (event) => rowKey(event, row, kind, id));
   dropTarget(row, kind, id);
   return row;
 }
+
+function rowButton(label, iconName, action, className = 'icon-button') {
+  const node = button(label, iconName, null, className);
+  node.dataset.rowAction = action;
+  return node;
+}
+
+// Transient press state belongs to the row without retaining a detached subtree.
+const rowPress = new WeakMap();
+
+function rowTarget(event) {
+  const row = event.target.closest('.row');
+  if (!row || !tree.contains(row) || row.closest('[inert]') || !state) return null;
+  const kind = row.dataset.kind;
+  const id = kind === 'tab' ? Number(row.dataset.id) : row.dataset.id;
+  if (kind !== 'group' && kind !== 'tab') return null;
+  return { row, kind, id };
+}
+
+function currentRow(target) {
+  return (
+    target &&
+    (target.kind === 'tab'
+      ? state.tabs.some((tab) => tab.id === target.id)
+      : state.groups.some((group) => group.id === target.id))
+  );
+}
+
+tree.addEventListener('pointerdown', (event) => {
+  const target = rowTarget(event);
+  if (!target || target.kind !== 'tab' || event.button !== 0) return;
+  if (event.target.closest('button')) rowPress.delete(target.row);
+  else rowPress.set(target.row, canToggleTabChildren());
+});
+tree.addEventListener('pointercancel', (event) => {
+  const target = rowTarget(event);
+  if (target) rowPress.delete(target.row);
+});
+tree.addEventListener('mousedown', (event) => {
+  if (event.button === 1 && rowTarget(event)?.kind === 'tab') event.preventDefault();
+});
+tree.addEventListener('auxclick', (event) => {
+  const target = rowTarget(event);
+  if (event.button !== 1 || target?.kind !== 'tab' || !currentRow(target)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeTab(target.id);
+});
+tree.addEventListener('click', (event) => {
+  const target = rowTarget(event);
+  if (!currentRow(target)) return;
+  const { row, kind, id } = target;
+  const control = event.target.closest('button');
+  if (control) {
+    const actionName = control.dataset.rowAction;
+    if (!actionName) return;
+    event.stopPropagation();
+    if (actionName === 'toggle-group' && kind === 'group') {
+      selectRow(row);
+      clickGroup(id, event);
+    } else if (actionName === 'toggle-tab' && kind === 'tab') {
+      selectRow(row);
+      windowFocusedAt = -Infinity;
+      action('toggleTab', { id, activate: true });
+    } else if (kind === 'tab') {
+      if (actionName === 'return-tab') returnSavedTab(id);
+      else if (actionName === 'mute-tab') action('muteTab', { id });
+      else if (actionName === 'close-tab') closeTab(id);
+    }
+    return;
+  }
+  selectRow(row);
+  if (kind === 'group') {
+    if (event.detail < 2) clickGroup(id, event);
+    return;
+  }
+  if (domainFilter || isSavedForLater(state.tabs.find((tab) => tab.id === id))) {
+    rowPress.delete(row);
+    activateTab(id);
+    return;
+  }
+  const toggleChildren = (rowPress.get(row) ?? true) && canToggleTabChildren();
+  rowPress.delete(row);
+  windowFocusedAt = -Infinity;
+  action('clickTab', { id, toggleChildren }).then((next) => {
+    // A focus notification caused by this activation can arrive after click.
+    if (next && !toggleChildren && windowFocused) windowFocusedAt = -Infinity;
+  });
+});
+tree.addEventListener('contextmenu', (event) => {
+  const target = rowTarget(event);
+  if (!currentRow(target)) return;
+  cancelGroupClick();
+  event.preventDefault();
+  selectRow(target.row);
+  contextMenu(target.kind, target.id, event.clientX, event.clientY);
+});
+tree.addEventListener('keydown', (event) => {
+  const target = rowTarget(event);
+  if (currentRow(target)) rowKey(event, target.row, target.kind, target.id);
+});
 
 function playsAudio(tab) {
   return Boolean(tab.audible && !tab.mutedInfo?.muted);
@@ -647,15 +731,7 @@ function createGroupRow(group, container) {
   const playing = audioInGroups.get(group.id) || 0;
   const audio = playingLabel(playing, 'in this folder');
   if (playing) describeAudio(row, audio);
-  const disclosure = button(
-    `Expand ${group.name}`,
-    null,
-    (event) => {
-      selectRow(event.currentTarget.closest('.row'));
-      clickGroup(group.id, event);
-    },
-    'disclosure',
-  );
+  const disclosure = rowButton(`Expand ${group.name}`, null, 'toggle-group', 'disclosure');
   disclosure.tabIndex = -1;
   const total = el('span', 'group-count', String(count(group.id)));
   total.setAttribute('aria-hidden', 'true');
@@ -666,11 +742,6 @@ function createGroupRow(group, container) {
     total,
     icon('chevron', 'group-chevron'),
   );
-  row.addEventListener('click', (event) => {
-    if (!event.target.closest('button') && event.detail < 2) {
-      clickGroup(group.id, event);
-    }
-  });
   return row;
 }
 
@@ -685,14 +756,9 @@ function paintGuide(branch, color) {
   guideColorsApplied.set(branch, key);
 }
 
-function groupNode(group, query, ancestorMatch = false) {
-  if (query && !ancestorMatch && !searchVisible(group.id)) return null;
-  const { node, branch } = wrapperFor('group', group.id);
+function groupRow(group, expanded) {
   const container = groupContainerDetails(group);
   const { appearance } = index.folders.details.get(group.id);
-  const color = folderIconColor(appearance.color) || 'var(--folder-icon)';
-  node.style.setProperty('--item-colour', color);
-  paintGuide(branch, appearance.color);
   const row = markSelected(
     rowCache.get(
       `group:${group.id}`,
@@ -711,7 +777,6 @@ function groupNode(group, query, ancestorMatch = false) {
       () => createGroupRow(group, container),
     ),
   );
-  const expanded = Boolean(query) || !collapsedGroups.has(group.id);
   labelColors.apply(row, appearance.color);
   setAttribute(row, 'aria-expanded', expanded);
   const disclosure = row.querySelector('.disclosure');
@@ -723,9 +788,18 @@ function groupNode(group, query, ancestorMatch = false) {
   setAttribute(disclosure, 'aria-expanded', expanded);
   setAttribute(disclosure, 'aria-label', label);
   setAttribute(disclosure, 'title', label);
+  return row;
+}
+
+function groupNode({ group, expanded }, children) {
+  const { node, branch } = wrapperFor('group', group.id);
+  const { appearance } = index.folders.details.get(group.id);
+  const color = folderIconColor(appearance.color) || 'var(--folder-icon)';
+  node.style.setProperty('--item-colour', color);
+  paintGuide(branch, appearance.color);
+  const row = groupRow(group, expanded);
   treeMotion.reconcile(node, row, branch, expanded, () => {
-    const matchAll = ancestorMatch || (Boolean(query) && group.name.toLowerCase().includes(query));
-    fillChildren(branch, group.id, query, matchAll);
+    reconcileChildren(branch, children);
     if (!branch.childElementCount) {
       const empty = el('div', 'empty-child', 'Drop tabs here');
       empty.setAttribute('role', 'none');
@@ -734,6 +808,11 @@ function groupNode(group, query, ancestorMatch = false) {
     }
   });
   return node;
+}
+
+function fallbackFavicon(node) {
+  node.classList.add('tab-globe');
+  node.setAttribute('aria-hidden', 'true');
 }
 
 function tabFavicon(tab) {
@@ -753,12 +832,19 @@ function tabFavicon(tab) {
     img.alt = '';
     img.draggable = false;
     img.referrerPolicy = 'no-referrer';
-    img.addEventListener('error', () => img.replaceWith(icon('globe')), { once: true });
+    img.addEventListener(
+      'error',
+      () => {
+        img.remove();
+        fallbackFavicon(favicon);
+      },
+      { once: true },
+    );
     favicon.append(img);
   } else if (demo && tab.title !== 'New tab') {
     favicon.classList.add('tab-fallback');
     favicon.textContent = (tab.title || 'T').charAt(0);
-  } else favicon.append(icon('globe'));
+  } else fallbackFavicon(favicon);
   return favicon;
 }
 
@@ -977,14 +1063,10 @@ function createTabRow(tab, expanded, stats) {
     row.setAttribute('aria-expanded', String(expanded));
     const count = `${stats.descendants} nested ${stats.descendants === 1 ? 'tab' : 'tabs'}`;
     row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${count}`);
-    const disclosure = button(
+    const disclosure = rowButton(
       `${expanded ? 'Collapse' : 'Expand'} child tabs of ${tab.title || 'New tab'}`,
       null,
-      (event) => {
-        selectRow(event.currentTarget.closest('.row'));
-        windowFocusedAt = -Infinity;
-        action('toggleTab', { id: tab.id, activate: true });
-      },
+      'toggle-tab',
       'disclosure tab-disclosure',
     );
     disclosure.tabIndex = -1;
@@ -1008,47 +1090,20 @@ function createTabRow(tab, expanded, stats) {
   if (isSavedForLater(tab)) {
     row.classList.add('saved-search-row');
     row.append(el('span', 'saved-search-folder', tabFolderLabel(tab)));
-    row.append(button('Return to original folder', 'group', () => returnSavedTab(tab.id)));
+    row.append(rowButton('Return to original folder', 'group', 'return-tab'));
   }
   if (childAudioCount(tab) && !playsAudio(tab))
     row.append(audioIndicator(playingLabel(childAudioCount(tab), 'in this tab’s children')));
   if (tab.audible || tab.mutedInfo?.muted)
     row.append(
-      button(
+      rowButton(
         tab.mutedInfo?.muted ? 'Unmute tab' : 'Mute tab',
         tab.mutedInfo?.muted ? 'mutedSmall' : 'speakerSmall',
-        () => action('muteTab', { id: tab.id }),
+        'mute-tab',
         'audio-button',
       ),
     );
-  row.append(
-    button(`Close ${tab.title || 'New tab'}`, 'closeSmall', () => closeTab(tab.id), 'close-tab'),
-  );
-  let toggleOnClick;
-  row.addEventListener('pointerdown', (event) => {
-    if (event.button === 0)
-      toggleOnClick = event.target.closest('button') ? undefined : canToggleTabChildren();
-  });
-  row.addEventListener('pointercancel', () => {
-    toggleOnClick = undefined;
-  });
-  row.addEventListener('click', (event) => {
-    if (!event.target.closest('button')) {
-      if (domainFilter || isSavedForLater(state.tabs.find((item) => item.id === tab.id))) {
-        toggleOnClick = undefined;
-        activateTab(tab.id);
-        return;
-      }
-      const toggleChildren = (toggleOnClick ?? true) && canToggleTabChildren();
-      toggleOnClick = undefined;
-      windowFocusedAt = -Infinity;
-      action('clickTab', { id: tab.id, toggleChildren }).then((next) => {
-        // A focus notification caused by this activation can arrive after click.
-        if (next && !toggleChildren && windowFocused) windowFocusedAt = -Infinity;
-      });
-    }
-  });
-  closeOnMiddleClick(row, tab.id);
+  row.append(rowButton(`Close ${tab.title || 'New tab'}`, null, 'close-tab', 'close-tab'));
   return row;
 }
 
@@ -1079,11 +1134,7 @@ function tabFolderLabel(tab) {
   return `${tab.pinned ? 'Pinned · ' : ''}Folder: ${path}`;
 }
 
-function tabNode(tab, query, ancestorMatch = false) {
-  const stats = index.tabStats.get(tab.id);
-  const matchAll = ancestorMatch || stats.match;
-  if (query && !matchAll && !stats.descendantMatch) return null;
-  const expanded = Boolean(query) || !tab.collapsed;
+function tabNode({ tab, stats, expanded }, children) {
   const { node, branch } = wrapperFor('tab', tab.id, stats.descendants > 0);
   // A tab owns its child rail, even when a child uses a different container.
   if (stats.descendants) paintGuide(branch, tab.container?.colorCode);
@@ -1094,11 +1145,7 @@ function tabNode(tab, query, ancestorMatch = false) {
     return node;
   }
   treeMotion.reconcile(node, row, branch, Boolean(stats.descendants && expanded), () => {
-    const nodes = (index.children.get(tab.id) || [])
-      .map((child) => tabNode(child, query, matchAll))
-      .filter(Boolean);
-    if (!query) nodes.push(newTabItem(tab.groupId, tab));
-    reconcileChildren(branch, nodes);
+    reconcileChildren(branch, children);
   });
   return node;
 }
@@ -1143,7 +1190,7 @@ function newTabItem(groupId, parentTab = null) {
       if (event.key === 'ArrowLeft' && !event.altKey) {
         event.preventDefault();
         const parentKey = parentTabId !== null ? `tab:${parentTabId}` : `group:${groupId}`;
-        const parentRow = tree.querySelector(`[data-key="${parentKey}"]`);
+        const parentRow = treeRenderer.target(parentKey);
         if (parentRow) selectRow(parentRow);
         else parent();
       }
@@ -1154,15 +1201,37 @@ function newTabItem(groupId, parentTab = null) {
   });
 }
 
-function fillChildren(container, parentId, query, ancestorMatch = false) {
-  const groups = (index.groupChildren.get(parentId) || [])
-    .map((group) => groupNode(group, query, ancestorMatch))
-    .filter(Boolean);
-  const tabs = (index.roots.get(parentId) || [])
-    .map((tab) => tabNode(tab, query, ancestorMatch))
-    .filter(Boolean);
-  reconcileChildren(container, [...groups, ...tabs, ...(!query ? [newTabItem(parentId)] : [])]);
-}
+const treeRenderer = createFullTreeRenderer({
+  tree,
+  pins: $('pinned-tabs'),
+  reconcile: reconcileChildren,
+  // Pane callers own focus, including close({ restoreFocus: false }).
+  captureView: () => ({ scroll: captureScroll(tree, '.row, .new-tab-action') }),
+  restoreView: (saved) => restoreScroll(tree, saved.scroll),
+
+  renderRow(row, children) {
+    let node;
+    let target;
+    if (row.kind === 'group') node = groupNode(row, children);
+    else if (row.kind === 'new-tab') node = newTabItem(row.groupId, row.parentTab);
+    else if (row.kind === 'pin-tab') node = target = pinnedTab(row.tab);
+    else if (row.kind === 'pin-group') node = target = pinnedFolder(row.group);
+    else if (row.mode === 'tree') node = tabNode(row, children);
+    else node = target = tabRow(row.tab, true, row.stats);
+    target ||= node.querySelector('.row, .new-tab-action');
+    return { node, target };
+  },
+
+  renderSaved(nodes) {
+    const section = el('div', 'saved-search-results');
+    section.setAttribute('role', 'group');
+    section.setAttribute('aria-label', 'Saved for Later');
+    const heading = el('h2', '', 'Saved for Later');
+    heading.setAttribute('role', 'presentation');
+    section.append(heading, ...nodes);
+    return section;
+  },
+});
 
 function updateTreeToggle(query) {
   const toggle = $('tree-toggle');
@@ -1275,7 +1344,6 @@ function toggleFolderMenu(trigger, parentId) {
 
 let previousRender;
 
-const sameValues = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 const layoutValues = (tab) => [
   tab.id,
   tab.index,
@@ -1290,6 +1358,19 @@ const layoutValues = (tab) => [
   Boolean(tab.audible),
   Boolean(tab.mutedInfo?.muted),
 ];
+// Compare against the saved values without allocating arrays for unchanged tabs.
+const sameLayout = (saved, tab) =>
+  saved[0] === tab.id &&
+  saved[1] === tab.index &&
+  saved[2] === tab.order &&
+  saved[3] === tab.treeId &&
+  saved[4] === tab.groupId &&
+  saved[5] === tab.parentTabId &&
+  saved[6] === tab.savedForLaterAt &&
+  saved[7] === Boolean(tab.pinned) &&
+  saved[8] === Boolean(tab.collapsed) &&
+  saved[9] === Boolean(tab.active);
+
 const metadataValues = (tab) => [
   tab.title,
   tab.url,
@@ -1299,6 +1380,14 @@ const metadataValues = (tab) => [
   tab.container?.name,
   tab.container?.colorCode,
 ];
+const sameMetadata = (saved, tab) =>
+  saved[0] === tab.title &&
+  saved[1] === tab.url &&
+  saved[2] === tab.favIconUrl &&
+  saved[3] === tab.discarded &&
+  saved[4] === tab.cookieStoreId &&
+  saved[5] === tab.container?.name &&
+  saved[6] === tab.container?.colorCode;
 
 function renderContext() {
   return JSON.stringify([
@@ -1336,49 +1425,103 @@ function patchMetadata(context) {
   )
     return false;
   const changed = [];
+  const audioChanges = [];
   for (const [i, tab] of state.tabs.entries()) {
     const saved = previousRender.tabs[i];
-    if (!sameValues(saved.layout, layoutValues(tab))) return false;
-    const metadata = metadataValues(tab);
-    if (!sameValues(saved.metadata, metadata)) changed.push({ tab, saved, metadata });
+    if (!sameLayout(saved.layout, tab)) return false;
+    const audioChanged =
+      saved.layout[10] !== Boolean(tab.audible) ||
+      saved.layout[11] !== Boolean(tab.mutedInfo?.muted);
+    if (audioChanged) audioChanges.push({ tab, wasPlaying: saved.layout[10] && !saved.layout[11] });
+    if (audioChanged || !sameMetadata(saved.metadata, tab))
+      changed.push({ tab, saved, metadata: metadataValues(tab) });
   }
-  // Placement, active/audio summaries, appearance, search and view are unchanged.
-  // Update metadata only; live-page title/favicon bursts never walk the DOM tree.
+  const audio = audioChanges.length
+    ? updateTreeAudio(index, audioChanges)
+    : { tabs: new Set(), groups: new Set() };
+  if (!audio) return false;
+  // Topology and activation remain unchanged. Audio changes affect only their
+  // logical ancestors; metadata still refreshes only the affected tab rows.
   for (const tab of state.tabs) index.byId.set(tab.id, tab);
+  if (projection) projection.source = state;
   for (const { tab, saved, metadata } of changed) {
     saved.metadata = metadata;
+    saved.layout[10] = Boolean(tab.audible);
+    saved.layout[11] = Boolean(tab.mutedInfo?.muted);
+    audio.tabs.add(tab.id);
+  }
+  for (const id of audio.tabs) {
+    const tab = index.byId.get(id);
     const visible = previousRender.visible.get(tab.id);
     if (visible) Object.assign(visible, tab, { parentTabId: visible.parentTabId });
-    if (tab.pinned) pinnedTab(tab);
-    else {
+    if (tab.pinned) {
+      treeRenderer.replaceTarget(`tab:${tab.id}`, pinnedTab(tab));
+      const row = projection?.materializedByKey.get(`tab:${tab.id}`);
+      if (row) row.tab = tab;
+    } else {
       const wrapper = wrappers.get(`tab:${tab.id}`);
       if (!wrapper?.node.isConnected) continue;
       const stats = index.tabStats.get(tab.id);
-      tabRow(tab, !tab.collapsed, stats);
+      treeRenderer.replaceTarget(`tab:${tab.id}`, tabRow(tab, !tab.collapsed, stats));
       if (wrapper.branch) paintGuide(wrapper.branch, tab.container?.colorCode);
-      if (stats.descendants && !tab.collapsed) newTabItem(tab.groupId, tab);
+      if (stats.descendants && !tab.collapsed)
+        treeRenderer.replaceTarget(
+          `new-child-tab:${tab.id}`,
+          newTabItem(tab.groupId, tab).querySelector('.new-tab-action'),
+        );
     }
   }
+  for (const id of audio.groups) {
+    audioInGroups.set(id, index.groupStats.get(id).audio);
+    const row = projection?.materializedByKey.get(`group:${id}`);
+    if (row && treeRenderer.target(row.key)?.isConnected)
+      treeRenderer.replaceTarget(row.key, groupRow(row.group, row.expanded));
+  }
+  if (audio.groups.has(state.view.scopeId)) renderBreadcrumbs(index.groups.get(state.view.scopeId));
   return true;
 }
 
+function renderBreadcrumbs(scope) {
+  const crumbs = index.folders.path(state.view.scopeId);
+  const scopeContainer = scope && groupContainerDetails(scope);
+  const scopeAudio = audioInGroups.get(scope?.id);
+  const nextBreadcrumbKey = JSON.stringify([
+    crumbs.map(({ id, name }) => [id, name]),
+    scopeContainer,
+    scopeAudio,
+  ]);
+  if (breadcrumbKey !== nextBreadcrumbKey) {
+    breadcrumbKey = nextBreadcrumbKey;
+    breadcrumbItems = crumbs.map((group, index) => {
+      const crumb = button(group.name, null, () => enter(group.id), 'crumb');
+      if (index === crumbs.length - 1) {
+        // The current crumb also carries the former folder heading's metadata.
+        crumb.id = 'scope-heading';
+        crumb.setAttribute('aria-current', 'location');
+        if (scopeContainer) crumb.title = `Default container: ${scopeContainer.name}`;
+        crumb.append(el('span', 'crumb-label', group.name));
+        if (scopeAudio) crumb.append(audioIndicator(playingLabel(scopeAudio, 'in this folder')));
+      } else crumb.append(el('span', 'crumb-label', group.name));
+      dropTarget(crumb, 'inside', group.id);
+      return [folderChevron(group.parentId, crumbs[index - 1]?.name || 'Home'), crumb];
+    });
+    layoutBreadcrumbs();
+  }
+}
+
 function restoreRowFocus(key) {
-  if (key)
-    document
-      .querySelector(`[data-key="${CSS.escape(key)}"]:not([inert] *)`)
-      ?.focus({ preventScroll: true });
+  treeRenderer.target(key)?.focus({ preventScroll: true });
 }
 
 function releaseTree() {
   treeMotion.finishAll();
-  tree.replaceChildren();
-  $('pinned-tabs').replaceChildren();
+  treeRenderer.suspend();
+  projection = null;
   rowCache.clear();
   wrappers.clear();
   usedWrappers.clear();
   treeTabs = [];
   index = undefined;
-  collapsedGroups.clear();
   audioInTabs.clear();
   audioInGroups.clear();
   previousRender = null;
@@ -1393,7 +1536,7 @@ function releaseTree() {
 
 function suspendTree() {
   if (suspendedTree) return;
-  suspendedTree = captureScroll(tree, '.row, .new-tab-action');
+  suspendedTree = treeRenderer.capture();
   releaseTree();
 }
 
@@ -1405,6 +1548,7 @@ window.addEventListener(
     pointerMoves?.dispose();
     readSnapshot?.clear();
     releaseTree();
+    treeRenderer.dispose();
     laterView.dispose();
     domainsView.dispose();
     state = confirmedState = suspendedTree = undefined;
@@ -1444,7 +1588,7 @@ function render(motionKey = null) {
   tree.classList.toggle('show-folder-counts', state.look.folderCounts);
   tree.classList.toggle('domain-results', Boolean(domainFilter));
   const focusedKey = document.activeElement?.closest('[data-key]')?.dataset.key;
-  const scroll = suspendedTree?.top ?? tree.scrollTop;
+  const scroll = suspendedTree?.scroll.top ?? tree.scrollTop;
   const scope = groupById(state, state.view.scopeId);
   const query = (domainFilter ? $('domain-search').value : $('search').value).trim().toLowerCase();
   const filtering = Boolean(query || domainFilter);
@@ -1473,7 +1617,7 @@ function render(motionKey = null) {
   motionContext = nextMotionContext;
   treeMotion.prepare(!filtering && !drag && !changingTree ? motionKey : null);
   index = createTreeIndex(state, query);
-  collapsedGroups = new Set(state.view.collapsed);
+  projection = projectTree(state, index, { query, domain: domainFilter, sort: domainSort });
   // Folder menus must not retain destinations renamed, moved or removed elsewhere.
   if (folderMenuKey && folderMenuKey !== folderHierarchyKey()) closeMenu(true);
   updateTreeToggle(query);
@@ -1481,14 +1625,6 @@ function render(motionKey = null) {
   audioInTabs = index.audio;
   audioInGroups = new Map([...index.groupStats].map(([id, stats]) => [id, stats.audio]));
   const pins = state.pins;
-  const tabPins = new Map(state.tabs.filter((tab) => tab.pinned).map((tab) => [tab.treeId, tab]));
-  const folderPins = new Map(state.folderPins.map((pin) => [pin.id, pin]));
-  reconcileChildren(
-    $('pinned-tabs'),
-    (domainFilter ? [] : pins).map((pin) =>
-      pin.kind === 'tab' ? pinnedTab(tabPins.get(pin.id)) : pinnedFolder(folderPins.get(pin.id)),
-    ),
-  );
   $('pinned-tabs').hidden = Boolean(domainFilter) || (!pins.length && !drag);
   $('pinned-tabs').classList.toggle('empty-pins', !pins.length && Boolean(drag));
   if (scope) {
@@ -1498,31 +1634,7 @@ function render(motionKey = null) {
     $('home').setAttribute('aria-current', 'location');
     if (!homeLabel.isConnected) $('home').append(homeLabel);
   }
-  const crumbs = index.folders.path(state.view.scopeId);
-  const scopeContainer = scope && groupContainerDetails(scope);
-  const scopeAudio = audioInGroups.get(scope?.id);
-  const nextBreadcrumbKey = JSON.stringify([
-    crumbs.map(({ id, name }) => [id, name]),
-    scopeContainer,
-    scopeAudio,
-  ]);
-  if (breadcrumbKey !== nextBreadcrumbKey) {
-    breadcrumbKey = nextBreadcrumbKey;
-    breadcrumbItems = crumbs.map((group, index) => {
-      const crumb = button(group.name, null, () => enter(group.id), 'crumb');
-      if (index === crumbs.length - 1) {
-        // The current crumb also carries the former folder heading's metadata.
-        crumb.id = 'scope-heading';
-        crumb.setAttribute('aria-current', 'location');
-        if (scopeContainer) crumb.title = `Default container: ${scopeContainer.name}`;
-        crumb.append(el('span', 'crumb-label', group.name));
-        if (scopeAudio) crumb.append(audioIndicator(playingLabel(scopeAudio, 'in this folder')));
-      } else crumb.append(el('span', 'crumb-label', group.name));
-      dropTarget(crumb, 'inside', group.id);
-      return [folderChevron(group.parentId, crumbs[index - 1]?.name || 'Home'), crumb];
-    });
-    layoutBreadcrumbs();
-  }
+  renderBreadcrumbs(scope);
   const active = state.tabs.find((tab) => tab.active);
   $('navigation-capsule').hidden = Boolean(domainFilter);
   $('sidebar-header').classList.toggle('domain-mode', Boolean(domainFilter));
@@ -1531,14 +1643,12 @@ function render(motionKey = null) {
   $('domain-back').hidden = !domainFromDirectory;
   domainsView.detail(domainFromDirectory && Boolean(domainFilter));
   if (domainFilter) {
-    const results = domainResults(index, domainFilter, '', domainSort);
-    const visibleResults = results.filter((tab) => matchesText(tab, query));
+    const results = projection.domainTabs;
+    const visibleResults = projection.matchingRows
+      .filter((row) => row.kind === 'tab')
+      .map((row) => row.tab);
     domainVisibleTabs = visibleResults;
     renderDomainHeader(domainFilter, results, domainSourceId);
-    reconcileChildren(
-      tree,
-      visibleResults.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
-    );
     const count = `${results.length} ${results.length === 1 ? 'tab' : 'tabs'}`;
     $('domain-count').textContent = query ? `${visibleResults.length} of ${count}` : count;
     const status = `${query ? `${visibleResults.length} of ` : ''}${count} from ${domainFilter} in this window`;
@@ -1550,30 +1660,14 @@ function render(motionKey = null) {
         : 'Sort filtered tabs';
   } else {
     renderDomainHeader(null);
-    fillChildren(tree, state.view.scopeId, query);
-    const saved = savedSearchResults(state, query);
-    if (saved.length) {
-      const section = el('div', 'saved-search-results');
-      section.setAttribute('role', 'group');
-      section.setAttribute('aria-label', 'Saved for Later');
-      const heading = el('h2', '', 'Saved for Later');
-      heading.setAttribute('role', 'presentation');
-      section.append(
-        heading,
-        ...saved.map((tab) => tabRow(tab, true, { descendants: 0, active: tab.active })),
-      );
-      tree.append(section);
-    }
-    searchVisibleIds = [...tree.querySelectorAll('.tab-row')].map((row) => Number(row.dataset.id));
+    searchVisibleIds = query ? projection.filterTabIds : [];
     $('domain-status').textContent = '';
   }
+  treeRenderer.update(projection);
   treeMotion.finish();
   $('reveal').hidden =
-    filtering ||
-    !active ||
-    active.pinned ||
-    Boolean(tree.querySelector(`[data-key="tab:${active.id}"]:not([inert] *)`));
-  if (filtering && !tree.querySelector('.row')) {
+    filtering || !active || active.pinned || projection.visibleKeys.has(`tab:${active.id}`);
+  if (filtering && !projection.visibleRows.some((row) => row.kind !== 'new-tab')) {
     const empty = el('div', 'empty-state');
     empty.setAttribute('role', 'none');
     empty.append(
@@ -1606,7 +1700,7 @@ function render(motionKey = null) {
   usedWrappers.clear();
   $('new-tab').title = scope ? `New tab in ${scope.name}` : 'New tab';
   tree.scrollTop = searchScroll ?? scroll;
-  if (suspendedTree && searchScroll === undefined) restoreScroll(tree, suspendedTree);
+  if (suspendedTree && searchScroll === undefined) treeRenderer.restore(suspendedTree);
   suspendedTree = undefined;
   searchScroll = undefined;
   restoreRowFocus(focusedKey);
@@ -1672,7 +1766,7 @@ function leaveDomain({ restoreFocus = true } = {}) {
   render();
   layoutBreadcrumbs();
   if (restoreFocus) {
-    const row = selected && tree.querySelector(`[data-key="${CSS.escape(selected)}"]`);
+    const row = selected && treeRenderer.target(selected);
     (row || $('scope-heading') || $('home')).focus({ preventScroll: true });
   }
 }
@@ -1683,17 +1777,19 @@ async function showTabInFolder(id) {
   await enter(tab.groupId);
   const next = await action('activateTab', { id, reveal: true });
   if (!next) return;
-  const row = document.querySelector(`[data-key="tab:${id}"]`);
+  const row = treeRenderer.target(`tab:${id}`);
   if (row) {
     selectRow(row);
-    row.scrollIntoView({ block: 'nearest' });
+    treeRenderer.ensureVisible(`tab:${id}`);
   }
 }
 
 function moveTreeFocus(event, row) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return false;
   event.preventDefault();
-  const rows = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')];
+  const rows = (projection?.visibleRows || [])
+    .map((row) => treeRenderer.target(row.key))
+    .filter(Boolean);
   const index = rows.indexOf(row);
   const next =
     event.key === 'Home'
@@ -1708,7 +1804,9 @@ function moveTreeFocus(event, row) {
 function rowKey(event, row, kind, id) {
   cancelGroupClick();
   if (event.target !== row || moveTreeFocus(event, row)) return;
-  const rows = [...tree.querySelectorAll(':is(.row, .new-tab-action):not([inert] *)')];
+  const rows = (projection?.visibleRows || [])
+    .map((row) => treeRenderer.target(row.key))
+    .filter(Boolean);
   const index = rows.indexOf(row);
   const tab = kind === 'tab' ? state.tabs.find((tab) => tab.id === id) : null;
   const hasChildren =
@@ -1841,8 +1939,7 @@ async function blankAreaAction(type, args = {}) {
     laterView.focusTab(id);
     return;
   }
-  if (id !== undefined)
-    tree.querySelector(`[data-key="tab:${id}"]`)?.scrollIntoView({ block: 'nearest' });
+  if (id !== undefined) treeRenderer.ensureVisible(`tab:${id}`);
 }
 
 function newTabMenu(event, groupId, parentTabId = null) {

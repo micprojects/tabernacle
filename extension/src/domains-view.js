@@ -90,49 +90,71 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
     const row = element('li', 'domains-row');
     row.dataset.domain = domain;
     const open = button(domain, null, 'domains-open-domain');
+    open.dataset.rowAction = 'open';
     const favicon = element('span', 'domains-favicon');
     const label = element('span', 'domains-label', domain);
     const total = element('span', 'domains-tab-count');
     open.append(favicon, label, total);
     const pin = button(`Pin ${domain}`, 'pin', 'domains-pin');
+    pin.dataset.rowAction = 'pin';
     row.append(open, pin);
     const item = { row, open, favicon, total, pin };
-    open.addEventListener('click', () => {
-      selectedDomain = domain;
-      selectedIndex = [...content.querySelectorAll('.domains-open-domain')].indexOf(open);
-      const sourceId = item.entry.source.id;
-      close({ restoreFocus: false });
-      onSelect(domain, sourceId);
-    });
-    pin.addEventListener('click', async () => {
-      if (pin.getAttribute('aria-disabled') === 'true') return;
-      pin.setAttribute('aria-disabled', 'true');
-      try {
-        await onPin(domain, !item.entry.pinned);
-      } finally {
-        pin.removeAttribute('aria-disabled');
-      }
-    });
     return item;
   }
+
+  content.addEventListener(
+    'click',
+    async (event) => {
+      const row = event.target.closest('.domains-row');
+      const domain = row?.dataset.domain;
+      const item = rows.get(domain);
+      const control = event.target.closest('button');
+      if (pane.hidden || !item || item.row !== row || !content.contains(row) || !control) return;
+      if (control.dataset.rowAction === 'open') {
+        selectedDomain = domain;
+        selectedIndex = [...content.querySelectorAll('.domains-open-domain')].indexOf(item.open);
+        const sourceId = item.entry.source.id;
+        close({ restoreFocus: false });
+        onSelect(domain, sourceId);
+      } else if (control.dataset.rowAction === 'pin') {
+        if (control.getAttribute('aria-disabled') === 'true') return;
+        control.setAttribute('aria-disabled', 'true');
+        try {
+          await onPin(domain, !item.entry.pinned);
+        } finally {
+          control.removeAttribute('aria-disabled');
+        }
+      }
+    },
+    { signal: events.signal },
+  );
 
   function render() {
     if (pane.hidden || !state) return;
     const entries = listDomains(state.tabs, state.domainPins);
     const focused = document.activeElement;
-    const oldButtons = [...content.querySelectorAll('.domains-open-domain')];
-    const focusedIndex = oldButtons.findIndex((node) => node.closest('li').contains(focused));
+    const focusedIndex = content.contains(focused)
+      ? [...content.querySelectorAll('.domains-open-domain')].findIndex((node) =>
+          node.closest('li').contains(focused),
+        )
+      : -1;
     const alive = new Set();
     for (const entry of entries) {
       alive.add(entry.domain);
       if (!rows.has(entry.domain)) rows.set(entry.domain, makeRow(entry.domain));
       const item = rows.get(entry.domain);
       item.entry = entry;
-      item.open.setAttribute('aria-label', `${entry.domain}, ${entry.count} tabs`);
-      item.total.textContent = entry.count;
-      item.pin.setAttribute('aria-pressed', String(entry.pinned));
-      item.pin.title = `${entry.pinned ? 'Unpin' : 'Pin'} ${entry.domain}`;
-      item.pin.setAttribute('aria-label', item.pin.title);
+      if (item.count !== entry.count) {
+        item.count = entry.count;
+        item.open.setAttribute('aria-label', `${entry.domain}, ${entry.count} tabs`);
+        item.total.textContent = entry.count;
+      }
+      if (item.pinned !== entry.pinned) {
+        item.pinned = entry.pinned;
+        item.pin.setAttribute('aria-pressed', String(entry.pinned));
+        item.pin.title = `${entry.pinned ? 'Unpin' : 'Pin'} ${entry.domain}`;
+        item.pin.setAttribute('aria-label', item.pin.title);
+      }
       const url = entry.source.favIconUrl;
       if (item.url !== url || !item.favicon.childNodes.length) {
         item.url = url;
@@ -166,7 +188,9 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
     note.hidden = !entries.length;
     count.textContent = `${entries.length} ${entries.length === 1 ? 'domain' : 'domains'}`;
     if (focusedIndex >= 0) {
-      const nextButtons = [...content.querySelectorAll('.domains-open-domain')];
+      const nextButtons = focused.isConnected
+        ? []
+        : [...content.querySelectorAll('.domains-open-domain')];
       const target = focused.isConnected
         ? focused
         : nextButtons[Math.min(focusedIndex, nextButtons.length - 1)] || dismiss;

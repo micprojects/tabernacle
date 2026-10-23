@@ -110,6 +110,60 @@ export function createTreeIndex(state, query = '') {
   };
 }
 
+// The caller verifies unchanged topology and supplies the previous playing state.
+// Validate every path and count before publishing any summary changes.
+export function updateTreeAudio(index, changes) {
+  const tabs = new Map();
+  const groups = new Map();
+
+  const add = (map, id, delta) => map.set(id, (map.get(id) || 0) + delta);
+
+  for (const { tab, wasPlaying } of changes) {
+    if (isSavedForLater(tab)) continue;
+    if (typeof wasPlaying !== 'boolean' || !index.audio.has(tab.id)) return null;
+    const delta = Number(Boolean(tab.audible && !tab.mutedInfo?.muted)) - Number(wasPlaying);
+    if (!delta) continue;
+    let id = tab.id;
+    const visitedTabs = new Set();
+    while (id != null && index.audio.has(id)) {
+      if (visitedTabs.has(id) || !index.byId.has(id)) return null;
+      visitedTabs.add(id);
+      add(tabs, id, delta);
+      id = index.byId.get(id).parentTabId;
+    }
+    if (id != null && index.byId.has(id) && !isSavedForLater(index.byId.get(id))) return null;
+    id = tab.groupId;
+    const visitedGroups = new Set();
+    while (id != null && index.groupStats.has(id)) {
+      if (visitedGroups.has(id)) return null;
+      visitedGroups.add(id);
+      add(groups, id, delta);
+      id = index.folders.parents.get(id);
+    }
+    if (id != null && index.groups.has(id)) return null;
+  }
+  for (const [id, delta] of tabs) {
+    const count = index.audio.get(id) + delta;
+    if (!Number.isInteger(count) || count < 0 || count > index.audio.size) return null;
+  }
+  for (const [id, delta] of groups) {
+    const count = index.groupStats.get(id).audio + delta;
+    if (!Number.isInteger(count) || count < 0 || count > index.audio.size) return null;
+  }
+  const affected = { tabs: new Set(), groups: new Set() };
+  for (const [id, delta] of tabs) {
+    if (!delta) continue;
+    index.audio.set(id, index.audio.get(id) + delta);
+    affected.tabs.add(id);
+  }
+  for (const [id, delta] of groups) {
+    if (!delta) continue;
+    index.groupStats.get(id).audio += delta;
+    affected.groups.add(id);
+  }
+  return affected;
+}
+
 // Include hidden descendants in bulk changes, but choose the next action from
 // the visible roots: an open branch inside a closed group is already folded away.
 export function scopeBranches(index, { scopeId, collapsed }) {

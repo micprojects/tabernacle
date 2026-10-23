@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { normalizeView } from '../extension/src/model.js';
-import { recentItems, recentTime } from '../extension/src/recent-history.js';
+import { recentItems, recentPreviewItems, recentTime } from '../extension/src/recent-history.js';
 import { memoryBrowser } from '../preview/browser.js';
 
 function fixture() {
@@ -214,4 +214,80 @@ test('relative times handle unknown and future times', () => {
   assert.equal(recentTime(now - 120_000, now), '2m');
   assert.equal(recentTime(now - 3_600_000, now), '1h');
   assert.equal(recentTime(now - 86_400_000, now), '1d');
+});
+
+test('bounded previews match full timelines across categories, ties and missing timestamps', () => {
+  let seed = 17;
+  const random = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32;
+  const times = [undefined, null, NaN, Infinity, -1, 0, 100, 100, 1000];
+  const state = {
+    groups: [
+      { id: 'work', name: 'Work', parentId: null },
+      { id: 'nested', name: 'Nested', parentId: 'work' },
+    ],
+    tabs: Array.from({ length: 300 }, (_, id) => ({
+      id,
+      title: `Tab ${id}`,
+      url: `https://example.com/${id}`,
+      lastAccessed: times[Math.floor(random() * times.length)],
+      incognito: random() < 0.1,
+      opaque: { sentinel: id },
+    })),
+    recentlyClosed: Array.from({ length: 150 }, (_, id) => ({
+      sessionId: String(id),
+      title: `Closed ${id}`,
+      closedAt: times[Math.floor(random() * times.length)],
+      incognito: random() < 0.1,
+      opaque: { sentinel: id },
+    })),
+    view: {
+      recentFolders: [
+        { id: 'work', enteredAt: 100 },
+        { id: 'nested', enteredAt: 1000 },
+      ],
+      recentExpandedFolders: [{ id: 'work', expandedAt: 1000 }],
+    },
+  };
+  const saved = structuredClone(state);
+  for (const filter of ['all', 'viewed', 'folder', 'closed'])
+    for (const limit of [0, 1, 20, 50, 100, 1000])
+      assert.deepEqual(
+        recentPreviewItems(state, filter, limit),
+        recentItems(state, filter).slice(0, limit),
+      );
+  assert.deepEqual(state, saved);
+  const first = recentPreviewItems(state);
+  first[0].title = 'Changed result';
+  assert.deepEqual(recentPreviewItems(state), recentItems(state).slice(0, 50));
+});
+
+test('bounded previews copy only selected tabs and leave full history available', () => {
+  let copied = 0;
+  const state = {
+    groups: [],
+    tabs: Array.from({ length: 1000 }, (_, id) => ({
+      id,
+      title: `Tab ${id}`,
+      url: `https://example.com/${id}`,
+      lastAccessed: 1000 + id,
+
+      get opaque() {
+        copied++;
+        return 'preserved';
+      },
+    })),
+  };
+  const preview = recentPreviewItems(state, 'viewed', 50);
+  assert.equal(preview.length, 50);
+  assert.equal(copied, 50);
+  assert.deepEqual(
+    preview.map(({ id }) => id),
+    Array.from({ length: 50 }, (_, i) => 999 - i),
+  );
+  assert(preview.every(({ opaque }) => opaque === 'preserved'));
+  copied = 0;
+  assert.equal(recentPreviewItems(state, 'folder').length, 0);
+  assert.equal(copied, 0);
+  assert.equal(recentItems(state).length, 1000);
+  assert.equal(copied, 1000);
 });
