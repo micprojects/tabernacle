@@ -2475,7 +2475,12 @@ async function start() {
     const readSnapshot = createSnapshotReader((snapshotToken) =>
       send('snapshot', { incremental: true, snapshotToken }),
     );
-    request = (type, args) => (type === 'snapshot' ? readSnapshot() : send(type, args));
+    request = (type, args) =>
+      type === 'snapshot'
+        ? readSnapshot()
+        : readSnapshot.perform((snapshotToken) =>
+            send(type, { ...args, incremental: 2, snapshotToken }),
+          );
     browser.runtime.onMessage.addListener((message) => {
       if (message.type === 'tabernacle:changed') scheduleRefresh(message);
       if (message.type === 'tabernacle:getCloseFilter' && message.windowId === windowId)

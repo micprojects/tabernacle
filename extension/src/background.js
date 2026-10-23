@@ -61,16 +61,29 @@ browser.runtime.onMessage.addListener((message, sender) => {
       (error) => ({ ok: false, error: error.message }),
     );
   }
-  return controller.request({ ...message, type: message.type.slice('tabernacle:'.length) }).then(
-    (data) => ({
-      ok: true,
-      data:
-        message.type === 'tabernacle:snapshot' && message.incremental
-          ? snapshots.encode(message.windowId, data, message.snapshotToken)
-          : data,
-    }),
-    (error) => ({ ok: false, error: error.message }),
-  );
+  return controller
+    .requestForTransport({ ...message, type: message.type.slice('tabernacle:'.length) })
+    .then(
+      (data) => ({
+        ok: true,
+        data:
+          (['tabernacle:snapshot', 'tabernacle:getNewTabState'].includes(message.type) &&
+            (message.incremental === true || message.incremental === 1)) ||
+          (message.incremental === 2 &&
+            Array.isArray(data?.tabs) &&
+            Array.isArray(data.groups) &&
+            typeof data.generation === 'string' &&
+            data.view)
+            ? snapshots.encode(
+                message.windowId,
+                data,
+                message.snapshotToken,
+                message.incremental === 2 ? 2 : 1,
+              )
+            : data,
+      }),
+      (error) => ({ ok: false, error: error.message }),
+    );
 });
 browser.tabs.onCreated.addListener((tab) =>
   controller.created(tab).catch((error) => {

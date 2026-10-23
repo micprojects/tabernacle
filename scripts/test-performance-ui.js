@@ -81,9 +81,18 @@ try {
       testing.snapshot = () => controller.request({ type: 'snapshot', windowId: 1 });
       return {
         async request(message) {
-          const state = await controller.request(message);
-          if (message.type !== 'snapshot' || !message.incremental) return state;
-          const result = snapshots.encode(message.windowId, state, message.snapshotToken);
+          const state = await controller.requestForTransport(message);
+          if (
+            !(message.type === 'snapshot' && message.incremental) &&
+            !(message.incremental === 2 && Array.isArray(state?.tabs))
+          )
+            return structuredClone(state);
+          const result = snapshots.encode(
+            message.windowId,
+            state,
+            message.snapshotToken,
+            message.incremental === 2 ? 2 : 1,
+          );
           testing.transfer = result;
           return structuredClone(result);
         },

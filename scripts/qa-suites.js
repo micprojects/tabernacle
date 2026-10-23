@@ -22,6 +22,7 @@ export const uiSuites = [
   'test-tab-close-ui',
   'test-recently-closed-ui',
   'test-activity-page-ui',
+  'test-incremental-pages-ui',
   'test-edge-cases-ui',
   'test-drag-ui',
   'test-audio-ui',
