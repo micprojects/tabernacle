@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSnapshotEncoder, createSnapshotReader } from '../extension/src/snapshot-transfer.js';
+import { immutableCopy } from '../extension/src/presentation-cache.js';
 
 const fixture = (count = 1000) => ({
   generation: 'background',
@@ -84,6 +85,50 @@ test('unchanged reads and removed or nested fields survive incremental transfer'
   f.set(newer);
   assert.deepEqual(await f.read(), newer);
 });
+
+for (const version of [1, 2]) {
+  test(`shared immutable tabs preserve changing snapshot fields and fallback rules (protocol ${version})`, async () => {
+    const encoder = createSnapshotEncoder();
+    const original = immutableCopy(fixture(8));
+    let state = original;
+    let message;
+    const read = createSnapshotReader(async (token) => {
+      message = encoder.encode(1, state, token, version);
+      return structuredClone(message);
+    });
+    const first = await read();
+    state = {
+      ...original,
+      revision: 2,
+      view: { scopeId: null, collapsed: ['folder'] },
+      groups: [{ ...original.groups[0], name: 'Renamed folder' }],
+    };
+    const changed = await read();
+    assert.deepEqual(changed, state);
+    assert.deepEqual(message.changes, []);
+    for (const [index, tab] of changed.tabs.entries()) assert.equal(tab, first.tabs[index]);
+    assert.deepEqual(first.view, original.view);
+
+    state = {
+      ...state,
+      tabs: original.tabs.map((tab, index) =>
+        index === 3 ? { ...tab, title: 'Changed tab', mutedInfo: { muted: true } } : tab,
+      ),
+    };
+    assert.deepEqual(await read(), state);
+    assert.deepEqual(
+      message.changes.map(({ index }) => index),
+      [3],
+    );
+    assert.equal(first.tabs[3].title, original.tabs[3].title);
+
+    const lastToken = message.token;
+    assert.equal(encoder.encode(2, state, lastToken, version).baseToken, undefined);
+    state = { ...state, generation: 'restarted' };
+    assert.deepEqual(await read(), state);
+    assert.equal(message.baseToken, undefined);
+  });
+}
 
 for (const change of ['add', 'remove', 'reorder', 'replace', 'generation', 'most-tabs']) {
   test(`${change} falls back to a complete snapshot`, async () => {
