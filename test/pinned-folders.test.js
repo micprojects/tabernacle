@@ -15,6 +15,42 @@ const group = (id) => ({ kind: 'group', id });
 const tab = (id) => ({ kind: 'tab', id });
 const order = (state) => state.pins.map((item) => `${item.kind}:${item.id}`);
 
+test('pin snapshots avoid unpinned identity scans unless saved tab slots need reconciliation', () => {
+  let unpinnedReads = 0;
+  const tabs = Array.from({ length: 1000 }, (_, index) => ({
+    index,
+    pinned: index < 2,
+
+    get treeId() {
+      if (index >= 2) unpinnedReads++;
+      return `tab-${index}`;
+    },
+  }));
+  const folders = [{ id: 'work' }];
+  for (const saved of [undefined, [], [group('work')], [{ kind: 'invalid', id: 'tab-2' }]]) {
+    const result = reconcilePins(saved, folders, tabs);
+    assert.deepEqual(result.items, result.layout);
+    assert.deepEqual(
+      result.items,
+      saved?.[0]?.kind === 'group'
+        ? [group('work'), tab('tab-0'), tab('tab-1')]
+        : [tab('tab-0'), tab('tab-1'), group('work')],
+    );
+  }
+  assert.equal(unpinnedReads, 0);
+
+  // A saved mixed layout must still drop explicitly unpinned and closed tabs,
+  // while retaining an absent tab's slot for incremental session restoration.
+  const saved = [tab('tab-2'), tab('waiting'), group('work'), tab('closed'), tab('tab-0')];
+  const before = structuredClone(saved);
+  assert.deepEqual(reconcilePins(saved, folders, tabs, new Set(['closed'])), {
+    layout: [tab('waiting'), group('work'), tab('tab-0'), tab('tab-1')],
+    items: [group('work'), tab('tab-0'), tab('tab-1')],
+  });
+  assert(unpinnedReads > 0);
+  assert.deepEqual(saved, before);
+});
+
 function fixture() {
   const api = memoryBrowser({
     events: true,
