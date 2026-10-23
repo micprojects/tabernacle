@@ -1,3 +1,4 @@
+import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
 import { folderIcon } from './folder-icons.js';
 import { isSavedForLater, groupPath } from './model.js';
@@ -11,6 +12,7 @@ const params = new URLSearchParams(location.search);
 const demo = !globalThis.browser?.runtime?.id && params.has('demo');
 let state, request, windowId, ownTabId, draft, weatherData, weatherKey;
 let disposed = false;
+let readSnapshot;
 let weatherGeneration = 0;
 const expanded = new Set();
 
@@ -387,7 +389,8 @@ async function start() {
     const tab = await browser.tabs.getCurrent();
     windowId = tab.windowId;
     ownTabId = tab.id;
-    request = async (type, args = {}) => {
+
+    const send = async (type, args = {}) => {
       windowId = (await browser.tabs.getCurrent()).windowId;
       const response = await browser.runtime.sendMessage({
         type: `tabernacle:${type}`,
@@ -400,6 +403,11 @@ async function start() {
         );
       return response.data;
     };
+
+    readSnapshot = createSnapshotReader((snapshotToken) =>
+      send('getNewTabState', { incremental: true, snapshotToken }),
+    );
+    request = (type, args) => (type === 'getNewTabState' ? readSnapshot() : send(type, args));
     const token = params.get('preview');
     if (token) {
       const key = `tabernacle.newTabPreview.${token}`;
@@ -478,6 +486,7 @@ window.addEventListener(
   'pagehide',
   () => {
     disposed = true;
+    readSnapshot?.clear();
     weatherGeneration++;
     clearInterval(timer);
     scheduler.dispose();

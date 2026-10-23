@@ -1,3 +1,4 @@
+import { createSnapshotReader } from './snapshot-transfer.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
 import { icon } from './icons.js';
 import { groupById } from './model.js';
@@ -23,6 +24,7 @@ const period = $('activity-period');
 const folderEvent = $('folder-event');
 let state, request, windowId, busyKey, readFailed;
 let disposed = false;
+let readSnapshot;
 let kind = 'all';
 const rows = createRowCache({ retain: 2048 });
 const sections = new Map();
@@ -372,7 +374,8 @@ async function start() {
     if (!globalThis.browser?.runtime?.id)
       throw new Error('Open this page from Tabernacle in Firefox.');
     windowId = (await browser.windows.getCurrent()).id;
-    request = async (type, args = {}) => {
+
+    const send = async (type, args = {}) => {
       windowId = (await browser.windows.getCurrent()).id;
       const result = await browser.runtime.sendMessage({
         type: `tabernacle:${type}`,
@@ -383,6 +386,11 @@ async function start() {
         throw new Error(result?.error || 'Could not connect to Tabernacle. Try again.');
       return result.data;
     };
+
+    readSnapshot = createSnapshotReader((snapshotToken) =>
+      send('snapshot', { incremental: true, snapshotToken }),
+    );
+    request = (type, args) => (type === 'snapshot' ? readSnapshot() : send(type, args));
 
     const changed = (message) => {
       if (message.type === 'tabernacle:changed') scheduleRefresh(message);
@@ -408,6 +416,7 @@ window.addEventListener(
   'pagehide',
   () => {
     disposed = true;
+    readSnapshot?.clear();
     refreshScheduler.dispose();
     clearInterval(timer);
     cancelAnimationFrame(searchFrame);

@@ -2,6 +2,7 @@ import { applyTabBatch } from './tab-batch.js';
 import { createMoveRecovery } from './move-recovery.js';
 import { resolveMove } from './move-plan.js';
 import { createBrowserCache } from './browser-cache.js';
+import { createPresentationCache, immutableCopy } from './presentation-cache.js';
 import { mapSettledBounded } from './bounded-settled.js';
 import { closeFallback, createCloseSelection } from './close-selection.js';
 import { createTreeIndex, scopeBranches } from './tree-index.js';
@@ -83,6 +84,7 @@ export function createController(
   const openedTimes = new Map();
   const forgottenPins = new Map();
   const pinLayouts = new Map();
+  const presentation = createPresentationCache();
   const publish = (windowId) => notify({ windowId, revision: ++revision, generation });
   const cache = createBrowserCache(
     api,
@@ -108,6 +110,7 @@ export function createController(
         ownershipVersion++;
       }
       if (removedWindowId !== undefined) {
+        presentation.forget(removedWindowId);
         forgottenPins.delete(removedWindowId);
         pinLayouts.delete(removedWindowId);
         resolvedTabs.delete(removedWindowId);
@@ -796,12 +799,17 @@ export function createController(
         ownershipVersion !== beforeOwnership
       )
         continue;
-      const nativeById = new Map(displayState.tabs.map((tab) => [tab.id, tab]));
-      const resolved = resolveTabTree(
-        result
-          .filter((tab) => !closed.has(tab.id) && (windowId == null || tab.windowId === windowId))
-          .map((tab) => withNativeMetadata(tab, nativeById.get(tab.id))),
-      );
+      const positions =
+        displayState.positions ?? new Map(displayState.tabs.map((tab, index) => [tab.id, index]));
+      const display = [];
+      for (const [index, tab] of result.entries()) {
+        if (closed.has(tab.id) || (windowId != null && tab.windowId !== windowId)) continue;
+        const native = displayState.tabs[positions.get(tab.id)];
+        // These rows already contain this exact native state. A metadata event
+        // during the membership read replaces its native row and still merges.
+        display.push(native === records[index].tab ? tab : withNativeMetadata(tab, native));
+      }
+      const resolved = resolveTabTree(display);
       if (allWindows) {
         treeOwners = new Map();
         tabTreeKeys = new Map();
@@ -827,7 +835,7 @@ export function createController(
       } else
         resolvedTabs.set(key, {
           native: displayState.tabs,
-          positions: new Map(displayState.tabs.map((tab, index) => [tab.id, index])),
+          positions,
           structureToken: displayState.structureToken,
           groupIdsVersion,
           membershipVersion: membershipEpoch(key),
@@ -849,7 +857,23 @@ export function createController(
         .then((tabs) => ({ tabs }))
         .catch((error) => ({ tabs: [], error: error.message })),
     ]);
-    closeSelection.remember(windowId, { groups: structuredClone(model.groups), tabs, view });
+    const presentedTabs = presentation.tabs(tabs, identities);
+    if (presentation.ownsTabs(presentedTabs)) {
+      const key = windowId ?? null;
+      const resolved = resolvedTabs.get(key);
+      if (resolved?.tabs === tabs) {
+        // These detached immutable rows can serve both internal reads and wire
+        // snapshots. Replace our references, never mutate borrowed native data
+        // or an older snapshot. A cleared request cache must stay invalidated.
+        resolved.tabs = presentedTabs;
+        if (requestTabs.has(key)) requestTabs.set(key, Promise.resolve(presentedTabs));
+      }
+    }
+    closeSelection.remember(windowId, {
+      groups: structuredClone(model.groups),
+      tabs: presentedTabs,
+      view,
+    });
     const pendingPins = forgottenPins.get(windowId);
     const forgotten = pendingPins ? new Set(pendingPins) : undefined;
     const pins = reconcilePins(view.pinLayout, model.folderPins, tabs, forgotten);
@@ -869,31 +893,27 @@ export function createController(
       if (!remainingPins.size) forgottenPins.delete(windowId);
     }
     const savedKeys = new Set(tabs.filter(isSavedForLater).map((tab) => tab.treeId));
-    const byStore = new Map(identities.map((identity) => [identity.cookieStoreId, identity]));
-    return {
+    const fields = {
       generation,
       revision: snapshotRevision,
-      groups: structuredClone(model.groups),
-      folderPins: structuredClone(model.folderPins),
-      domainPins: [...model.domainPins],
-      pins: pins.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id)),
-      containers: identities,
-      look: { ...model.look },
+      groups: presentation.record(model.groups),
+      folderPins: presentation.record(model.folderPins),
+      domainPins: presentation.record(model.domainPins),
+      pins: presentation.field(
+        windowId,
+        'pins',
+        pins.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id)),
+      ),
+      containers: presentation.record(identities),
+      look: presentation.field(windowId, 'look', model.look),
       canUndoClose: history.tabs.length > 0,
-      recentlyClosed: history.tabs,
+      recentlyClosed: presentation.field(windowId, 'recentlyClosed', history.tabs),
       recentlyClosedError: history.error ?? null,
-      tabs: tabs.map((tab) => {
-        const identity = byStore.get(tab.cookieStoreId);
-        return {
-          ...tab,
-          ancestors: [...tab.ancestors],
-          ...(tab.mutedInfo ? { mutedInfo: { ...tab.mutedInfo } } : {}),
-          container: identity ? { name: identity.name, colorCode: identity.colorCode } : null,
-        };
-      }),
-      view,
-      ...extra,
+      tabs: presentedTabs,
+      view: presentation.field(windowId, 'view', view),
     };
+    for (const [key, value] of Object.entries(extra)) fields[key] = presentation.record(value);
+    return presentation.snapshot(fields);
   }
 
   function membershipMatches(value, changes) {
@@ -1362,7 +1382,7 @@ export function createController(
           revision,
         };
       case 'getNewTabState':
-        return { ...(await snapshot(windowId)), newTab: structuredClone(model.newTab) };
+        return snapshot(windowId, { newTab: model.newTab });
       case 'setNewTab': {
         const value = requireNewTab({ ...model.newTab, ...message.value });
         await changeModel((next) => {
@@ -2096,21 +2116,29 @@ export function createController(
     return new Promise((resolve, reject) => batch.entries.push({ tab, resolve, reject }));
   }
 
+  function request(message, forTransport) {
+    return enqueue(async () => {
+      requestTabs = new Map();
+      const beforeWrites = stateWrites;
+      try {
+        const result = await handle(message);
+        if (!forTransport) return structuredClone(result);
+        return presentation.ownsSnapshot(result) ? result : immutableCopy(result);
+      } catch (error) {
+        // Some operations span browser and session writes. Refresh all
+        // sidebars from committed state even if a later write failed.
+        if (stateWrites !== beforeWrites) publish();
+        throw error;
+      }
+    }, !folderBackupActions.has(message.type));
+  }
+
   return {
     start: () => enqueue(() => {}),
-    request: (message) =>
-      enqueue(async () => {
-        requestTabs = new Map();
-        const beforeWrites = stateWrites;
-        try {
-          return await handle(message);
-        } catch (error) {
-          // Some operations span browser and session writes. Refresh all
-          // sidebars from committed state even if a later write failed.
-          if (stateWrites !== beforeWrites) publish();
-          throw error;
-        }
-      }, !folderBackupActions.has(message.type)),
+    request: (message) => request(message, false),
+    // Only the background transport chooses this path. Message fields cannot
+    // opt ordinary in-process callers into sharing immutable presentation data.
+    requestForTransport: (message) => request(message, true),
 
     cacheStats: () => ({
       ...cache.stats(),
@@ -2125,6 +2153,7 @@ export function createController(
       forgottenWindows: forgottenPins.size,
       forgottenPinKeys: [...forgottenPins.values()].reduce((sum, keys) => sum + keys.size, 0),
       pinLayoutWindows: pinLayouts.size,
+      presentationWindows: presentation.size(),
     }),
 
     dispose() {
@@ -2147,6 +2176,7 @@ export function createController(
         openedTimes.clear();
         forgottenPins.clear();
         pinLayouts.clear();
+        presentation.dispose();
         pendingCreations = null;
         model = undefined;
         ready = undefined;
