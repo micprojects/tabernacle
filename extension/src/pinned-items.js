@@ -35,8 +35,13 @@ export function reconcilePins(saved, folders, tabs, forgotten = new Set()) {
   const tabItems = pinned.map((tab) => ({ kind: 'tab', id: tab.treeId }));
   const groupIds = new Set(groups.map((item) => item.id));
   const tabIds = new Set(tabItems.map((item) => item.id));
-  const unpinned = new Set(tabs.filter((tab) => !tab.pinned).map((tab) => tab.treeId));
-  const layout = normalizePinLayout(saved).filter((item) =>
+  const savedLayout = normalizePinLayout(saved);
+  // Only saved tab slots need unpinned identities. Ordinary tab-only snapshots
+  // otherwise allocate a set containing almost every open tab on each read.
+  const unpinned = savedLayout.some((item) => item.kind === 'tab')
+    ? new Set(tabs.filter((tab) => !tab.pinned).map((tab) => tab.treeId))
+    : null;
+  const layout = savedLayout.filter((item) =>
     item.kind === 'group'
       ? groupIds.has(item.id)
       : !unpinned.has(item.id) && !forgotten.has(item.id),
