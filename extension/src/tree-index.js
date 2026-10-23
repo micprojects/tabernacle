@@ -28,8 +28,8 @@ function descendantsFirst(roots, children) {
   return order.reverse();
 }
 
-// All summaries are built once per render. Filtering and individual row updates
-// then use constant-time lookups instead of repeatedly walking whole subtrees.
+// Build the summaries together. Filtering and individual row updates then use
+// constant-time lookups instead of repeatedly walking whole subtrees.
 export function createTreeIndex(state, query = '') {
   state = { ...state, tabs: state.tabs.filter((tab) => !isSavedForLater(tab)) };
   const tabs = unpinnedTabTree(state.tabs);

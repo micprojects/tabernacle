@@ -11,6 +11,26 @@ const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 const logo = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect x="1" y="8" width="46" height="32" rx="9" fill="#ff0000"/><path d="M20 16 33 24 20 32Z" fill="white"/></svg>')}`;
 const demo = await readFile('preview/demo.js', 'utf8');
+for (const [file, marker, counter] of [
+  ['tree-index.js', "export function createTreeIndex(state, query = '') {", '__domainIndexBuilds'],
+  [
+    'domain-filter.js',
+    "export function domainResults(index, domain, query = '', sort = 'newest') {",
+    '__domainCollectionBuilds',
+  ],
+]) {
+  const source = await readFile(`extension/src/${file}`, 'utf8');
+  expect(source.split(marker)).toHaveLength(2);
+  await page.route(`**/extension/src/${file}`, (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: source.replace(
+        marker,
+        `${marker}\n  globalThis.${counter} = (globalThis.${counter} || 0) + 1;`,
+      ),
+    }),
+  );
+}
 await page.route('**/preview/demo.js', (route) =>
   route.fulfill({
     contentType: 'application/javascript',
@@ -71,6 +91,54 @@ const filter = async (
 };
 
 try {
+  await reset();
+  await filter();
+  const cachedSearch = page.locator('#domain-search');
+  const queryState = await snapshot();
+  const queryBuilds = await page.evaluate(() => window.__domainIndexBuilds);
+  const queryCollections = await page.evaluate(() => window.__domainCollectionBuilds);
+  for (const [query, expected] of [
+    ['Woodworking', [1, 14]],
+    ['Music', [3]],
+    ['not present', []],
+    ['', [10, 13, 1, 3, 5, 14]],
+    ['watch?v=5', [5]],
+    ['WOODWORKING', [1, 14]],
+  ]) {
+    await cachedSearch.fill(query);
+    await expect.poll(ids).toEqual(expected);
+  }
+  expect(await page.evaluate(() => window.__domainCollectionBuilds)).toBe(queryCollections);
+  await sort.selectOption('newest');
+  await expect.poll(ids).toEqual([14, 1]);
+  expect(await page.evaluate(() => window.__domainCollectionBuilds)).toBe(queryCollections + 1);
+  expect(await page.evaluate(() => window.__domainIndexBuilds)).toBe(queryBuilds);
+  expect((await snapshot()).tabs).toEqual(queryState.tabs);
+
+  await page.evaluate(() => domainTest.api.tabs.update(1, { title: 'Other article' }));
+  await expect(row(1)).toHaveCount(0);
+  await page.evaluate(() =>
+    domainTest.api.tabs.update(5, { title: 'Woodworking added', audible: true }),
+  );
+  await expect(row(5).locator('.label')).toHaveText('Woodworking added');
+  await expect(row(5).getByRole('button', { name: 'Mute tab', exact: true })).toBeVisible();
+  await expect(row(5)).toHaveAttribute('aria-label', /This tab is playing audio/);
+  await page.evaluate(() => domainTest.api.tabs.update(14, { url: 'https://example.com/' }));
+  await expect.poll(ids).toEqual([5]);
+  expect(await page.evaluate(() => window.__domainIndexBuilds)).toBeGreaterThan(queryBuilds);
+  expect(await page.evaluate(() => window.__domainCollectionBuilds)).toBeGreaterThan(
+    queryCollections + 1,
+  );
+  await exit.click();
+  await page.keyboard.press('Control+k');
+  await search.fill('Woodworking');
+  await expect(row(5)).toBeVisible();
+  await expect(row(14)).toBeVisible();
+  await expect(row(1)).toHaveCount(0);
+  console.log(
+    '✓ Domain queries reuse the current collection/index, sorts refresh the collection, accepted metadata refreshes both, and ordinary search still matches across domains',
+  );
+
   await reset();
   await expect(page.locator('#domain-tools')).toBeHidden();
   await filter(1, 'newest');
@@ -542,7 +610,7 @@ try {
           top: rect.top,
           bottom: rect.bottom,
           titleHeight: label.height,
-          lineHeight: parseFloat(getComputedStyle(row.querySelector('.label')).lineHeight),
+          whiteSpace: getComputedStyle(row.querySelector('.label')).whiteSpace,
           iconCentre: icon.top + icon.height / 2 - label.top,
           closeCentre: close.top + close.height / 2 - label.top,
           fits: label.right <= close.left && row.scrollWidth <= row.clientWidth,
@@ -550,16 +618,16 @@ try {
       }),
     );
     for (const [index, item] of geometry.entries()) {
-      expect(item.titleHeight).toBeLessThanOrEqual(3 * item.lineHeight);
-      expect(item.iconCentre).toBe(item.lineHeight / 2);
-      expect(item.closeCentre).toBe(item.lineHeight / 2);
+      expect(item.bottom - item.top).toBe(30);
+      expect(item.whiteSpace).toBe('nowrap');
+      expect(item.iconCentre).toBe(item.titleHeight / 2);
+      expect(item.closeCentre).toBe(item.titleHeight / 2);
       expect(item.fits).toBe(true);
       if (index) expect(item.top).toBeGreaterThanOrEqual(geometry[index - 1].bottom);
     }
     const longest = geometry.find((item) => item.id === 1);
-    expect(longest.titleHeight).toBe(3 * longest.lineHeight);
     const shortest = geometry.find((item) => item.id === 10);
-    expect(shortest.titleHeight).toBe(shortest.lineHeight);
+    expect(longest.titleHeight).toBe(shortest.titleHeight);
     await page.screenshot({ path: `test-results/domain-header-${width}.png` });
   }
   await send('setLook', { partial: true, value: { domains: true } });
@@ -568,7 +636,7 @@ try {
     await row(1)
       .locator('.label')
       .evaluate((node) => node.getBoundingClientRect().height),
-  ).toBe(54);
+  ).toBeLessThanOrEqual(16);
   const detail = await row(1).locator('.row-detail').boundingBox();
   const titleBox = await row(1).locator('.label').boundingBox();
   const rowBox = await row(1).boundingBox();
@@ -582,16 +650,16 @@ try {
     await row(1)
       .locator('.label')
       .evaluate((node) => node.getBoundingClientRect().height),
-  ).toBe(54);
+  ).toBeLessThanOrEqual(16);
   expect(await row(1).evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   await page.evaluate((title) => domainTest.api.tabs.update(1, { title }), longTitle);
   await exit.click();
   await expect(row(1).locator('.label')).toHaveCSS('white-space', 'nowrap');
   await filter(1, 'newest');
   await page.setViewportSize({ width: 320, height: 620 });
-  await page.screenshot({ path: 'test-results/domain-wrapped-results-320.png' });
+  await page.screenshot({ path: 'test-results/domain-compact-results-320.png' });
   console.log(
-    '✓ Result titles wrap to three lines at 220–480px, keep short rows compact and support website lines and unbroken titles',
+    '✓ Result titles remain single-line at 220–480px, including website lines and unbroken titles',
   );
   await send('setLook', { partial: true, value: { colorScheme: 'dark' } });
   await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark');

@@ -39,6 +39,13 @@ export function createTreeMotion(tree, enabled, onSettle = () => {}) {
   return {
     finishAll,
 
+    owns(node) {
+      if (pending?.expanded && pending.node.contains(node)) return true;
+      if (!running.size) return false;
+      for (const branch of running.keys()) if (branch.contains(node)) return true;
+      return false;
+    },
+
     get active() {
       return running.size > 0;
     },

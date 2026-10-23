@@ -104,7 +104,7 @@ try {
     ),
   ).toHaveCount(0);
   const longTitle =
-    'A saved page with a long title that wraps across several lines while keeping all its original words available in the tooltip — ' +
+    'A saved page with a long title that stays on one line while keeping all its original words available in the tooltip — ' +
     'more details '.repeat(20);
   await page.evaluate(
     (title) =>
@@ -134,16 +134,16 @@ try {
       const actions = node.querySelector('.later-row-actions').getBoundingClientRect();
       return {
         height: rect.height,
-        line: parseFloat(getComputedStyle(label).lineHeight),
-        fullHeight: label.scrollHeight,
+        whiteSpace: getComputedStyle(label).whiteSpace,
+        rowHeight: node.getBoundingClientRect().height,
         right: rect.right,
         actionsLeft: actions.left,
         actionsRight: actions.right,
       };
     });
-    expect(geometry.height).toBeLessThanOrEqual(geometry.line * 3 + 1);
-    expect(geometry.height).toBeGreaterThan(geometry.line * 2);
-    expect(geometry.fullHeight).toBeGreaterThan(geometry.height);
+    expect(geometry.rowHeight).toBe(30);
+    expect(geometry.whiteSpace).toBe('nowrap');
+    expect(geometry.height).toBeLessThan(30);
     expect(geometry.right).toBeLessThanOrEqual(geometry.actionsLeft);
     expect(geometry.actionsRight).toBeLessThanOrEqual(width);
     await page.screenshot({ path: `test-results/later-plain-${width}.png` });
@@ -257,7 +257,7 @@ try {
   await expect(pane.getByRole('heading', { name: 'Nothing saved for later' })).toBeVisible();
   expect(errors).toEqual([]);
   console.log(
-    '✓ Saved for Later: plain rows, three-line captions, save/undo, search, sorting, return, safe close, footer order, keyboard and themes',
+    '✓ Saved for Later: plain rows, single-line titles, save/undo, search, sorting, return, safe close, footer order, keyboard and themes',
   );
 } finally {
   await close();

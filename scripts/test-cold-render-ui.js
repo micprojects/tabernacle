@@ -21,6 +21,10 @@ try {
           set: next => { acceptState(next); render(); },
           search: query => { $('search').value = query; render(); },
           stop: () => refreshScheduler.dispose(),
+          reveal: key => treeRenderer.ensureVisible(key),
+          full: () => { tree.classList.remove('viewport-tree'); createFullTreeRenderer(treeRendererOptions).update(projection); },
+          redraw: () => { previousRender = null; render(); },
+          count: () => projection.filterTabIds.length,
           calls: [],
           intercept: () => { request = async (type, args) => {
             coldTest.calls.push({type, ...args}); return confirmedState;
@@ -62,12 +66,12 @@ try {
     coldTest.set(structuredClone(fixture));
     return performance.now() - start;
   });
-  await expect(page.locator('.tab-row')).toHaveCount(5000);
+  expect(await page.evaluate(() => coldTest.count())).toBe(5000);
+  expect(await page.locator('.tab-row').count()).toBeLessThan(100);
   console.log(`5,000-tab cold render: ${timing.toFixed(1)} ms (diagnostic only)`);
 
-  // All rows remain real tree items. Compare the entire scroll extent and a
-  // spread of row positions with ordinary layout, including after domains and
-  // viewport width change while most rows have never been on screen.
+  // Compare the virtual scroll extent and rows with the full renderer, including
+  // width/domain changes while most rows have never been mounted.
   for (const width of [220, 480]) {
     await page.setViewportSize({ width, height: 820 });
     for (const domains of [false, true, false]) {
@@ -78,6 +82,7 @@ try {
         tree.scrollTop = 0;
         await new Promise(requestAnimationFrame);
         await new Promise(requestAnimationFrame);
+        coldTest.full();
         const measure = () => ({
           height: tree.scrollHeight,
           rows: [1, 500, 2500, 4999, 5000].map((id) => {
@@ -86,12 +91,14 @@ try {
             return [rect.top + tree.scrollTop, rect.height, rect.width];
           }),
         });
-        const deferred = measure();
-        const style = document.createElement('style');
-        style.textContent = '.tab-row { content-visibility: visible; }';
-        document.head.append(style);
         const ordinary = measure();
-        style.remove();
+        coldTest.redraw();
+        const rows = [1, 500, 2500, 4999, 5000].map((id) => {
+          coldTest.reveal(`tab:${id}`);
+          const rect = document.querySelector(`[data-key="tab:${id}"]`).getBoundingClientRect();
+          return [rect.top + tree.scrollTop, rect.height, rect.width];
+        });
+        const deferred = { height: tree.scrollHeight, rows };
         return { deferred, ordinary };
       }, domains);
       expect(geometry.deferred).toEqual(geometry.ordinary);
@@ -99,6 +106,7 @@ try {
   }
   console.log('✓ Large-tree geometry survives domain and width changes');
 
+  await page.evaluate(() => coldTest.reveal('group:g0'));
   await page.locator('[data-key="group:g0"]').focus();
   await page.keyboard.press('End');
   await expect(page.locator('[data-key="new-tab:null"]')).toBeFocused();
@@ -107,7 +115,7 @@ try {
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-key="tab:1"]')).toBeFocused();
   const last = page.locator('[data-key="tab:5000"]');
-  await last.scrollIntoViewIfNeeded();
+  await page.evaluate(() => coldTest.reveal('tab:5000'));
   await last.focus();
   await expect(last).toHaveAttribute('role', 'treeitem');
   await expect(last).toHaveAttribute('aria-label', 'Tab 4999');
@@ -122,10 +130,12 @@ try {
   await expect(page.locator('.tab-row')).toHaveCount(1);
   await expect(last).toHaveAttribute('aria-label', 'Tab 4999');
   await page.evaluate(() => coldTest.search(''));
-  await expect(page.locator('.tab-row')).toHaveCount(5000);
+  expect(await page.evaluate(() => coldTest.count())).toBe(5000);
+  expect(await page.locator('.tab-row').count()).toBeLessThan(100);
   console.log('✓ Search finds and restores the far end of the large tree');
 
   await page.evaluate(() => {
+    coldTest.reveal('tab:1');
     const row = document.querySelector('[data-key="tab:1"]');
     const parent = row.parentElement;
     for (const nested of [true, false, true]) {

@@ -17,14 +17,14 @@ const check = (message) => {
 
 try {
   const source = await readFile('extension/src/sidebar.js', 'utf8');
-  expect(source.match(/index = createTreeIndex\(state, query\);/g)).toHaveLength(1);
+  expect(source.match(/createTreeIndex\(state, query\)/g)).toHaveLength(1);
   await page.route('**/extension/src/sidebar.js', (route) =>
     route.fulfill({
       contentType: 'application/javascript',
       body:
         source.replace(
-          'index = createTreeIndex(state, query);',
-          'window.audioIndexBuilds = (window.audioIndexBuilds || 0) + 1; index = createTreeIndex(state, query);',
+          'createTreeIndex(state, query)',
+          '(window.audioIndexBuilds = (window.audioIndexBuilds || 0) + 1, createTreeIndex(state, query))',
         ) +
         `
 window.audioSync = refresh;
@@ -140,6 +140,7 @@ window.audioParity = () => {
     'title',
     '2 tabs playing audio in this folder',
   );
+  expect(await page.evaluate(() => window.audioIndexBuilds)).toBeGreaterThan(0);
   await expect(media.locator('.audio-indicator')).toHaveAttribute(
     'title',
     '2 tabs playing audio in this folder',

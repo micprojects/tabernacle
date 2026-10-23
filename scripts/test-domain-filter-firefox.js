@@ -143,8 +143,11 @@ try {
   });
   await wait(() =>
     [...document.querySelectorAll('#tree .tab-row .label')].every((label) => {
-      const lineHeight = parseFloat(getComputedStyle(label).lineHeight);
-      return label.getBoundingClientRect().height === 3 * lineHeight;
+      return (
+        getComputedStyle(label).whiteSpace === 'nowrap' &&
+        label.closest('.tab-row').getBoundingClientRect().height === 30 &&
+        label.scrollWidth > label.clientWidth
+      );
     }),
   );
   const capture = await browser.screenshot({ sourceSize: size, scale: 2 });
