@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { FrameBrowser } from './frame-browser.js';
 import { nativeMemory } from './native.js';
 import { fingerprintSource, machineInfo } from './common.js';
+import { iterationFixture } from './iteration-policy.js';
 import {
   expectedSidebar,
   observeSidebar,
@@ -265,13 +266,14 @@ try {
   }
   assert.equal(created.length, tabs);
   report.fixture.sha256 = digest({
-    version: 1,
+    version: iterationFixture.version,
     tabs,
     windows: windowCount,
     seed: 17,
     livePages: 1,
     cycles: 3,
     idleMs: 1500,
+    quietIdleMs: iterationFixture.native.quietIdleMs,
   });
   await phase(
     'disabled-before',
@@ -303,6 +305,12 @@ try {
     },
     { memory: true },
   );
+  // No snapshot requests, DOM traversal or collection inside this CPU window.
+  // It follows enabled-idle's collection and is a short controlled idle sample.
+  await phase('quiet-idle', async () => {
+    await wait(iterationFixture.native.quietIdleMs);
+    return { requestedIdleMs: iterationFixture.native.quietIdleMs };
+  });
   identities = await identitiesNow();
   assert.equal(identities.length, tabs + windowCount);
   await phase('warm-snapshots', async () => {

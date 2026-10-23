@@ -2,9 +2,9 @@ import { resolve } from 'node:path';
 import { compareSamples } from './summary.js';
 
 export const iterationFixture = {
-  version: 1,
+  version: 2,
   seed: 17,
-  native: { tabs: 1000, windows: 2, livePages: 1, cycles: 3, idleMs: 1500 },
+  native: { tabs: 1000, windows: 2, livePages: 1, cycles: 3, idleMs: 1500, quietIdleMs: 5000 },
   synthetic: [
     { tabs: 100, windows: 1 },
     { tabs: 1000, windows: 2 },

@@ -8,6 +8,12 @@ const headlineRows = [
   ['Folder action time (test sequence)', 'Firefox/folder-actions/elapsed.ms'],
   ['Processor time during folder actions', 'Firefox/folder-actions/extensionCPU.ms'],
 ];
+const resourceRows = [
+  ['Idle memory added versus disabled', 'Firefox/enabled-idle/unforced/added-resident.bytes'],
+  ['Idle CPU time (five-second quiet sample)', 'Firefox/quiet-idle/extensionCPU.ms'],
+  ['Total CPU time (fixed active workload)', 'Firefox/active-workload/extensionCPU.ms'],
+  ['Total elapsed time (fixed active workload)', 'Firefox/active-workload/elapsed.ms'],
+];
 const nativeRows = [
   ['Idle extension-process resident memory', 'enabled-idle/unforced/resident.bytes'],
   ['Idle resident memory added versus disabled', 'enabled-idle/unforced/added-resident.bytes'],
@@ -22,6 +28,10 @@ const nativeRows = [
   ['Folder operations including settlement', 'folder-actions/elapsed.ms'],
   ['Sidebar reopening including settlement', 'sidebars-reopened/elapsed.ms'],
   ['Idle phase extension CPU time', 'enabled-idle/extensionCPU.ms'],
+  ['Quiet idle extension CPU time (five seconds)', 'quiet-idle/extensionCPU.ms'],
+  ['Quiet idle measured duration', 'quiet-idle/elapsed.ms'],
+  ['Fixed active workload extension CPU time', 'active-workload/extensionCPU.ms'],
+  ['Fixed active workload elapsed time', 'active-workload/elapsed.ms'],
   ['Search sequence extension CPU time', 'search/extensionCPU.ms'],
   ['Folder operations extension CPU time', 'folder-actions/extensionCPU.ms'],
   ['Warm snapshot reply payload, total', 'warm-snapshots/payload.bytes'],
@@ -202,6 +212,16 @@ export function iterationMarkdown(report) {
       'Memory is for the extension process, including Firefox runtime and the control extension, not total browser RAM. The p95 reply time describes the slower end of warm tab-data requests, not a complete click-to-screen response. Folder timings include test settlement overhead; processor time is not a battery-life measurement.',
       '',
       `Regression review flags across the full comparison: **${nativeFlags} Firefox metrics; ${syntheticFlags} synthetic controller metrics**. See the detailed tables for every flag. Synthetic heap is not Firefox RAM; multiple flags can describe related effects.`,
+      '',
+      '## CPU and memory overview',
+      '',
+      table(resourceRows, metrics, headers),
+      '',
+      'Read these alongside idle and peak process memory in the headlines. Added memory subtracts the same profile with Tabernacle disabled; it is an estimate of the extension’s additional process cost.',
+      '',
+      'Quiet idle waits five seconds with both sidebars open and no snapshot requests or DOM traversal inside the CPU window. It follows forced collection and includes CPU-sampling boundary overhead; it is not a long-term idle or battery test. For scale, 50 ms of CPU over five seconds is about 1% of one core, not 1% of the whole machine.',
+      '',
+      'The fixed active workload totals startup, warm requests, search, title updates, folder actions, reopening and three view cycles. CPU and elapsed times are summed within each run before comparing medians. They include verification/settlement work, exclude idle/closed/disable phases and explicit memory collection, and do not measure all work performed by Firefox on the extension’s behalf. Lower CPU time means less processor work for this fixture; it is not an instantaneous CPU percentage.',
     );
   }
 
@@ -261,7 +281,7 @@ export function iterationMarkdown(report) {
     '',
     '- The extension process includes Firefox runtime and a fixed control extension. “Added” memory subtracts the disabled sample in the same profile; absolute process memory is not Tabernacle alone.',
     '- Collected heap measures retention after GC/CC, not ordinary settled RAM. Later lifecycle samples have earlier collections in their history. RSS peaks are sampled once per second, not exact peaks.',
-    '- Search, enable, folder and reopening times include harness/settlement overhead and a 200 ms stability-observation floor. They are workload timings, not pure interaction latency. CPU rows measure process CPU time during those phases, not CPU percentage.',
+    '- Search, enable, folder and reopening times include harness/settlement overhead and a 200 ms stability-observation floor. They are workload timings, not pure interaction latency. CPU rows measure process CPU time during those phases, not CPU percentage. The older enabled-idle CPU phase also includes sidebar verification; use the separate quiet-idle row for the controlled five-second sample.',
     '- Discarded tabs with fallback icons do not represent heavy websites, extensive favicons or other installed extensions. Fixture checks do not replace functional, upgrade or high-capacity suites.',
     '- The tables use a fixed metric selection and include additional regression flags from the full comparison. Missing metrics are N/A; an incompatible revision or failed worker prevents a successful comparison.',
     '',

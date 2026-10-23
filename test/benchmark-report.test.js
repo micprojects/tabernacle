@@ -252,7 +252,7 @@ test('whole-number percentages do not change noise verdicts or imply unchanged w
 test('headlines keep five relevant measures, compact units and adverse or uncertain results', () => {
   const report = pairedReport();
   const headline = (markdown) =>
-    markdown.split('## Headline results\n')[1].split('## Firefox\n')[0];
+    markdown.split('## Headline results\n')[1].split('## CPU and memory overview\n')[0];
   const rows = (markdown) =>
     headline(markdown)
       .split('\n')
@@ -302,6 +302,34 @@ test('headlines keep five relevant measures, compact units and adverse or uncert
   assert.match(summary, /not a complete click-to-screen response/);
   assert.match(summary, /not a battery-life measurement/);
   assert.deepEqual(report, before);
+});
+
+test('resource overview follows fixed headlines and keeps scoped CPU and memory assessments', () => {
+  const report = pairedReport();
+  report.comparison.push({
+    name: 'Firefox/active-workload/extensionCPU.ms',
+    baseline: { median: 1000 },
+    candidate: { median: 1300 },
+    delta: 300,
+    relativeDelta: 0.3,
+    verdict: 'Investigate regression',
+  });
+  const markdown = iterationMarkdown(report);
+  assert(markdown.indexOf('## Headline results') < markdown.indexOf('## CPU and memory overview'));
+  assert(markdown.indexOf('## CPU and memory overview') < markdown.indexOf('## Firefox'));
+  assert.match(
+    markdown,
+    /Total CPU time \(fixed active workload\) \| 1,000 ms \| 1,300 ms \| 30% more CPU time \(300 ms more CPU time\); Investigate regression/,
+  );
+  assert.match(markdown, /Idle CPU time \(five-second quiet sample\) \| N\/A \| N\/A/);
+  assert.match(markdown, /summed within each run before comparing medians/);
+  assert.match(markdown, /not an instantaneous CPU percentage/);
+  assert.match(markdown, /1 Firefox metrics; 2 synthetic controller metrics/);
+  report.status = 'inconclusive';
+  assert(!iterationMarkdown(report).includes('## CPU and memory overview'));
+  report.status = 'completed';
+  report.syntheticOnly = true;
+  assert(!iterationMarkdown(report).includes('## CPU and memory overview'));
 });
 
 test('synthetic-only or absent native measurements do not produce Firefox headlines', () => {
