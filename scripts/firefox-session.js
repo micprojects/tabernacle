@@ -26,7 +26,10 @@ export async function startFirefox({ configure, stdio, options = new firefox.Opt
   try {
     const appData = join(root, 'app-data');
     await mkdir(appData);
-    options.addArguments('-headless', '-no-remote');
+    // Pending application updates run before profile preferences are loaded and
+    // can relaunch outside our process tree. Every session has a fresh profile:
+    // skip startup update processing, then disable updates during automation.
+    options.addArguments('-headless', '-no-remote', '-first-startup');
     if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
     else if (process.platform === 'darwin')
       options.setBinary('/Applications/Firefox.app/Contents/MacOS/firefox');
@@ -34,6 +37,7 @@ export async function startFirefox({ configure, stdio, options = new firefox.Opt
     options.setPreference('browser.startup.page', 0);
     options.setPreference('browser.tabs.warnOnClose', false);
     await configure?.(options, root);
+    options.setPreference('app.update.disabledForTesting', true);
     const service = new firefox.ServiceBuilder(
       process.env.GECKODRIVER_BINARY || (await download('0.37.1')),
     )

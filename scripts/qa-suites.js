@@ -41,6 +41,8 @@ export const uiSuites = [
 
 export const firefoxSuites = [
   'test-firefox',
+  'test-upgrade-firefox',
+  'test-memory-benchmark-firefox',
   'test-domain-filter-firefox',
   'test-later-firefox',
   'test-tab-collection-firefox',

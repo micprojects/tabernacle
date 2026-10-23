@@ -112,9 +112,12 @@ try {
   const restoredId = restored.restoredTabId;
   assert(restored.tabs.find((tab) => tab.id === restoredId).savedForLaterAt);
   await browser.evaluate(() => {
-    setTimeout(() => location.reload(), 0);
+    window.collectionReloadMarker = true;
   });
-  await wait(() => Boolean(document.querySelector('#tree .tab-row')));
+  await browser.reloadSidebar();
+  await wait(
+    () => !window.collectionReloadMarker && Boolean(document.querySelector('#tree .tab-row')),
+  );
   await setup();
   let snapshot = await browser.evaluate(() => collectionSend('snapshot'));
   assert.equal(snapshot.tabs.filter((tab) => tab.savedForLaterAt).length, 3);

@@ -21,6 +21,7 @@ try {
     },
     'test-results/firefox-tab-close.log',
   );
+  console.log('Tab close: creating native parent and child fixture');
   await browser.chrome(() => Services.prefs.setIntPref('ui.prefersReducedMotion', 0));
   const fixture = await browser.evaluate(async (url) => {
     window.closeEvidence = { events: [], errors: [] };
@@ -84,6 +85,7 @@ try {
 
   // A native close affects only the parent; undo must restore its identity and
   // reconnect the surviving child even though Firefox assigns a new tab ID.
+  console.log('Tab close: checking native parent close and undo');
   await closeWithShortcut(fixture.parent.id);
   let state = await read();
   assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, null);
@@ -94,6 +96,7 @@ try {
   assert.equal(restored.groupId, fixture.groupId);
   assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, restored.id);
 
+  console.log('Tab close: checking repeated native shortcuts');
   for (let attempt = 0; attempt < 5; attempt++) {
     const id = await browser.evaluate(async (groupId) => {
       const state = await window.closeCheckSend('newTab', { groupId });
@@ -104,6 +107,7 @@ try {
   }
 
   // Click the actual sidebar x as well, through WebDriver pointer input.
+  console.log('Tab close: checking sidebar close button');
   const leaf = await browser.evaluate(async (groupId) => {
     const state = await window.closeCheckSend('newTab', { groupId });
     return state.createdTabId;
@@ -134,6 +138,7 @@ try {
   assert.equal(state.tabs.find((tab) => tab.id === fixture.child).parentTabId, restored.id);
   assert(state.groups.some((group) => group.id === fixture.groupId));
 
+  console.log('Tab close: checking branch promotion and undo');
   const branch = await browser.evaluate(
     async ({ parent, child }) => {
       const grandchild = (await window.closeCheckSend('newChildTab', { id: child })).tabs.find(
@@ -184,6 +189,7 @@ try {
     '✓ Native middle click and close button promote the first child, preserve descendants and support undo',
   );
 
+  console.log('Tab close: checking folder-aware successor selection');
   const selection = await browser.evaluate(async (outsideId) => {
     const groupId = (await window.closeCheckSend('createGroup', { name: 'Folder-aware close' }))
       .createdGroupId;
@@ -263,6 +269,7 @@ try {
     const rect = document.getElementById('settings').getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
   });
+  console.log('Tab close: checking Settings reopenings during close animations');
   const reopenings = [];
   for (let attempt = 0; attempt < 5; attempt++) {
     const { tabId: closingId } = await browser.evaluate(() =>
@@ -312,6 +319,7 @@ try {
     '✓ Folder-aware native and sidebar closes preserve visible choices and empty folders',
   );
 } finally {
+  console.log('Tab close: closing isolated browser');
   await browser.close();
   await new Promise((resolve) => server.close(resolve));
 }

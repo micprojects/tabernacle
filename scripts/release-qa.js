@@ -1,8 +1,9 @@
-import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { uiSuites, firefoxSuites } from './qa-suites.js';
+import { fingerprintSource } from './memory/common.js';
+import { runQaSuite, runQaBatch } from './qa-suite-runner.js';
 
 const args = process.argv.slice(2);
 if (args.some((arg) => arg !== '--stress'))
@@ -18,6 +19,8 @@ const report = {
   startedAt,
   node: process.version,
   stress: args.includes('--stress'),
+  memoryGuard: process.env.TABERNACLE_MEMORY_GUARD === '1',
+  source: await fingerprintSource(process.cwd()),
   suites: [],
 };
 const reportPath = join(directory, 'results.json');
@@ -31,37 +34,59 @@ const suites = [
   { name: 'build', command: 'npm', args: ['run', 'build'] },
 ];
 console.log(`Release QA for ${version}. Logs: ${directory}`);
-for (const suite of suites) {
+await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
+
+async function checkSuite(suite) {
   const logPath = join(directory, `${suite.name}.log`);
   const start = performance.now();
+  report.currentSuite = suite.name;
+  await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
   console.log(`\nRunning ${suite.name}…`);
+  process.send?.({ type: 'stage', name: suite.name });
   const log = createWriteStream(logPath);
-  const outcome = await new Promise((resolve) => {
-    const child = spawn(suite.command, suite.args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    child.stdout.on('data', (data) => {
+  const outcome = await runQaSuite(suite, {
+    onOutput(data, stream) {
       log.write(data);
-      process.stdout.write(data);
-    });
-    child.stderr.on('data', (data) => {
-      log.write(data);
-      process.stderr.write(data);
-    });
-    child.once('error', (error) => resolve({ status: 'failed', error: error.message }));
-    child.once('close', (code, signal) =>
-      resolve({ status: code === 0 ? 'passed' : 'failed', code, signal }),
-    );
+      process[stream].write(data);
+    },
+
+    onMessage(message) {
+      if (message?.type === 'stage')
+        process.send?.({ type: 'stage', name: `${suite.name}/${message.name || 'stage'}` });
+    },
   });
+  if (outcome.reason) log.write(`[${outcome.status}] ${outcome.reason}\n`);
   await new Promise((resolve) => log.end(resolve));
+  if (outcome.preflightWait || outcome.watchdog) {
+    const guardPath = join(directory, `${suite.name}.guard.json`);
+    await writeFile(guardPath, JSON.stringify(outcome, null, 2) + '\n');
+    outcome.guard = guardPath;
+    delete outcome.preflightWait;
+    delete outcome.watchdog;
+  }
   report.suites.push({
     name: suite.name,
     ...outcome,
     durationMs: Math.round(performance.now() - start),
     log: logPath,
   });
+  delete report.currentSuite;
   await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
+  return outcome;
+}
+
+for await (const { suite, outcome } of runQaBatch(suites, checkSuite)) {
+  if (outcome.status === 'inconclusive') {
+    report.stoppedAfter = suite.name;
+    report.notRun = suites.slice(report.suites.length).map((item) => item.name);
+    console.log(`\nStopped after ${suite.name}: ${outcome.reason || 'inconclusive result'}.`);
+    await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
+  }
 }
 report.finishedAt = new Date().toISOString();
-report.passed = report.suites.every((suite) => suite.status === 'passed');
+report.passed =
+  report.suites.length === suites.length &&
+  report.suites.every((suite) => suite.status === 'passed');
 await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
 console.log(
   `\n${report.passed ? 'Passed' : 'Failed'}: ${report.suites.filter((suite) => suite.status === 'passed').length}/${report.suites.length} checks. Report: ${reportPath}`,
