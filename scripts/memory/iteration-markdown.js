@@ -301,7 +301,8 @@ export function iterationMarkdown(report) {
         ['baseline', 'candidate'].map((role) => correct(report, role, 'native')),
       ),
     );
-  } else lines.push('', '**Synthetic-only run: no Firefox RAM, CPU or user-interface evidence.**');
+  } else if (report.syntheticOnly)
+    lines.push('', '**Synthetic-only run: no Firefox RAM, CPU or user-interface evidence.**');
 
   for (const fixture of report.fixture?.synthetic || []) {
     const rows = syntheticRows.map(([label, key]) => [label, `Node-${fixture.tabs}/${key}`]);

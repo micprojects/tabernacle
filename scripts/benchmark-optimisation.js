@@ -33,6 +33,7 @@ Every run writes report.md alongside report.json and report.html.
 --synthetic-only: no Firefox evidence. Useful for fast controller experiments; uses a separate calibration.
 Idle headline: a separate 1,000-tab / 100-folder, three-level fixture in two sidebars, with natural memory settlement before enabled/disabled samples.
 --idle-scaling: dedicated 5,000-tab / 500-folder idle stress comparison, with the same resource ceilings. Omits the active and synthetic workloads; compare this with the ordinary 1,000-tab headline to track scaling.
+--folder-scaling: dedicated 1,000-tab / 500-folder idle comparison, with the same guards; isolates folder growth from tab growth.
 Other exceptional high-capacity tests use benchmark:memory:stress or benchmark:memory:firefox:stress.`);
 } else {
   assert.equal(Number(process.versions.node.split('.')[0]), 24, 'Use Node 24 from .nvmrc.');
@@ -107,7 +108,7 @@ Other exceptional high-capacity tests use benchmark:memory:stress or benchmark:m
       environment,
       fixture,
       syntheticOnly: options.syntheticOnly,
-      idleOnly: Boolean(options.idleScaling),
+      idleOnly: Boolean(options.idleScaling || options.folderScaling),
       limits: iterationLimits,
       startedAt: new Date().toISOString(),
       runs: [],

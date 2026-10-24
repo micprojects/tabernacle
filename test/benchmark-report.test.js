@@ -420,6 +420,7 @@ test('settled idle headline never substitutes flat-tab memory and keeps scaling 
   assert.equal(summary.split('\n').filter((line) => line.startsWith('|')).length, 3);
   assert(!markdown.includes('## CPU and memory overview'));
   assert(!markdown.includes('## Firefox\n'));
+  assert(!markdown.includes('Synthetic-only run'));
   assert.match(summary, /Idle RAM added \(5,000 tabs \/ 500 folders\) \| N\/A \| N\/A/);
   assert.match(markdown, /median OS RSS from the final stable window/);
   assert.match(markdown, /Negative estimates are retained, not clamped/);

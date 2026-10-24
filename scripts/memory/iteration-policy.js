@@ -27,10 +27,10 @@ export const iterationLimits = { maxRssBytes: 4 * 1024 ** 3, maxMs: 5 * 60000 };
 
 export function iterationWorkload(options) {
   const fixture = structuredClone(iterationFixture);
-  if (options.idleScaling) {
+  if (options.idleScaling || options.folderScaling) {
     fixture.native = null;
     fixture.synthetic = [];
-    fixture.idle.sizes = [{ tabs: 5000, folders: 500 }];
+    fixture.idle.sizes = [{ tabs: options.folderScaling ? 1000 : 5000, folders: 500 }];
   }
   return fixture;
 }
@@ -44,6 +44,7 @@ export function iterationOptions(argv) {
       result.mode = arg.slice(2);
     } else if (arg === '--synthetic-only') result.syntheticOnly = true;
     else if (arg === '--idle-scaling') result.idleScaling = true;
+    else if (arg === '--folder-scaling') result.folderScaling = true;
     else if (arg === '--report') result.report = true;
     else if (arg === '--working-tree') result.workingTree = true;
     else if (arg === '--help') result.help = true;
@@ -58,7 +59,9 @@ export function iterationOptions(argv) {
   }
   if (result.workingTree && result.candidate)
     throw new Error('Choose --candidate REF or --working-tree, not both.');
-  if (result.idleScaling && result.syntheticOnly)
+  if (result.idleScaling && result.folderScaling)
+    throw new Error('Choose one idle scaling fixture.');
+  if ((result.idleScaling || result.folderScaling) && result.syntheticOnly)
     throw new Error('Idle scaling requires native Firefox measurements.');
   result.baseline ??= result.report ? 'latest-release' : 'HEAD';
   result.candidate ??= result.report && !result.workingTree ? 'HEAD' : undefined;

@@ -15,6 +15,7 @@ import { nativeMetrics } from '../scripts/memory/iteration-report.js';
 test('idle fixtures populate every expanded folder in both windows, three levels deep', () => {
   for (const [tabs, folders] of [
     [1000, 100],
+    [1000, 500],
     [5000, 500],
   ]) {
     const fixture = idleFixture(tabs, folders, 2);
@@ -160,6 +161,12 @@ test('routine idle work is bounded and the larger scaling fixture is explicit', 
   assert(!iterationOptions([]).idleScaling);
   assert(iterationOptions(['--idle-scaling']).idleScaling);
   assert.throws(() => iterationOptions(['--idle-scaling', '--synthetic-only']), /native Firefox/);
+  assert.throws(() => iterationOptions(['--folder-scaling', '--synthetic-only']), /native Firefox/);
+  assert.throws(() => iterationOptions(['--idle-scaling', '--folder-scaling']), /one idle/);
+  const folders = iterationWorkload(iterationOptions(['--folder-scaling']));
+  assert.equal(folders.native, null);
+  assert.deepEqual(folders.synthetic, []);
+  assert.deepEqual(folders.idle.sizes, [{ tabs: 1000, folders: 500 }]);
   const ordinary = iterationWorkload(iterationOptions([]));
   const heavy = iterationWorkload(iterationOptions(['--idle-scaling']));
   assert.equal(ordinary.native.tabs, 1000);
