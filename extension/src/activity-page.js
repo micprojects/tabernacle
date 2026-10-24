@@ -113,7 +113,7 @@ async function act(item) {
   }
 }
 
-function row(item) {
+function row(item, timeLabel) {
   const li = el('li', 'activity-row');
   li.dataset.kind = item.kind;
   const action = activityKinds[item.kind];
@@ -134,7 +134,7 @@ function row(item) {
   context.title = context.textContent;
   meta.append(event, context);
   text.append(title, meta);
-  const time = el('time', 'item-time', activityTime(item.timestamp));
+  const time = el('time', 'item-time', timeLabel(item.timestamp));
   if (item.timestamp) {
     time.dateTime = new Date(item.timestamp).toISOString();
     time.title = new Date(item.timestamp).toLocaleString();
@@ -155,6 +155,15 @@ function timeline(items) {
   const days = new Map();
   const labels = new Map();
   const now = Date.now();
+  // Reuse this render's formatter for older entries. A later render picks up
+  // changes to the browser's locale or system time zone.
+  let timeFormat;
+  const formatTime = (timestamp) =>
+    (timeFormat ??= new Intl.DateTimeFormat(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    })).format(timestamp);
+  const timeLabel = (timestamp) => activityTime(timestamp, now, formatTime);
   for (const item of items) {
     const date = new Date(item.timestamp).toDateString();
     if (!labels.has(date)) labels.set(date, activityDay(item.timestamp, now));
@@ -175,14 +184,14 @@ function timeline(items) {
             item.timestamp,
             item.favIconUrl,
             busyKey === item.key,
-            activityTime(item.timestamp, now),
+            timeLabel(item.timestamp),
             group?.appearance?.icon,
             details?.appearance?.color,
             details?.container?.icon,
             details?.container?.iconUrl,
             group?.defaultCookieStoreId,
           ],
-          () => row(item),
+          () => row(item, timeLabel),
         ),
       );
   }
