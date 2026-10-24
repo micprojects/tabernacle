@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { Key } from 'selenium-webdriver';
 import sharp from 'sharp';
-import { ScreenshotBrowser } from "../../scripts/screenshot-browser.js";
+import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
 
 const browser = new ScreenshotBrowser();
 const server = createServer((request, response) => {
@@ -11,6 +11,22 @@ const server = createServer((request, response) => {
     response.writeHead(200, { 'Content-Type': 'image/svg+xml' });
     response.end(
       '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" rx="6" fill="red"/><path d="M12 8 24 16 12 24Z" fill="white"/></svg>',
+    );
+  } else if (request.url === '/reader-article') {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(
+      '<!doctype html><html lang="en"><title>A quiet walk through the garden</title>' +
+        '<link rel="icon" href="/icon.svg"><article><h1>A quiet walk through the garden</h1>' +
+        Array.from(
+          { length: 18 },
+          (_, index) =>
+            `<p>Section ${index}. The garden paths were quiet in the early morning. We followed ` +
+            'the old stone wall towards the trees, where sunlight reached the leaves and birds ' +
+            'moved between the branches. The walk gave us time to consider the changing ' +
+            'seasons, the work of planting and tending each bed, and the patient care that ' +
+            'helps a place grow. This local article exercises the browser reader view.</p>',
+        ).join('') +
+        '</article></html>',
     );
   } else {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -321,6 +337,162 @@ try {
   );
   console.log(
     '✓ Native Firefox: creation/viewed sorting, current-window filtering, safe closing, live navigation, and sorted selection for sidebar and shortcut closes',
+  );
+
+  // Native Reader View changes isInReaderMode without a dedicated changeInfo
+  // property. Keep complete native data, relationships and domain visibility.
+  const reader = await browser.evaluate(
+    async (port, predecessor, groupId) => {
+      const { id: windowId } = await browser.windows.getCurrent();
+      const originalActive = (await browser.tabs.query({ windowId, active: true }))[0].id;
+      const url = `http://127.0.0.1:${port}/reader-article`;
+      const tab = await browser.tabs.create({ windowId, url, active: true });
+      await domainSend('moveTab', { id: tab.id, groupId });
+      const child = await browser.tabs.create({
+        windowId,
+        url: 'about:blank',
+        active: false,
+        openerTabId: tab.id,
+      });
+      await browser.tabs.update(predecessor, { successorTabId: tab.id });
+      return { id: tab.id, child: child.id, predecessor, originalActive, url };
+    },
+    server.address().port,
+    fixture.child,
+    fixture.groupB,
+  );
+  await wait(async (id) => {
+    const tab = await browser.tabs.get(id);
+    return tab.status === 'complete' && tab.isArticle;
+  }, reader.id);
+  // Creation can precede the child's final dimensions. Start the Reader checks
+  // after a real structural event has refreshed the complete native window.
+  await wait(async (id) => (await browser.tabs.get(id)).status === 'complete', reader.child);
+  await browser.evaluate((id) => browser.tabs.move(id, { index: 1 }), reader.child);
+
+  const inspectReader = async (inReader) => {
+    let observed;
+    await browser.driver
+      .wait(
+        async () => {
+          observed = await browser.evaluate(
+            async (ids, inReader) => {
+              const { id: windowId } = await browser.windows.getCurrent();
+              const before = await browser.tabs.query({ windowId });
+              const snapshot = await domainSend('snapshot');
+              const native = await browser.tabs.query({ windowId });
+              const stableFields = (tab) =>
+                Object.fromEntries(Object.entries(tab).filter(([key]) => key !== 'lastAccessed'));
+              const stable =
+                JSON.stringify(before.map(stableFields)) ===
+                JSON.stringify(native.map(stableFields));
+              const mismatches = [];
+              for (const tab of native) {
+                const row = snapshot.tabs.find((item) => item.id === tab.id);
+                if (!row) {
+                  mismatches.push({ id: tab.id, key: 'missing-row' });
+                  continue;
+                }
+                for (const key of Object.keys(tab)) {
+                  if (key === 'lastAccessed') continue;
+                  const field = key === 'groupId' ? 'nativeGroupId' : key;
+                  if (JSON.stringify(tab[key]) !== JSON.stringify(row[field]))
+                    mismatches.push({ id: tab.id, key, native: tab[key], snapshot: row[field] });
+                }
+                for (const key of ['favIconUrl', 'openerTabId'])
+                  if (!Object.hasOwn(tab, key) && Object.hasOwn(row, key))
+                    mismatches.push({ id: tab.id, key, stale: true });
+              }
+              const tab = native.find((item) => item.id === ids.id);
+              const expectedUrl = inReader
+                ? `about:reader?url=${encodeURIComponent(ids.url)}`
+                : ids.url;
+              return {
+                native,
+                snapshot,
+                mismatches,
+                stable,
+                expectedUrl,
+                ready:
+                  stable &&
+                  !mismatches.length &&
+                  tab?.status === 'complete' &&
+                  tab.url === expectedUrl &&
+                  tab.isInReaderMode === inReader,
+              };
+            },
+            reader,
+            inReader,
+          );
+          return observed.ready;
+        },
+        10000,
+        'Complete native Reader View records must reach the sidebar',
+      )
+      .catch((error) => {
+        const fields = ({ id, url, isInReaderMode, status, successorTabId }) => ({
+          id,
+          url,
+          isInReaderMode,
+          status,
+          successorTabId,
+        });
+        console.error({
+          inReader,
+          ready: observed?.ready,
+          stable: observed?.stable,
+          expectedUrl: observed?.expectedUrl,
+          mismatches: observed?.mismatches,
+          native: observed?.native.map(fields),
+          snapshot: observed?.snapshot.tabs.map(fields),
+        });
+        throw error;
+      });
+    const tab = observed.native.find((item) => item.id === reader.id);
+    await wait(
+      (id, title) => {
+        const row = document.querySelector(`#tree [data-key="tab:${id}"]`);
+        return (
+          row?.getAttribute('aria-selected') === 'true' &&
+          row.querySelector('.label')?.textContent === title
+        );
+      },
+      reader.id,
+      tab.title,
+    );
+    assert.equal(observed.native.find((item) => item.id === reader.child).openerTabId, reader.id);
+    assert.equal(
+      observed.native.find((item) => item.id === reader.predecessor).successorTabId,
+      reader.id,
+    );
+    return observed.snapshot;
+  };
+
+  const organisation = (snapshot) => ({
+    groups: snapshot.groups,
+    tabs: snapshot.tabs.map(
+      ({ id, groupId, order, treeId, ancestors, collapsed, parentTabId }) => ({
+        id,
+        groupId,
+        order,
+        treeId,
+        ancestors,
+        collapsed,
+        parentTabId,
+      }),
+    ),
+  });
+  const beforeReader = organisation(await inspectReader(false));
+  for (const inReader of [true, false, true, false]) {
+    await browser.evaluate((id) => browser.tabs.toggleReaderMode(id), reader.id);
+    assert.deepEqual(organisation(await inspectReader(inReader)), beforeReader);
+  }
+  await browser.evaluate(async (ids) => {
+    await browser.tabs.update(ids.originalActive, { active: true });
+    await browser.tabs.remove([ids.child, ids.id]);
+  }, reader);
+  console.log(
+    '✓ Native Reader View preserves complete tab records, native links, organisation and domain-filter rows',
   );
 } finally {
   await browser.close();

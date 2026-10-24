@@ -1,6 +1,7 @@
 import { TAB_KEY } from './model.js';
 import { deserializeMembership, serializeMembership } from './persistence.js';
 import { internalPage } from './internal-pages.js';
+import { httpUrl } from './tab-source.js';
 
 // Cache only data with an explicit invalidation path. Memberships belong to this
 // extension; native tabs, containers and closed sessions have Firefox events.
@@ -83,7 +84,11 @@ export function createBrowserCache(api, changed = () => {}) {
     /^https?:\/\//.test(left) &&
     left.split('#', 1)[0] === right.split('#', 1)[0];
 
+  const readerPage = (url) => typeof url === 'string' && url.startsWith('about:reader?');
+
   function webNavigation(left, right) {
+    if (readerPage(left)) left = httpUrl(left);
+    if (readerPage(right)) right = httpUrl(right);
     if (
       typeof left !== 'string' ||
       typeof right !== 'string' ||
@@ -188,14 +193,15 @@ export function createBrowserCache(api, changed = () => {}) {
 
     const pending = Promise.resolve()
       .then(async () => {
-        const structural = (tab, navigation, article) =>
+        const structural = (tab, navigation, article, reader) =>
           JSON.stringify(
             Object.entries(tab).filter(
               ([key]) =>
                 !metadataProperties.has(key) &&
                 !selectionProperties.has(key) &&
                 !(navigation && key === 'url') &&
-                !(article && key === 'isArticle'),
+                !(article && key === 'isArticle') &&
+                !(reader && key === 'isInReaderMode'),
             ),
           );
         // A late event can describe older data than an in-flight get() reply.
@@ -219,9 +225,18 @@ export function createBrowserCache(api, changed = () => {}) {
               const navigation =
                 fragment || (announced !== undefined && announced === result.value.url);
               const article = cached.articleIds?.has(ids[i]);
+              // Reader mode is derived from the native URL, not a separate
+              // update event. Only accept the expected complete native flags.
+              const reader = navigation && (readerPage(before.url) || readerPage(result.value.url));
+              if (
+                reader &&
+                (before.isInReaderMode !== readerPage(before.url) ||
+                  result.value.isInReaderMode !== readerPage(result.value.url))
+              )
+                return true;
               return (
-                structural(result.value, navigation, article) !==
-                structural(before, navigation, article)
+                structural(result.value, navigation, article, reader) !==
+                structural(before, navigation, article, reader)
               );
             })
           )
