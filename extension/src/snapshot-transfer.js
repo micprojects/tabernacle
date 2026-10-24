@@ -122,6 +122,9 @@ export function createSnapshotEncoder(options = {}) {
 
 export function createSnapshotReader(send) {
   let previous;
+  // Scalar lineage and changed positions only: never retain previous snapshots
+  // through the hint. Weak keys let discarded responses and their hints go away.
+  let details = new WeakMap();
   let epoch = 0;
   let sequence = 0;
   let completed = 0;
@@ -190,14 +193,29 @@ export function createSnapshotReader(send) {
       completed = requestSequence;
       previous = envelope ? { token: result.token, state } : undefined;
     }
-    return extras ? { ...extras, ...state } : state;
+    const returned = extras ? { ...extras, ...state } : state;
+    if (requestEpoch === epoch && result.snapshotProtocol === 2) {
+      details.set(
+        returned,
+        Object.freeze({
+          token: result.token,
+          baseToken: result.baseToken,
+          indices: result.baseToken
+            ? Object.freeze(result.changes.map(({ index }) => index))
+            : null,
+        }),
+      );
+    }
+    return returned;
   };
 
   const read = () => receive(send);
   read.perform = (sendAction) => receive(sendAction, true);
+  read.details = (state) => details.get(state);
 
   read.clear = () => {
     previous = undefined;
+    details = new WeakMap();
     epoch++;
   };
   return read;

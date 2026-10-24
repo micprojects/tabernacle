@@ -118,6 +118,87 @@ export function createTreeIndex(state, query = '') {
   };
 }
 
+// The owning view can change its query without rebuilding topology, ordering,
+// folder inheritance or audio. Only the current index's search summaries change.
+export function updateTreeQuery(index, query = '') {
+  for (const tab of index.tabs) {
+    const stats = index.tabStats.get(tab.id);
+    stats.match = Boolean(query) && matchesText(tab, query);
+    stats.descendantMatch = false;
+  }
+  // Clearing a query has no matches to propagate. Avoid allocating a traversal
+  // and walking the folder/tab hierarchy just to OR together false values.
+  if (!query) {
+    for (const stats of index.groupStats.values()) stats.match = false;
+    return index;
+  }
+  for (const tab of descendantsFirst(index.children.get(null) || [], index.children)) {
+    const parent = index.tabStats.get(tab.parentTabId);
+    if (parent) {
+      const stats = index.tabStats.get(tab.id);
+      parent.descendantMatch ||= stats.match || stats.descendantMatch;
+    }
+  }
+  for (const [id, group] of index.groups)
+    index.groupStats.get(id).match = Boolean(query) && group.name.toLowerCase().includes(query);
+  for (const tab of index.tabs) {
+    const group = index.groupStats.get(tab.groupId);
+    if (group) group.match ||= index.tabStats.get(tab.id).match;
+  }
+  for (let i = index.folders.order.length - 1; i >= 0; i--) {
+    const id = index.folders.order[i].id;
+    const parent = index.groupStats.get(index.folders.parents.get(id));
+    if (parent) parent.match ||= index.groupStats.get(id).match;
+  }
+  return index;
+}
+
+// Selection affects existing rows and their visual ancestors, not topology.
+// Stage all summaries before publishing, including a simultaneous old/new pair.
+export function updateTreeActivation(index, changes) {
+  const patches = new Map(changes.map(({ tab }) => [tab.id, tab]));
+  const affected = new Set();
+  for (const { tab } of changes) {
+    if (!index.byId.has(tab.id)) return null;
+    let id = tab.id;
+    const path = new Set();
+    while (index.tabStats.has(id)) {
+      if (path.has(id)) return null;
+      path.add(id);
+      affected.add(id);
+      id = index.byId.get(id)?.parentTabId;
+    }
+  }
+  const staged = new Map();
+  const pending = [...affected].map((id) => [id, false]);
+  while (pending.length) {
+    const [id, leaving] = pending.pop();
+    if (staged.has(id)) continue;
+    const children = index.children.get(id) || [];
+    if (!leaving) {
+      pending.push([id, true]);
+      for (const child of children)
+        if (affected.has(child.id) && !staged.has(child.id)) pending.push([child.id, false]);
+    } else {
+      const tab = patches.get(id) || index.byId.get(id);
+      staged.set(
+        id,
+        Boolean(tab.active) ||
+          children.some((child) => staged.get(child.id) ?? index.tabStats.get(child.id).active),
+      );
+    }
+  }
+  const changed = new Set(changes.map(({ tab }) => tab.id));
+  for (const [id, active] of staged) {
+    const stats = index.tabStats.get(id);
+    if (stats.active !== active) {
+      stats.active = active;
+      changed.add(id);
+    }
+  }
+  return changed;
+}
+
 // The caller verifies unchanged topology and supplies the previous playing state.
 // Validate every path and count before publishing any summary changes.
 export function updateTreeAudio(index, changes) {

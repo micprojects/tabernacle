@@ -23,6 +23,53 @@ const fixture = (count = 1000) => ({
   })),
 });
 
+test('validated response hints preserve exact scalar lineage without changing snapshot data', async () => {
+  const encoder = createSnapshotEncoder();
+  let state = fixture(10);
+  const read = createSnapshotReader(async (token) =>
+    structuredClone(encoder.encode(1, structuredClone(state), token, 2)),
+  );
+  const first = await read();
+  const full = read.details(first);
+  assert.equal(full.indices, null);
+  assert.equal(full.baseToken, undefined);
+  state.tabs[3].title = 'Changed';
+  const second = await read();
+  const delta = read.details(second);
+  assert.equal(delta.baseToken, full.token);
+  assert.deepEqual(delta.indices, [3]);
+  assert(Object.isFrozen(delta));
+  assert(Object.isFrozen(delta.indices));
+  assert.deepEqual(second, state);
+  assert.equal(second.tabs[2], first.tabs[2]);
+  assert.notEqual(second.tabs[3], first.tabs[3]);
+  const third = await read();
+  assert.equal(read.details(third).baseToken, delta.token);
+  assert.deepEqual(read.details(third).indices, []);
+  assert.deepEqual(Object.keys(delta).sort(), ['baseToken', 'indices', 'token']);
+  read.clear();
+  assert.equal(read.details(first), undefined);
+  assert.equal(read.details(second), undefined);
+  assert.equal(read.details(await read()).indices, null);
+});
+
+test('legacy responses and responses invalidated in flight never supply delta hints', async () => {
+  const legacy = createSnapshotReader(async () => fixture(10));
+  assert.equal(legacy.details(await legacy()), undefined);
+  let resolve;
+  const encoder = createSnapshotEncoder();
+  const read = createSnapshotReader(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const pending = read();
+  read.clear();
+  resolve(encoder.encode(1, fixture(10), undefined, 2));
+  assert.equal(read.details(await pending), undefined);
+});
+
 function connection(initial = fixture()) {
   let state = initial;
   const encoder = createSnapshotEncoder();

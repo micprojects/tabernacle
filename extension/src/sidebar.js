@@ -6,7 +6,13 @@ import { createFullTreeRenderer } from './tree/full-renderer.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
-import { createTreeIndex, scopeBranches, updateTreeAudio } from './tree/index.js';
+import {
+  createTreeIndex,
+  scopeBranches,
+  updateTreeAudio,
+  updateTreeQuery,
+  updateTreeActivation,
+} from './tree/index.js';
 import { projectTree, createDomainTreeProjector } from './tree/projection.js';
 import { createViewportTreeRenderer } from './tree/viewport.js';
 import { captureScroll, restoreScroll } from './view-state.js';
@@ -119,6 +125,7 @@ const domainsView = createDomainsView({
 
 function acceptState(next) {
   if (disposed) return;
+  treeIndexState = null;
   domainProjector.clear();
   confirmedState = next;
   const collapsed = new Set(next.view.collapsed);
@@ -148,6 +155,8 @@ function acceptState(next) {
     }
   }
   state = { ...next, tabs, view: { ...next.view, scopeId, collapsed: [...collapsed] } };
+  snapshotState = pendingViewActions.length ? null : state;
+  snapshotDetails = snapshotState ? readSnapshot?.details(next) : null;
 }
 
 let pointerHeld = false,
@@ -626,6 +635,11 @@ function updateTreeToggle(query) {
 }
 
 let previousRender;
+let treeIndexState;
+let snapshotState;
+let snapshotDetails;
+
+const currentSnapshotDetails = () => (state === snapshotState ? snapshotDetails : null);
 
 const layoutValues = (tab) => [
   tab.id,
@@ -649,8 +663,7 @@ const sameLayout = (saved, tab) =>
   saved[4] === tab.groupId &&
   saved[5] === tab.parentTabId &&
   saved[6] === Boolean(tab.pinned) &&
-  saved[7] === Boolean(tab.collapsed) &&
-  saved[8] === Boolean(tab.active);
+  saved[7] === Boolean(tab.collapsed);
 
 const metadataValues = (tab) => [
   tab.title,
@@ -690,6 +703,7 @@ function rememberRender(query, context) {
     ? null
     : {
         context,
+        token: currentSnapshotDetails()?.token,
         tabs: state.tabs.map((tab) => ({
           layout: layoutValues(tab),
           metadata: metadataValues(tab),
@@ -707,30 +721,43 @@ function patchMetadata(context) {
     return false;
   const changed = [];
   const audioChanges = [];
-  for (const [i, tab] of state.tabs.entries()) {
+  const activeChanges = [];
+  const details = currentSnapshotDetails();
+  const positions =
+    details?.baseToken && details.baseToken === previousRender.token ? details.indices : null;
+  const entries = positions ? positions.map((i) => [i, state.tabs[i]]) : state.tabs.entries();
+  for (const [i, tab] of entries) {
     const saved = previousRender.tabs[i];
     if (!sameLayout(saved.layout, tab)) return false;
     const audioChanged =
       saved.layout[9] !== Boolean(tab.audible) ||
       saved.layout[10] !== Boolean(tab.mutedInfo?.muted);
     if (audioChanged) audioChanges.push({ tab, wasPlaying: saved.layout[9] && !saved.layout[10] });
-    if (audioChanged || !sameMetadata(saved.metadata, tab))
+    const activeChanged = saved.layout[8] !== Boolean(tab.active);
+    if (activeChanged) activeChanges.push({ tab });
+    if (audioChanged || activeChanged || !sameMetadata(saved.metadata, tab))
       changed.push({ tab, saved, metadata: metadataValues(tab) });
   }
   const audio = audioChanges.length
     ? updateTreeAudio(index, audioChanges)
     : { tabs: new Set(), groups: new Set() };
   if (!audio) return false;
-  // Topology and activation remain unchanged. Audio changes affect only their
-  // logical ancestors; metadata still refreshes only the affected tab rows.
-  for (const tab of state.tabs) index.byId.set(tab.id, tab);
+  const activation = activeChanges.length ? updateTreeActivation(index, activeChanges) : [];
+  if (!activation) return false;
+  // Topology remains unchanged; summaries patch only affected ancestor paths.
+  if (positions) {
+    for (const i of positions) index.byId.set(state.tabs[i].id, state.tabs[i]);
+  } else for (const tab of state.tabs) index.byId.set(tab.id, tab);
+  previousRender.token = details?.token;
   if (projection) projection.source = state;
   for (const { tab, saved, metadata } of changed) {
     saved.metadata = metadata;
+    saved.layout[8] = Boolean(tab.active);
     saved.layout[9] = Boolean(tab.audible);
     saved.layout[10] = Boolean(tab.mutedInfo?.muted);
     audio.tabs.add(tab.id);
   }
+  for (const id of activation) audio.tabs.add(id);
   for (const id of audio.tabs) {
     const tab = index.byId.get(id);
     const visible = previousRender.visible.get(tab.id);
@@ -742,7 +769,11 @@ function patchMetadata(context) {
     patchGroup(id);
   }
   if (audio.groups.has(state.view.scopeId)) renderBreadcrumbs(index.groups.get(state.view.scopeId));
-  if (audioChanges.length) treeRenderer.refreshWidth();
+  if (activeChanges.length) {
+    const active = state.tabs.find((tab) => tab.active);
+    $('reveal').hidden = !active || active.pinned || projection.visibleKeys.has(`tab:${active.id}`);
+  }
+  if (audioChanges.length || activeChanges.length) treeRenderer.refreshWidth();
   return true;
 }
 
@@ -758,10 +789,12 @@ function releaseTree() {
   clearRows();
   treeTabs = [];
   index = undefined;
+  treeIndexState = null;
   domainProjector.clear();
   audioInTabs.clear();
   audioInGroups.clear();
   previousRender = null;
+  snapshotState = snapshotDetails = null;
   domainVisibleTabs = [];
   searchVisibleIds = [];
   clearNavigation();
@@ -834,6 +867,7 @@ function render(motionKey = null) {
     !treeMotion.active &&
     patchMetadata(context)
   ) {
+    treeIndexState = state;
     restoreRowFocus(focusedKey);
     return;
   }
@@ -851,9 +885,16 @@ function render(motionKey = null) {
   const options = { query, domain: domainFilter, sort: domainSort };
   // Domain query changes only need fresh text matches, not another full-tree
   // index, hostname scan and sort of the unchanged collection.
-  projection = domainFilter
-    ? domainProjector.project(state, options)
-    : projectTree(state, createTreeIndex(state, query), options);
+  if (domainFilter) {
+    treeIndexState = null;
+    projection = domainProjector.project(state, options);
+  } else {
+    if (treeIndexState !== state) {
+      index = createTreeIndex(state, query);
+      treeIndexState = state;
+    } else updateTreeQuery(index, query);
+    projection = projectTree(state, index, options);
+  }
   index = projection.index;
   // Folder menus must not retain destinations renamed, moved or removed elsewhere.
   validateFolderMenu();
@@ -1413,7 +1454,7 @@ async function start() {
     };
 
     readSnapshot = createSnapshotReader((snapshotToken) =>
-      send('snapshot', { incremental: true, snapshotToken }),
+      send('snapshot', { incremental: 2, snapshotToken }),
     );
     request = (type, args) =>
       (type === 'snapshot'

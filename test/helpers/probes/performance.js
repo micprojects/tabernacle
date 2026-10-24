@@ -12,12 +12,16 @@ export function instrumentSource(source) {
   return (
     replaceSource(
       replaceSource(
-        replaceSource(source, 'const layoutValues =', 'let layoutValues ='),
-        'const metadataValues =',
-        'let metadataValues =',
+        replaceSource(
+          replaceSource(source, 'const layoutValues =', 'let layoutValues ='),
+          'const metadataValues =',
+          'let metadataValues =',
+        ),
+        'createTreeIndex(state, query)',
+        '(window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1, createTreeIndex(state, query))',
       ),
-      'createTreeIndex(state, query)',
-      '(window.perfIndexBuilds = (window.perfIndexBuilds || 0) + 1, createTreeIndex(state, query))',
+      '    const saved = previousRender.tabs[i];',
+      '    window.perfComparedTabs = (window.perfComparedTabs || 0) + 1; const saved = previousRender.tabs[i];',
     ) +
     String.raw`
 window.perfValueArrays = { layout: 0, metadata: 0 };

@@ -173,10 +173,40 @@ try {
   expect((await checkProjection()).matching).toHaveLength(1000);
   // Application search must include rows outside the mounted viewport.
   await page.locator('#search-toggle').click();
+  const searchIndexBuilds = await page.evaluate(() => perfIndexBuilds);
   await page.locator('#search').fill('Tab 999');
   await expect(page.locator('[data-key="tab:1000"]')).toBeVisible();
   expect((await checkProjection()).matching).toEqual([1000]);
+  expect(await page.evaluate(() => perfIndexBuilds)).toBe(searchIndexBuilds);
+  await page.locator('#search').fill('not present');
+  await expect.poll(async () => (await checkProjection()).matching).toEqual([]);
+  expect(await page.evaluate(() => perfIndexBuilds)).toBe(searchIndexBuilds);
   await page.locator('#search-close').click();
+  const activationIndexBuilds = await page.evaluate(() => perfIndexBuilds);
+  await page.evaluate(() => {
+    window.perfComparedTabs = 0;
+  });
+  await page.evaluate(() => perfTest.api.tabs.update(2, { active: true }));
+  await expect(page.locator('[data-key="tab:2"] .row, .row[data-key="tab:2"]')).toHaveClass(
+    /active/,
+  );
+  expect(await page.evaluate(() => perfIndexBuilds)).toBe(activationIndexBuilds);
+  expect(await page.evaluate(() => perfComparedTabs)).toBeLessThan(10);
+  await page.evaluate(() => perfTest.api.tabs.update(1, { active: true }));
+  await expect(page.locator('[data-key="tab:1"] .row, .row[data-key="tab:1"]')).toHaveClass(
+    /active/,
+  );
+  expect(await page.evaluate(() => perfIndexBuilds)).toBe(activationIndexBuilds);
+  // A transport response that was never rendered must break the delta shortcut.
+  await page.evaluate(async () => {
+    await sidebarReleaseProbe.request('snapshot');
+    window.perfComparedTabs = 0;
+    await perfTest.api.tabs.update(5, { title: 'After skipped response' });
+  });
+  await expect(page.locator('[data-key="tab:5"] .label')).toHaveText('After skipped response');
+  expect(await page.evaluate(() => perfComparedTabs)).toBeGreaterThanOrEqual(1000);
+  await page.evaluate(() => perfTest.api.tabs.update(5, { title: 'Tab 4' }));
+  await expect(page.locator('[data-key="tab:5"] .label')).toHaveText('Tab 4');
   await page.evaluate(() => {
     getSelection().removeAllRanges();
     document.getElementById('tree').scrollTop = 0;
