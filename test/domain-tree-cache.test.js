@@ -27,7 +27,7 @@ function fixture() {
       tab(1, 'work', { collapsed: true }),
       tab(2, 'work', { parentTabId: 1, title: 'Beta', url: 'https://sub.example.test/two' }),
       tab(3, 'nested', { pinned: true, openedAt: 0 }),
-      tab(4, 'nested', { savedForLaterAt: 1 }),
+      tab(4, 'nested'),
       tab(5, 'other', {
         title: 'Reader',
         url: 'about:reader?url=https%3A%2F%2Fwww.example.test%2Freader',

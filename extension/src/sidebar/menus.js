@@ -1,9 +1,8 @@
-import { batchSummary } from '../collection-dialogs.js';
-import { folderCollection, sourceUrl, captureTarget } from '../tab-collection.js';
+import { folderCollection, sourceUrl } from '../tab-collection.js';
 import { createFolderIndex } from '../folder-index.js';
 import { icon } from '../icons.js';
 import { domainForTab } from '../domain-filter.js';
-import { isSavedForLater, sortTabs, tabChildren, tabSubtree } from '../model.js';
+import { sortTabs, tabChildren, tabSubtree } from '../model.js';
 
 // One instance belongs to one sidebar document. The entry point owns application state.
 export function createSidebarMenus({
@@ -15,8 +14,6 @@ export function createSidebarMenus({
   getState,
   getDrag,
   getMovingItem,
-  saveTabForLater,
-  returnSavedTab,
   el,
   button,
   announce,
@@ -215,12 +212,6 @@ export function createSidebarMenus({
         ...(bulk
           ? [
               {
-                label: `Save ${count} for later`,
-                icon: 'later',
-                disabled: !tabs.length,
-                run: () => saveCollection(scope, tabs),
-              },
-              {
                 label: `Copy ${tabs.length} ${tabs.length === 1 ? 'URL' : 'URLs'}`,
                 icon: 'copy',
                 disabled: !tabs.length,
@@ -247,30 +238,6 @@ export function createSidebarMenus({
     );
   }
 
-  async function saveCollection(scope, tabs) {
-    const next = await action('saveTabsForLater', { scope, targets: tabs.map(captureTarget) });
-    if (!next) return;
-    const result = next.batchResult;
-    announce(batchSummary(result, 'Saved'), Boolean(result.failed.length));
-    if (result.undo.length) {
-      const undo = button(
-        'Undo',
-        null,
-        async () => {
-          const undone = await action('undoSaveTabsForLater', { targets: result.undo });
-          if (undone)
-            announce(
-              batchSummary(undone.batchResult, 'Returned'),
-              Boolean(undone.batchResult.failed.length),
-            );
-        },
-        'toast-action',
-      );
-      undo.textContent = 'Undo';
-      $('toast').append(' ', undo);
-    }
-  }
-
   async function copyTabUrls(tabs, emptyMessage = 'No URLs to copy.') {
     const urls = tabs.map(sourceUrl).filter((url) => typeof url === 'string' && url.trim());
     if (!urls.length) {
@@ -289,11 +256,7 @@ export function createSidebarMenus({
     const folders = kind === 'group' ? createFolderIndex(getState()) : null;
     const tabs =
       kind === 'group'
-        ? sortTabs(
-            getState().tabs.filter(
-              (tab) => !isSavedForLater(tab) && folders.isWithin(tab.groupId, id),
-            ),
-          )
+        ? sortTabs(getState().tabs.filter((tab) => folders.isWithin(tab.groupId, id)))
         : getState().tabs.filter((tab) => tab.id === id);
     return copyTabUrls(tabs, kind === 'group' ? 'No URLs to copy in this folder.' : undefined);
   }
@@ -301,7 +264,6 @@ export function createSidebarMenus({
   function contextMenu(kind, id, x, y) {
     if (getMovingItem()) return;
     const folderTabs = kind === 'group' ? folderCollection(getState(), id) : [];
-    const unsavedFolderTabs = folderTabs.filter((tab) => !isSavedForLater(tab));
     if (kind === 'group')
       menu(
         [
@@ -334,12 +296,6 @@ export function createSidebarMenus({
           },
           null,
           {
-            label: `Save tabs for later (${unsavedFolderTabs.length})`,
-            icon: 'later',
-            disabled: !unsavedFolderTabs.length,
-            run: () => saveCollection({ kind: 'folder', id }, unsavedFolderTabs),
-          },
-          {
             label: 'Review duplicates…',
             icon: 'copy',
             run: () => getReviewDuplicates()({ kind: 'folder', id }, folderTabs),
@@ -367,7 +323,7 @@ export function createSidebarMenus({
             label: 'Close all tabs…',
             icon: 'close',
             run: () => getCloseGroupTabsDialog()(id),
-            disabled: !unsavedFolderTabs.length,
+            disabled: !folderTabs.length,
             danger: true,
           },
           {
@@ -383,28 +339,9 @@ export function createSidebarMenus({
     else {
       const tab = getState().tabs.find((tab) => tab.id === id);
       if (!tab) return;
-      if (isSavedForLater(tab)) {
-        menu(
-          [
-            { label: 'Return to original folder', icon: 'group', run: () => returnSavedTab(id) },
-            {
-              label: tab.mutedInfo?.muted ? 'Unmute tab' : 'Mute tab',
-              icon: 'speaker',
-              run: () => action('muteTab', { id }),
-            },
-            { label: 'Copy URL', icon: 'copy', run: () => copyUrls(kind, id) },
-            null,
-            { label: 'Close tab', icon: 'close', run: () => action('closeTab', { id }) },
-          ],
-          x,
-          y,
-        );
-        return;
-      }
       const domain = domainForTab(tab);
       menu(
         [
-          { label: 'Save for later', icon: 'later', run: () => saveTabForLater(id) },
           {
             label: 'Filter by domain',
             icon: 'search',

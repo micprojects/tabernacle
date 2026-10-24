@@ -26,7 +26,6 @@ const setup = async () =>
       url: tab.url,
       groupId: tab.groupId,
       cookieStoreId: tab.cookieStoreId || 'firefox-default',
-      savedForLaterAt: tab.savedForLaterAt || null,
     });
   });
 const wait = (fn, ...args) =>
@@ -71,36 +70,19 @@ try {
         .every((tab) => tab.status === 'complete'),
     fixture.tabs,
   );
-  const saved = await browser.evaluate(
-    async (ids, folder) => {
-      const snapshot = await collectionSend('snapshot');
-      const tabs = ids.map((id) => snapshot.tabs.find((tab) => tab.id === id));
-      return collectionSend('saveTabsForLater', {
-        scope: { kind: 'folder', id: folder },
-        targets: tabs.map(collectionTarget),
-      });
-    },
-    fixture.tabs.slice(0, 3),
-    fixture.folder,
-  );
-  assert.deepEqual(saved.batchResult.completed, fixture.tabs.slice(0, 3));
-  assert.equal(
-    saved.tabs.find((tab) => tab.id === fixture.tabs[2]).cookieStoreId,
-    fixture.container,
-  );
   await browser.evaluate(() => {
     document.getElementById('search-toggle').click();
     const input = document.getElementById('search');
     input.value = 'same';
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  await wait(() => document.querySelectorAll('.saved-search-results .tab-row').length === 3);
-  // A native close redirects to an actual match, including saved matches.
+  await wait(() => document.querySelectorAll('#tree .tab-row').length === 3);
+  // A native close redirects to an actual match, within the search results.
   await browser.evaluate(async (ids) => {
     await browser.tabs.update(ids[0], { active: true, successorTabId: ids[3] });
     await browser.tabs.remove(ids[0]);
   }, fixture.tabs);
-  await wait(() => document.querySelectorAll('.saved-search-results .tab-row').length === 2);
+  await wait(() => document.querySelectorAll('#tree .tab-row').length === 2);
   await wait(
     async (ids) =>
       ids
@@ -110,7 +92,7 @@ try {
   );
   const restored = await browser.evaluate(() => collectionSend('undoCloseTab'));
   const restoredId = restored.restoredTabId;
-  assert(restored.tabs.find((tab) => tab.id === restoredId).savedForLaterAt);
+  assert.equal(restored.tabs.find((tab) => tab.id === restoredId).groupId, fixture.folder);
   await browser.evaluate(() => {
     window.collectionReloadMarker = true;
   });
@@ -120,7 +102,8 @@ try {
   );
   await setup();
   let snapshot = await browser.evaluate(() => collectionSend('snapshot'));
-  assert.equal(snapshot.tabs.filter((tab) => tab.savedForLaterAt).length, 3);
+  assert.equal(snapshot.tabs.filter((tab) => tab.groupId === fixture.folder).length, 4);
+  assert.equal(snapshot.tabs.find((tab) => tab.id === fixture.tabs[2]).cookieStoreId, fixture.container);
   // Same URL in a different container cannot serve as the duplicate keeper.
   const wrong = await browser.evaluate(
     async (targetId, keeperId) => {
@@ -151,14 +134,8 @@ try {
   snapshot = await browser.evaluate(() => collectionSend('snapshot'));
   assert(snapshot.tabs.some((tab) => tab.id === fixture.tabs[1]));
   assert(snapshot.tabs.some((tab) => tab.id === fixture.tabs[2]));
-  const undone = await browser.evaluate(
-    (targets) => collectionSend('undoSaveTabsForLater', { targets }),
-    saved.batchResult.undo,
-  );
-  assert.deepEqual(undone.batchResult.completed, fixture.tabs.slice(1, 3));
-  assert.deepEqual(undone.batchResult.skipped, [fixture.tabs[0]]);
   console.log(
-    '✓ Native Firefox: batch save/undo, saved search, native closure/restoration, reload persistence and duplicate container boundaries',
+    '✓ Native Firefox: search, native closure/restoration, reload persistence and duplicate container boundaries',
   );
 } finally {
   try {

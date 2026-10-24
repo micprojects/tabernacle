@@ -507,15 +507,6 @@ input::placeholder {
   width: 28px;
   height: 28px;
 }
-.saved-search-results h2 {
-  margin: 0;
-  padding: 14px 8px 6px;
-  line-height: 14px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .duplicate-review {
   max-height: min(60vh, 540px);
   overflow: auto;

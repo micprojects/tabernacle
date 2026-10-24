@@ -8,15 +8,9 @@ export function treeLayout(
   const byKey = new Map();
   const siblings = new Map();
   const sizes = new Map();
-  let saved;
   let totalSize = 0;
   for (const row of projection.visibleRows) {
-    if (row.mode === 'saved' && !saved) {
-      // The section heading occupies space, but is not a navigable tree row.
-      saved = { key: 'saved-results', start: totalSize, top: totalSize + 34 };
-      totalSize = saved.top;
-    }
-    const parent = row.mode === 'saved' ? saved.key : row.parentKey;
+    const parent = row.parentKey;
     const previous = siblings.get(parent);
     let margin = row.kind === 'new-tab' ? gap : 0;
     if (row.kind !== 'new-tab' && previous) {
@@ -54,7 +48,7 @@ export function treeLayout(
       parent.end = entry.end;
     }
   }
-  return { entries, byKey, sizes, totalSize, saved };
+  return { entries, byKey, sizes, totalSize };
 }
 
 // Binary searches bound work even for a very tall viewport or a distant jump.

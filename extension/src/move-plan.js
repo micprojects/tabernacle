@@ -2,7 +2,6 @@ import {
   children,
   groupById,
   groupPath,
-  isSavedForLater,
   sortTabs,
   tabAncestors,
   tabSubtree,
@@ -15,8 +14,6 @@ export function moveSource(state, kind, id) {
   if (kind === 'tab') {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) throw new Error('That tab has closed or moved to another window.');
-    if (isSavedForLater(tab))
-      throw new Error('Return this tab from Saved for Later before moving it.');
     return { kind, id, treeId: tab.treeId };
   }
   if (!['group', 'pin-group'].includes(kind) || !groupById(state, id))
@@ -63,8 +60,7 @@ export function resolveMove(state, source, intent) {
   const moving = new Set(branch.map((tab) => tab.id));
   const count = tab
     ? branch.length
-    : state.tabs.filter((tab) => !isSavedForLater(tab) && folders.isWithin(tab.groupId, source.id))
-        .length;
+    : state.tabs.filter((tab) => folders.isWithin(tab.groupId, source.id)).length;
   const sourceState = sourcePlacement(state, source, folderIndex);
   let destination,
     siblings,
@@ -165,7 +161,7 @@ export function resolveMove(state, source, intent) {
     parent = state.tabs.find((tab) => tab.id === destination.parentTabId);
     if (
       destination.parentTabId !== null &&
-      (!parent || parent.pinned || isSavedForLater(parent) || parent.groupId !== groupId)
+      (!parent || parent.pinned || parent.groupId !== groupId)
     )
       throw new Error('The parent tab has moved. Try again.');
     if (moving.has(destination.parentTabId))

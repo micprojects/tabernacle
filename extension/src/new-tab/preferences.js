@@ -1,11 +1,4 @@
-const booleans = [
-  'enabled',
-  'showSearch',
-  'showFolders',
-  'showLater',
-  'showRecent',
-  'weatherEnabled',
-];
+const booleans = ['enabled', 'showSearch', 'showFolders', 'showRecent', 'weatherEnabled'];
 
 export function linkUrl(value) {
   let url;
@@ -88,7 +81,6 @@ export function normalizeNewTab(value) {
     links,
     showSearch: value?.showSearch !== false,
     showFolders: value?.showFolders !== false,
-    showLater: value?.showLater !== false,
     showRecent: value?.showRecent !== false,
     colorScheme: ['inherit', 'light', 'dark'].includes(value?.colorScheme)
       ? value.colorScheme

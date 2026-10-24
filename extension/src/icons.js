@@ -63,12 +63,6 @@ export function svgIcon(asset, spriteUrl, className = '') {
 }
 
 export function icon(name, className = '') {
-  if (name === 'later')
-    return svgIcon(
-      'saved-later-16',
-      new URL('../icons/ui/saved-later.svg', import.meta.url).href,
-      className,
-    );
   const svg = svgIcon(assets[name] ?? assets.globe, sprite, className);
   if (name === 'group' || name === 'groupOpen') svg.classList.add('folder-icon');
   return svg;

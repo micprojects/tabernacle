@@ -30,7 +30,6 @@ import {
   groupSubtreeIds,
   groupContainer,
   isWithin,
-  isSavedForLater,
   cleanName,
   addGroup,
   moveGroup,
@@ -645,7 +644,6 @@ export function createController(
       nativeGroupId,
       order: row.order,
       openedAt: row.openedAt,
-      ...(Object.hasOwn(row, 'savedForLaterAt') ? { savedForLaterAt: row.savedForLaterAt } : {}),
       treeId: row.treeId,
       ancestors: row.ancestors,
       collapsed: row.collapsed,
@@ -764,7 +762,6 @@ export function createController(
           if (duplicate) {
             value.collapsed = false;
             delete value.openedAt;
-            delete value.savedForLaterAt;
           }
           // Placement still belongs to the queued onCreated handler.
           needsSave = true;
@@ -786,7 +783,6 @@ export function createController(
           nativeGroupId,
           order: value.order,
           openedAt: value.openedAt,
-          ...(isSavedForLater(value) ? { savedForLaterAt: value.savedForLaterAt } : {}),
           treeId: value.treeId,
           ancestors: Array.isArray(value.ancestors)
             ? [...new Set(value.ancestors.filter((id) => typeof id === 'string'))]
@@ -894,8 +890,6 @@ export function createController(
     )
       return prior.value;
     const value = reconcilePins(layout, model.folderPins, tabs, forgotten);
-    const savedKeys = new Set(tabs.filter(isSavedForLater).map((tab) => tab.treeId));
-    value.items = value.items.filter((item) => item.kind !== 'tab' || !savedKeys.has(item.id));
     // Keep one derived result with its existing window snapshot. A changed tab
     // array, folder order, saved layout or pending closure always reconciles.
     if (reusable) {
@@ -1011,9 +1005,7 @@ export function createController(
     if (!group) throw new Error('Choose a folder.');
     const included = groupSubtreeIds(model, id);
     const groupIds = model.groups.filter((item) => included.has(item.id)).map((g) => g.id);
-    const tabs = (await listTabs()).filter(
-      (tab) => !isSavedForLater(tab) && included.has(tab.groupId),
-    );
+    const tabs = (await listTabs()).filter((tab) => included.has(tab.groupId));
     return {
       groupIds,
       tabIds: tabs.map((tab) => tab.id),
@@ -1028,7 +1020,7 @@ export function createController(
     requireFolder(destinationId);
     if (inFolder(destinationId, id))
       throw new Error('Choose a destination outside this folder and its subfolders.');
-    const tabs = (await listTabs()).filter((tab) => !isSavedForLater(tab));
+    const tabs = await listTabs();
     const windows = new Set(tabs.filter((tab) => tab.groupId === id).map((tab) => tab.windowId));
     const changes = [];
     for (const windowId of windows) {
@@ -1102,7 +1094,7 @@ export function createController(
   async function revealTab(id, windowId) {
     const tabs = await listTabs(windowId);
     const tab = tabs.find((tab) => tab.id === id);
-    if (!tab || isSavedForLater(tab)) return;
+    if (!tab) return;
     const view = await viewFor(windowId);
     if (!inFolder(tab.groupId, view.scopeId)) view.scopeId = tab.groupId;
     const parents = new Set(folderPath(tab.groupId).map((group) => group.id));
@@ -1216,13 +1208,11 @@ export function createController(
     await checkedTab(tabId, windowId);
     requireFolder(groupId);
     const allTabs = await listTabs(windowId);
-    if (isSavedForLater(allTabs.find((tab) => tab.id === tabId)))
-      throw new Error('Return this tab from Saved for Later before moving it.');
     const subtree = tabSubtree(allTabs, tabId);
     if (!subtree.length) throw new Error('That tab has closed.');
     const moving = new Set(subtree.map((tab) => tab.id));
     const parent = allTabs.find((tab) => tab.id === parentTabId);
-    if (parentTabId !== null && (!parent || isSavedForLater(parent) || parent.groupId !== groupId))
+    if (parentTabId !== null && (!parent || parent.groupId !== groupId))
       throw new Error('The parent tab has moved. Try again.');
     if (moving.has(parentTabId))
       throw new Error('A tab cannot nest under itself or one of its children.');
@@ -1635,9 +1625,7 @@ export function createController(
         await saveView(windowId, view);
         // Navigating into a nonempty group brings a real member tab into view.
         if (scopeId !== null) {
-          const tabs = (await listTabs(windowId)).filter(
-            (tab) => !isSavedForLater(tab) && inFolder(tab.groupId, scopeId),
-          );
+          const tabs = (await listTabs(windowId)).filter((tab) => inFolder(tab.groupId, scopeId));
           if (tabs.length && !tabs.some((tab) => tab.active)) {
             tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
             await writeTab(windowId, 'update', tabs[0].id, { active: true });
@@ -1843,8 +1831,6 @@ export function createController(
         if (message.reveal === true) await revealTab(message.id, windowId);
         break;
       }
-      case 'saveTabsForLater':
-      case 'undoSaveTabsForLater':
       case 'closeTabSet':
       case 'closeDuplicateTabs': {
         const tabs = await listTabs(windowId);
@@ -1866,11 +1852,6 @@ export function createController(
           freshTab,
           isClosed: async (id) => !(await findOpenTab(id)),
 
-          save: async (id, savedForLaterAt, validate) => {
-            if (!(await validate())) return false;
-            await updateMembership(id, { savedForLaterAt });
-          },
-
           close: async (id, validate) => {
             // Only an active close needs the full before/after selection tree.
             // Check native selection for each target: an earlier removal or a
@@ -1880,24 +1861,6 @@ export function createController(
             await writeTab(windowId, 'remove', id);
           },
         });
-        break;
-      }
-      case 'saveForLater': {
-        await checkedTab(message.id, windowId);
-        // Initialise durable placement first; saving changes only the queue membership.
-        const tabs = await listTabs(windowId);
-        const tab = tabs.find((tab) => tab.id === message.id);
-        if (!tab) throw new Error('That tab has closed.');
-        if (!isSavedForLater(tab)) {
-          // Preserve addition order even when multiple saves share a clock tick.
-          const newest = tabs.reduce((time, item) => Math.max(time, item.savedForLaterAt || 0), 0);
-          await updateMembership(tab.id, { savedForLaterAt: Math.max(Date.now(), newest + 1) });
-        }
-        break;
-      }
-      case 'returnFromLater': {
-        await checkedTab(message.id, windowId);
-        await updateMembership(message.id, { savedForLaterAt: null });
         break;
       }
       case 'closeTab':
@@ -1932,10 +1895,7 @@ export function createController(
         // Tabs opened later, moved out, or moved to another window are excluded.
         const confirmed = new Set(message.tabIds);
         const ids = (await listTabs(windowId))
-          .filter(
-            (tab) =>
-              !isSavedForLater(tab) && confirmed.has(tab.id) && inFolder(tab.groupId, group.id),
-          )
+          .filter((tab) => confirmed.has(tab.id) && inFolder(tab.groupId, group.id))
           .map((tab) => tab.id);
         if (ids.length) await closeTabs(windowId, ids);
         break;
@@ -1959,7 +1919,6 @@ export function createController(
           ancestors: [],
           collapsed: false,
           openedAt: openedTimes.get(tab.id) ?? Date.now(),
-          savedForLaterAt: null,
         });
         await moveTab(tab.id, source.groupId, windowId, null, source.parentTabId);
         break;
@@ -2036,10 +1995,7 @@ export function createController(
     const source = context.byId.get(tab.id);
     if (!source) throw new Error('That tab has closed or moved to another window.');
     const candidate = context.byId.get(tab.openerTabId);
-    const opener =
-      candidate && candidate.id !== tab.id && !candidate.pinned && !isSavedForLater(candidate)
-        ? candidate
-        : null;
+    const opener = candidate && candidate.id !== tab.id && !candidate.pinned ? candidate : null;
     const groupId = opener ? opener.groupId : context.view.scopeId;
     const parentTabId = opener?.id ?? null;
     const key = JSON.stringify([groupId, parentTabId]);

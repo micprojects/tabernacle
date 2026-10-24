@@ -12,7 +12,6 @@ import { createViewportTreeRenderer } from './tree/viewport.js';
 import { captureScroll, restoreScroll } from './view-state.js';
 import { createDomainHeader } from './domain-header.js';
 import { createDomainsView } from './domains-view.js';
-import { createLaterView } from './later-view.js';
 import { setAttribute } from './dom.js';
 import { createTreeMotion } from './tree/motion.js';
 import { createFaviconTints } from './favicon-tint.js';
@@ -22,7 +21,7 @@ import { createPointerMove } from './pointer-move.js';
 import { createRecentActivity } from './recently-closed.js';
 import { createActivityLauncher } from './activity-launcher.js';
 import { openDemoPage } from './internal-pages.js';
-import { groupById, isSavedForLater, tabChildren } from './model.js';
+import { groupById, tabChildren } from './model.js';
 
 const controls = createSidebarControls();
 const { el, button } = controls;
@@ -103,7 +102,6 @@ const domainsView = createDomainsView({
   getState: () => state,
 
   onOpen() {
-    laterView.close({ restoreFocus: false });
     cancelGroupClick();
     closeMenu();
     recentlyClosed?.close();
@@ -118,54 +116,6 @@ const domainsView = createDomainsView({
   onMenu: (event) => collectionMenu(event, { kind: 'window' }, state.tabs, false),
   onPin: (domain, pinned) => action('setDomainPin', { domain, pinned }),
 });
-
-const laterView = createLaterView({
-  root: document.querySelector('.sidebar'),
-  getState: () => state,
-
-  onOpen() {
-    cancelGroupClick();
-    closeMenu();
-    recentlyClosed?.close();
-    treeMotion.finishAll();
-    domainsView.close({ restoreFocus: false });
-    if (domainFilter) leaveDomain({ restoreFocus: false });
-    if (searchOpen) showSearch(false, { restoreFocus: false });
-    suspendTree();
-  },
-
-  onClose: () => render(),
-  onActivate: (id) => action('activateTab', { id, expandAncestors: false }),
-  onReturn: returnSavedTab,
-  onCloseTab: (id) => action('closeTab', { id }),
-  onError: (message) => announce(message, true),
-  onMenu: (id, x, y) => contextMenu('tab', id, x, y),
-  onActions: (event, tabs, scope) => collectionMenu(event, scope, tabs, false),
-});
-
-async function saveTabForLater(id) {
-  const next = await action('saveForLater', { id });
-  if (!next) return;
-  announce('Saved for later.');
-  const undo = button(
-    'Undo',
-    null,
-    async () => {
-      if (await action('returnFromLater', { id })) announce('Returned to the tree.');
-    },
-    'toast-action',
-  );
-  undo.textContent = 'Undo';
-  $('toast').append(' ', undo);
-}
-
-async function returnSavedTab(id) {
-  if (!(await action('returnFromLater', { id }))) return;
-  announce('Returned to the original folder.');
-  const show = button('Show in folder', null, () => showTabInFolder(id), 'toast-action');
-  show.textContent = 'Show in folder';
-  $('toast').append(' ', show);
-}
 
 function acceptState(next) {
   if (disposed) return;
@@ -227,8 +177,6 @@ const menus = createSidebarMenus({
   getState: () => state,
   getDrag: () => drag,
   getMovingItem: () => movingItem,
-  saveTabForLater,
-  returnSavedTab,
   el,
   button,
   announce,
@@ -315,7 +263,6 @@ const rows = createSidebarRows({
   treeMotion,
   getState: () => state,
   getSelected: () => selected,
-  returnSavedTab,
   demo,
   el,
   button,
@@ -365,7 +312,6 @@ const {
   detachRows,
   beginRows,
   reuseRow,
-  renderSaved,
 } = rows;
 
 const {
@@ -533,7 +479,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function enter(id, collapsed) {
-  laterView.close({ restoreFocus: false });
   domainsView.close({ restoreFocus: false });
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
@@ -543,7 +488,6 @@ function enter(id, collapsed) {
 }
 
 async function revealFolder(id) {
-  laterView.close({ restoreFocus: false });
   domainsView.close({ restoreFocus: false });
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
@@ -600,16 +544,13 @@ function closeTab(id) {
 function activateTab(id) {
   return action('activateTab', {
     id,
-    ...(domainFilter || isSavedForLater(state.tabs.find((tab) => tab.id === id))
-      ? { expandAncestors: false }
-      : {}),
+    ...(domainFilter ? { expandAncestors: false } : {}),
   });
 }
 
 function closeFilter() {
   let filter;
-  if (laterView.isOpen) filter = laterView.closeFilter();
-  else if (domainFilter)
+  if (domainFilter)
     filter = {
       domain: domainFilter,
       query: $('domain-search').value,
@@ -639,8 +580,6 @@ const treeRendererOptions = {
   restoreView: (saved) => restoreScroll(tree, saved.scroll),
 
   renderRow,
-
-  renderSaved,
 };
 
 const treeRenderer = createViewportTreeRenderer({
@@ -695,7 +634,6 @@ const layoutValues = (tab) => [
   tab.treeId,
   tab.groupId,
   tab.parentTabId,
-  tab.savedForLaterAt,
   Boolean(tab.pinned),
   Boolean(tab.collapsed),
   Boolean(tab.active),
@@ -710,10 +648,9 @@ const sameLayout = (saved, tab) =>
   saved[3] === tab.treeId &&
   saved[4] === tab.groupId &&
   saved[5] === tab.parentTabId &&
-  saved[6] === tab.savedForLaterAt &&
-  saved[7] === Boolean(tab.pinned) &&
-  saved[8] === Boolean(tab.collapsed) &&
-  saved[9] === Boolean(tab.active);
+  saved[6] === Boolean(tab.pinned) &&
+  saved[7] === Boolean(tab.collapsed) &&
+  saved[8] === Boolean(tab.active);
 
 const metadataValues = (tab) => [
   tab.title,
@@ -774,9 +711,9 @@ function patchMetadata(context) {
     const saved = previousRender.tabs[i];
     if (!sameLayout(saved.layout, tab)) return false;
     const audioChanged =
-      saved.layout[10] !== Boolean(tab.audible) ||
-      saved.layout[11] !== Boolean(tab.mutedInfo?.muted);
-    if (audioChanged) audioChanges.push({ tab, wasPlaying: saved.layout[10] && !saved.layout[11] });
+      saved.layout[9] !== Boolean(tab.audible) ||
+      saved.layout[10] !== Boolean(tab.mutedInfo?.muted);
+    if (audioChanged) audioChanges.push({ tab, wasPlaying: saved.layout[9] && !saved.layout[10] });
     if (audioChanged || !sameMetadata(saved.metadata, tab))
       changed.push({ tab, saved, metadata: metadataValues(tab) });
   }
@@ -790,8 +727,8 @@ function patchMetadata(context) {
   if (projection) projection.source = state;
   for (const { tab, saved, metadata } of changed) {
     saved.metadata = metadata;
-    saved.layout[10] = Boolean(tab.audible);
-    saved.layout[11] = Boolean(tab.mutedInfo?.muted);
+    saved.layout[9] = Boolean(tab.audible);
+    saved.layout[10] = Boolean(tab.mutedInfo?.muted);
     audio.tabs.add(tab.id);
   }
   for (const id of audio.tabs) {
@@ -846,7 +783,6 @@ window.addEventListener(
     readSnapshot?.clear();
     releaseTree();
     treeRenderer.dispose();
-    laterView.dispose();
     domainsView.dispose();
     state = confirmedState = suspendedTree = undefined;
   },
@@ -874,9 +810,8 @@ function render(motionKey = null) {
   renderPending = false;
   state = pointerMoves?.project(state) || state;
   recentlyClosed?.render();
-  const laterOpen = laterView.update(state);
   const domainsOpen = domainsView.update(state);
-  if (laterOpen || domainsOpen) {
+  if (domainsOpen) {
     previousRender = null;
     return;
   }
@@ -994,7 +929,6 @@ function render(motionKey = null) {
 }
 
 function showSearch(show = true, { restoreFocus = true } = {}) {
-  if (show) laterView.close({ restoreFocus: false });
   if (show) domainsView.close({ restoreFocus: false });
   if (show && domainFilter) leaveDomain({ restoreFocus: false });
   if (show || restoreFocus) cancelGroupClick();
@@ -1095,10 +1029,7 @@ function rowKey(event, row, kind, id) {
   const rows = projection?.visibleRows || [];
   const index = rows.findIndex((item) => item.key === row.dataset.key);
   const tab = kind === 'tab' ? state.tabs.find((tab) => tab.id === id) : null;
-  const hasChildren =
-    !domainFilter &&
-    !isSavedForLater(tab) &&
-    (kind === 'group' || tabChildren(treeTabs, id).length > 0);
+  const hasChildren = !domainFilter && (kind === 'group' || tabChildren(treeTabs, id).length > 0);
   const collapsed = kind === 'group' ? state.view.collapsed.includes(id) : tab?.collapsed;
   const toggle = () => action(kind === 'group' ? 'toggleGroup' : 'toggleTab', { id });
   if (event.key === 'Enter') {
@@ -1158,10 +1089,6 @@ async function blankAreaAction(type, args = {}) {
   $('search').value = '';
   const next = await action(type, args);
   const id = next?.createdTabId ?? next?.restoredTabId ?? next?.tabs.find((tab) => tab.active)?.id;
-  if (isSavedForLater(next?.tabs.find((tab) => tab.id === id))) {
-    laterView.focusTab(id);
-    return;
-  }
   if (id !== undefined) treeRenderer.ensureVisible(`tab:${id}`);
 }
 
@@ -1344,8 +1271,7 @@ $('new-tab').addEventListener('contextmenu', (event) => newTabMenu(event, state?
 $('new-tab').addEventListener('keydown', (event) => newTabMenu(event, state?.view.scopeId));
 $('new-group').addEventListener('click', () => createDialog());
 $('tree-toggle').addEventListener('click', async () => {
-  if (!state || changingTree || domainFilter || laterView.isOpen || $('search').value.trim())
-    return;
+  if (!state || changingTree || domainFilter || $('search').value.trim()) return;
   const branches = scopeBranches(index, state.view);
   if (!branches.groupIds.size && !branches.tabs.length) return;
   const restoreFocus = document.activeElement === $('tree-toggle');
@@ -1372,7 +1298,7 @@ document.addEventListener('pointerdown', (event) => {
   const dismissDomain = domainFilter && event.target.closest('footer');
   // Clearing the filter must not move or replace a target before its click.
   if (
-    event.target.closest('.row, .pinned-tab, .recently-closed-row, .domains-row, .later-row') ||
+    event.target.closest('.row, .pinned-tab, .recently-closed-row, .domains-row') ||
     dismissSearch ||
     dismissDomain
   )
@@ -1415,7 +1341,7 @@ function shouldDismissSearch({ target, button, ctrlKey }) {
     !$('navigation-capsule').contains(target) &&
     !$('menu').contains(target) &&
     !$('dialog').contains(target) &&
-    !target.closest('.saved-search-results, #toast')
+    !target.closest('#toast')
   );
 }
 
@@ -1436,8 +1362,7 @@ document.addEventListener('keydown', (event) => {
     if (domainFilter) {
       $('domain-search').focus();
       $('domain-search').select();
-    } else if (laterView.isOpen) laterView.focusSearch();
-    else showSearch();
+    } else showSearch();
   }
   if (event.key === 'Escape' && domainFilter) {
     event.preventDefault();

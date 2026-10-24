@@ -58,7 +58,6 @@ try {
         index: i,
         order: 1000 - i,
         url: `https://same.test/${i % 10}`,
-        savedForLaterAt: i % 17 === 0 ? 1 : null,
         pinned: i % 19 === 0,
       }));
       const state = {
@@ -72,7 +71,7 @@ try {
       folderActions.setState(state);
       const member = (tab) => (shape === 'flat' ? tab.groupId === 'g1' : tab.groupId !== 'g0');
       const expected = tabs
-        .filter((tab) => !tab.savedForLaterAt && member(tab))
+        .filter((tab) => member(tab))
         .sort((a, b) => a.order - b.order)
         .map((tab) => tab.url)
         .join('\n');
@@ -83,7 +82,7 @@ try {
       folderActions.closeGroupTabsDialog('g1');
       const confirmation = {
         text: document.querySelector('#dialog-description').textContent,
-        expected: tabs.filter((tab) => !tab.savedForLaterAt && member(tab)).length,
+        expected: tabs.filter((tab) => member(tab)).length,
         reads,
       };
       document.querySelector('#dialog').close();
@@ -119,9 +118,6 @@ try {
         );
       tabs.push({ ...tabs[0], id: 1001, treeId: 'empty-pin', groupId: 'empty', pinned: true });
       folderActions.contextMenu('group', 'empty', 10, 10);
-      menu.savedOnlyDisabled = closeItem().disabled;
-      tabs.at(-1).savedForLaterAt = null;
-      folderActions.contextMenu('group', 'empty', 10, 10);
       menu.pinEnabled = !closeItem().disabled;
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       // A missing folder must not reopen confirmation or overwrite the clipboard.
@@ -140,7 +136,6 @@ try {
       menu: result.menu.reads,
     });
     expect(result.menu.disabled).toBe(true);
-    expect(result.menu.savedOnlyDisabled).toBe(true);
     expect(result.menu.pinEnabled).toBe(true);
     expect(result.menu.reads).toBeLessThan(40000);
     expect(result.stale).toEqual({ copied: 'clipboard sentinel', open: false });
@@ -162,7 +157,7 @@ try {
   expect(errors).toEqual([]);
   console.log('Hierarchy field reads:', JSON.stringify(workCounts));
   console.log(
-    '✓ Indexed folder actions bound hierarchy visits and preserve copy order, pins, Saved exclusion, deep labels and mutable destinations',
+    '✓ Indexed folder actions bound hierarchy visits and preserve copy order, pins, deep labels and mutable destinations',
   );
 } finally {
   await close();

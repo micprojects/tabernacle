@@ -1,24 +1,9 @@
-import { isSavedForLater, isWithin } from './model.js';
+import { isWithin } from './model.js';
 import { matchesDomain } from './domain-filter.js';
 import { createTreeIndex } from './tree/index.js';
-import { createFolderIndex } from './folder-index.js';
 import { sourceUrl, matchesText, httpUrl } from './tab-source.js';
-import { laterResults } from './later.js';
 
 export { sourceUrl, matchesText };
-
-export function savedSearchResults(state, query, scopeId = state.view.scopeId, folders) {
-  if (!query.trim()) return [];
-  if (scopeId !== null) folders ??= createFolderIndex(state);
-  return state.tabs
-    .filter(
-      (tab) =>
-        isSavedForLater(tab) &&
-        (scopeId === null || folders.isWithin(tab.groupId, scopeId)) &&
-        matchesText(tab, query),
-    )
-    .sort((a, b) => b.savedForLaterAt - a.savedForLaterAt || a.index - b.index);
-}
 
 export function viewedAge(time, now = Date.now()) {
   if (!Number.isFinite(time) || time <= 0) return '';
@@ -29,10 +14,7 @@ export function viewedAge(time, now = Date.now()) {
 export function searchTabOrder(state, query, scopeId = state.view.scopeId) {
   const text = query.trim().toLowerCase();
   const index = createTreeIndex(state, text);
-  return [
-    ...treeTabOrder(index, text, scopeId),
-    ...savedSearchResults(state, query, scopeId, index.folders).map((tab) => tab.id),
-  ];
+  return treeTabOrder(index, text, scopeId);
 }
 
 function treeTabOrder(index, text, scopeId) {
@@ -65,11 +47,10 @@ export function folderCollection(state, scopeId) {
   const tabs = state.tabs.filter((tab) => index.folders.isWithin(tab.groupId, scopeId));
   const byId = new Map(tabs.map((tab) => [tab.id, tab]));
   return [
-    ...tabs.filter((tab) => tab.pinned && !isSavedForLater(tab)).sort((a, b) => a.index - b.index),
+    ...tabs.filter((tab) => tab.pinned).sort((a, b) => a.index - b.index),
     ...treeTabOrder(index, '', scopeId)
       .map((id) => byId.get(id))
       .filter(Boolean),
-    ...tabs.filter(isSavedForLater).sort((a, b) => b.savedForLaterAt - a.savedForLaterAt),
   ];
 }
 
@@ -80,7 +61,6 @@ export function captureTarget(tab) {
     url: sourceUrl(tab),
     groupId: tab.groupId,
     cookieStoreId: tab.cookieStoreId || 'firefox-default',
-    savedForLaterAt: tab.savedForLaterAt || null,
   };
 }
 
@@ -99,9 +79,7 @@ export function inCollection(state, tab, scope, folders) {
       ? folders.isWithin(tab.groupId, scope.id)
       : (scope.id === null || state.groups.some((group) => group.id === scope.id)) &&
           isWithin(state, tab.groupId, scope.id);
-  if (scope?.kind === 'domain')
-    return !isSavedForLater(tab) && matchesDomain(tab, scope.domain, scope.query || '');
-  if (scope?.kind === 'later') return laterResults([tab], scope).length === 1;
+  if (scope?.kind === 'domain') return matchesDomain(tab, scope.domain, scope.query || '');
   return false;
 }
 

@@ -170,8 +170,8 @@ test('a membership write with unknown window ownership invalidates every resolve
   await f.send();
   await f.send('snapshot', {}, 2);
   const created = await f.api.tabs.create({ windowId: 2, url: 'https://example.test/new' });
-  f.memberships.set(created.id, { treeId: 'new-identity', order: 100, savedForLaterAt: 1 });
-  await f.send('returnFromLater', { id: created.id }, 2);
+  f.memberships.set(created.id, { treeId: 'new-identity', order: 100 });
+  await f.send('toggleTab', { id: created.id }, 2);
   const { stats } = await mapProbe(() => f.send());
   assert.equal(stats.globalVisits, 0);
   assert(stats.treeKeyReads > 0);
@@ -312,12 +312,11 @@ test('a duplicate in another window gets a new identity without displacing its l
   await f.send();
   const original = structuredClone(f.memberships.get(20));
   const duplicate = await f.api.tabs.create({ windowId: 1 });
-  f.memberships.set(duplicate.id, { ...original, collapsed: true, savedForLaterAt: 1 });
+  f.memberships.set(duplicate.id, { ...original, collapsed: true });
   const after = await f.send();
   const copied = after.tabs.find((tab) => tab.id === duplicate.id);
   assert.notEqual(copied.treeId, original.treeId);
   assert.equal(copied.collapsed, false);
-  assert.equal(copied.savedForLaterAt, undefined);
   assert.deepEqual(f.memberships.get(20), original);
   for (const key of ['treeOwners', 'tabTreeKeys', 'tabWindows'])
     assert.equal(f.controller.cacheStats()[key], 21, key);

@@ -8,7 +8,6 @@ import {
   sourceUrl,
   viewedAge,
 } from './tab-collection.js';
-import { isSavedForLater } from './model.js';
 import { createFolderIndex } from './folder-index.js';
 
 const element = (tag, className, text) => {
@@ -131,7 +130,6 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
           item.title.title = item.title.textContent;
           item.details.textContent = [
             ['Home', ...folders.path(tab.groupId).map((group) => group.name)].join(' / '),
-            isSavedForLater(tab) ? 'Saved for Later' : 'In tree',
             tab.container?.name || 'No container',
             tab.pinned ? 'Pinned' : '',
             tab.active ? 'Current tab' : '',

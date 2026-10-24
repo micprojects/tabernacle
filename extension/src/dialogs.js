@@ -1,7 +1,7 @@
 import { createCollectionDialogs } from './collection-dialogs.js';
 import { createFolderIndex } from './folder-index.js';
 import { icon } from './icons.js';
-import { groupById, groupContainer, isSavedForLater, tabSubtree } from './model.js';
+import { groupById, groupContainer, tabSubtree } from './model.js';
 import { createContainerManagement } from './container-dialogs.js';
 import { populateContainerPicker } from './container-picker.js';
 import { createGroupCreation } from './group-creation.js';
@@ -407,9 +407,7 @@ export function createDialogs({
     const group = groupById(state, id);
     if (!group) return;
     const folders = createFolderIndex(state);
-    const tabs = state.tabs.filter(
-      (tab) => !isSavedForLater(tab) && folders.isWithin(tab.groupId, id),
-    );
+    const tabs = state.tabs.filter((tab) => folders.isWithin(tab.groupId, id));
     const pinned = tabs.filter((tab) => tab.pinned).length;
     const count = `${tabs.length} ${tabs.length === 1 ? 'tab' : 'tabs'}`;
     showDialog({

@@ -1,7 +1,6 @@
 import { searchTabOrder } from './tab-collection.js';
 import { createTreeIndex } from './tree/index.js';
 import { domainResults, normaliseDomain } from './domain-filter.js';
-import { laterResults } from './later.js';
 
 // Match the sidebar's folder-first, depth-first order. Offscreen rows count;
 // collapsed branches and the global pin strip do not.
@@ -57,16 +56,11 @@ export function closeFallback(before, after, closedId, filter = null) {
   const orderFor = (state) =>
     filter?.search
       ? searchProjection(state, filter, closedId)
-      : filter?.later
-        ? laterResults(state.tabs, {
-            ...filter,
-            ...(included ? { tabIds: [...included] } : {}),
-          }).map((tab) => tab.id)
-        : domain
-          ? domainResults(createTreeIndex(state), domain, query, filter.sort)
-              .filter((tab) => !included || included.has(tab.id))
-              .map((tab) => tab.id)
-          : visibleTabOrder(state);
+      : domain
+        ? domainResults(createTreeIndex(state), domain, query, filter.sort)
+            .filter((tab) => !included || included.has(tab.id))
+            .map((tab) => tab.id)
+        : visibleTabOrder(state);
   const order = orderFor(before);
   const position = order.indexOf(closedId);
   if (position < 0 || after.tabs.some((tab) => tab.id === closedId)) return null;
@@ -77,8 +71,8 @@ export function closeFallback(before, after, closedId, filter = null) {
   const above = order.slice(0, position).reverse();
   const below = order.slice(position + 1);
   return (
-    (domain || filter?.later || filter?.search ? [...above, ...below] : [...below, ...above]).find(
-      (id) => visible.has(id),
+    (domain || filter?.search ? [...above, ...below] : [...below, ...above]).find((id) =>
+      visible.has(id),
     ) ??
     // Closing a collapsed parent natively can reveal its surviving children.
     remaining[0] ??

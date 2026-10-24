@@ -57,13 +57,12 @@ window.sidebarProjectionTest = {
       matching: projection.filterTabIds,
       close: projection.closeTabIds,
       pins: projection.pins.map((row) => row.key),
-      saved: projection.saved.map((row) => row.id),
     };
   },
   capture: () => treeRenderer.capture(),
   reveal: key => treeRenderer.ensureVisible(key),
   mount: key => treeRenderer.mount(key),
-  panes: { later: laterView, domains: domainsView },
+  panes: { domains: domainsView },
 };
 window.measureSidebarLookupReads = (next) => {
   acceptState(next);

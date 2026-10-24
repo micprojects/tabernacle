@@ -190,7 +190,7 @@ try {
   await expect(page.locator('#tree')).toHaveClass(/viewport-tree/);
   console.log('✓ Search keeps empty matching folders compact and bounds mounted rows');
 
-  for (const mode of ['mixed-saved', 'saved-only', 'domain']) {
+  for (const mode of ['search', 'domain']) {
     for (const domains of [false, true]) {
       await page.evaluate(
         ({ mode, domains }) => {
@@ -198,8 +198,6 @@ try {
           next.look.domains = domains;
           for (const tab of next.tabs) {
             tab.title += ' A long title with enough words to exceed the available sidebar width';
-            if (mode === 'saved-only' || (mode === 'mixed-saved' && tab.id > 800))
-              tab.savedForLaterAt = 2000 - tab.id;
           }
           viewportTest.search('');
           viewportTest.set(next);
@@ -251,19 +249,8 @@ try {
         reference.height,
       );
       if (mode !== 'domain') {
-        await expect(page.locator('[data-key="tab:1000"]')).toHaveAttribute(
-          'aria-posinset',
-          mode === 'mixed-saved' ? '200' : '1000',
-        );
-        await expect(page.locator('[data-key="tab:1000"]')).toHaveAttribute(
-          'aria-setsize',
-          mode === 'mixed-saved' ? '200' : '1000',
-        );
-        await expect(page.locator('[data-key="tab:1000"]')).toHaveAttribute(
-          'title',
-          /Folder: Home/,
-        );
-        await expect(page.locator('.saved-search-results h2')).toHaveCount(1);
+        await expect(page.locator('[data-key="tab:1000"]')).toHaveAttribute('aria-posinset', '100');
+        await expect(page.locator('[data-key="tab:1000"]')).toHaveAttribute('aria-setsize', '100');
         await page.evaluate(() => {
           viewportTest.reveal('tab:801');
           viewportTest.mount('tab:801').focus();
@@ -272,15 +259,15 @@ try {
         await page.waitForTimeout(50);
         await expect(page.locator('[data-key="tab:801"]')).toBeFocused();
       }
-      if (mode === 'mixed-saved') {
+      if (mode === 'search') {
         await page.evaluate(() => {
-          viewportTest.reveal('tab:800');
-          viewportTest.mount('tab:800').querySelector('.close-tab').focus();
+          viewportTest.reveal('tab:799');
+          viewportTest.mount('tab:799').querySelector('.close-tab').focus();
         });
         await page.keyboard.press('Tab');
-        await expect(page.locator('[data-key="tab:801"]')).toBeFocused();
+        await expect(page.locator('[data-key="tab:800"]')).toBeFocused();
         await page.keyboard.press('Shift+Tab');
-        await expect(page.locator('[data-key="tab:800"] .close-tab')).toBeFocused();
+        await expect(page.locator('[data-key="tab:799"] .close-tab')).toBeFocused();
       }
       await page.evaluate(() => {
         viewportTest.poolDomain(null);
@@ -290,7 +277,7 @@ try {
     }
   }
   console.log(
-    '✓ Saved and domain results share fixed rows, exact geometry, section ARIA and retained focus',
+    '✓ Search and domain results share fixed rows, exact geometry, row ARIA and retained focus',
   );
 
   for (const width of [220, 480]) {

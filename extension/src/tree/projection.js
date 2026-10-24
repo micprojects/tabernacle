@@ -1,6 +1,6 @@
 import { domainResults } from '../domain-filter.js';
 import { createTreeIndex } from './index.js';
-import { savedSearchResults, matchesText } from '../tab-collection.js';
+import { matchesText } from '../tab-source.js';
 
 const emptyChildren = Object.freeze([]);
 
@@ -242,25 +242,6 @@ export function projectTree(
 
   const shown = build(false);
   const { roots, byKey, domainTabs } = shown;
-  const saved = domain
-    ? []
-    : savedSearchResults(state, query, state.view.scopeId, index.folders).map((tab) =>
-        record({
-          key: `tab:${tab.id}`,
-          kind: 'tab',
-          id: tab.id,
-          tab,
-          depth: 0,
-          parentKey: null,
-          mode: 'saved',
-          expanded: true,
-          disclosure: false,
-          stats: { descendants: 0, active: tab.active },
-          matchesFilter: true,
-          visible: true,
-        }),
-      );
-  for (const row of saved) byKey.set(row.key, row);
   const tabPins = new Map(state.tabs.filter((tab) => tab.pinned).map((tab) => [tab.treeId, tab]));
   const folderPins = new Map((state.folderPins || []).map((pin) => [pin.id, pin]));
   const pins = domain
@@ -276,10 +257,9 @@ export function projectTree(
         };
       });
   for (const row of pins) byKey.set(row.key, row);
-  const visibleRows =
-    !saved.length && shown.logicalRows.every((row) => row.visible)
-      ? shown.logicalRows
-      : [...shown.logicalRows.filter((row) => row.visible), ...saved];
+  const visibleRows = shown.logicalRows.every((row) => row.visible)
+    ? shown.logicalRows
+    : shown.logicalRows.filter((row) => row.visible);
   // Hidden hierarchy stays in the authoritative index. Materialise its records
   // only for an explicit logical/action inspection, never for a folded render.
   const logicalRows = () => build(true).logicalRows;
@@ -301,7 +281,7 @@ export function projectTree(
     sort,
     roots,
     hierarchy: index,
-    materializedRows: shown.logicalRows.length + saved.length + pins.length,
+    materializedRows: shown.logicalRows.length + pins.length,
     materializedByKey: byKey,
 
     get logicalRows() {
@@ -316,7 +296,6 @@ export function projectTree(
     visibleKeys: { has: (key) => Boolean(byKey.get(key)?.visible) },
     byKey: { get: lookup, has: (key) => Boolean(lookup(key)) },
     pins,
-    saved,
     domainTabs,
 
     // These targets come from the complete matching collection, never a DOM
