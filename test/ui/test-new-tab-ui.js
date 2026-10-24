@@ -17,6 +17,7 @@ try {
   );
   await page.goto(`${base}/extension/settings.html?demo#new-tab`);
   await expect(page.locator('#new-tab-fields')).toBeEnabled();
+  await expect(page.locator('[name="showLater"]')).toHaveCount(0);
   await expect(page.getByRole('switch')).not.toBeChecked();
   await expect(page.locator('#new-tab-links')).toContainText('Add the websites');
 
@@ -48,6 +49,7 @@ try {
   const previewOpened = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Preview page', exact: true }).click();
   const preview = await previewOpened;
+  await expect(preview.locator('#later-section')).toHaveCount(0);
   await expect(preview.locator('#links')).toHaveClass(/list-style/);
   await expect(preview.locator('#links a')).toHaveText(['GitHub', 'MDN']);
   await expect(preview.locator('#links a').first()).toHaveAttribute('href', 'https://github.com/');

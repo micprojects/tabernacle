@@ -117,7 +117,6 @@ const selection = (target) =>
       collapsed: value?.isCollapsed,
       key:
         element?.closest('[data-key]')?.dataset.key ||
-        element?.closest('.later-row')?.dataset.id ||
         null,
       connected: Boolean(range?.startContainer.isConnected),
     };
@@ -378,15 +377,15 @@ try {
   );
   await check('actual-sidebar-full-dom', async () => {
     const before = await discoverEveryRow('sidebar', 'LifecycleNeedle', fixture.count);
-    await browser.evaluate(() => document.getElementById('later-toggle').click());
+    await browser.evaluate(() => document.getElementById('domains-toggle').click());
     await wait(
-      () => browser.evaluate(() => !document.getElementById('later-view').hidden),
-      'Open Later',
+      () => browser.evaluate(() => !document.getElementById('domains-view').hidden),
+      'Open Domains',
     );
     const inactiveRows = await browser.evaluate(
       () => document.querySelectorAll('#tree .row').length,
     );
-    await browser.evaluate(() => document.getElementById('later-close').click());
+    await browser.evaluate(() => document.querySelector('.domains-close').click());
     await wait(
       () =>
         browser.evaluate(
@@ -402,68 +401,6 @@ try {
       before,
       after,
     };
-  });
-  await check('saved-rows-find-refresh', async () => {
-    const ids = await browser.evaluate(async () => {
-      const { id: windowId } = await browser.windows.getCurrent();
-      const ids = [];
-      for (let i = 0; i < 30; i++) {
-        const tab = await browser.tabs.create({
-          windowId,
-          active: false,
-          discarded: true,
-          title: `PaneNeedle ${i}`,
-          url: `https://find-fixture.invalid/saved/${i}`,
-        });
-        const response = await browser.runtime.sendMessage({
-          type: 'tabernacle:saveForLater',
-          windowId,
-          id: tab.id,
-        });
-        if (!response.ok) throw new Error(response.error);
-        ids.push(tab.id);
-      }
-      document.getElementById('later-toggle').click();
-      return ids;
-    });
-    await wait(
-      () => browser.evaluate(() => document.querySelectorAll('.later-row').length === 30),
-      'Complete saved rows',
-    );
-    const discovery = await discoverEveryRow('sidebar', 'PaneNeedle', ids.length);
-    const before = await selection('sidebar');
-    await browser.evaluate(
-      (id) =>
-        new Promise((resolve, reject) => {
-          const observer = new MutationObserver(() => {
-            observer.disconnect();
-            clearTimeout(timer);
-            requestAnimationFrame(() => requestAnimationFrame(resolve));
-          });
-          const timer = setTimeout(() => {
-            observer.disconnect();
-            reject(new Error('Saved metadata refresh did not render'));
-          }, 10000);
-          observer.observe(document.querySelector('.later-tools [role="status"]'), {
-            childList: true,
-          });
-          browser.tabs.update(id, { muted: true }).catch((error) => {
-            observer.disconnect();
-            clearTimeout(timer);
-            reject(error);
-          });
-        }),
-      ids[0],
-    );
-    const after = await selection('sidebar');
-    assert.deepEqual(after, before, 'Unchanged saved text keeps the native Find selection');
-    const next = await find('sidebar', 'PaneNeedle', true);
-    assert.equal(next.matches.total, ids.length);
-    const selected = await selection('sidebar');
-    assert.equal(selected.text, 'PaneNeedle');
-    assert.notEqual(selected.key, before.key, 'Find Again moves to the next saved result');
-    await browser.evaluate(() => document.getElementById('later-close').click());
-    return { discovery, before, after, next: selected };
   });
   for (const [name, target, selector] of [
     ['activity', fixture.activity, '.item-button'],

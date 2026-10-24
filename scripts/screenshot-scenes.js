@@ -215,6 +215,10 @@ export async function showScreenshotScene(fixture, session, index) {
       const urlKeys = new Map(fixture.tabs.map(({ key, url }) => [url, key]));
       const originalSend = browser.runtime.sendMessage;
       browser.runtime.sendMessage = async (...args) => {
+        // Fixture every timestamp, including tabs retained by incremental reads.
+        // The sidebar reader accepts full snapshots at this same API boundary.
+        if (args[0]?.type === 'tabernacle:snapshot')
+          args[0] = { ...args[0], incremental: false, snapshotToken: undefined };
         const result = await originalSend.apply(browser.runtime, args);
         const data = result?.ok && result.data;
         if (data?.tabs && data.view) {
@@ -232,6 +236,9 @@ export async function showScreenshotScene(fixture, session, index) {
         browser.runtime.sendMessage = originalSend;
         delete globalThis.tabernacleScreenshotRestoreActivityTimes;
       };
+      // Opening the popup renders the existing snapshot; request a fresh one
+      // through the normal visible-page refresh before checking the sample ages.
+      document.dispatchEvent(new Event('visibilitychange'));
     }
     document.querySelector('#recently-closed-toggle').click();
     await waitFor(() => {

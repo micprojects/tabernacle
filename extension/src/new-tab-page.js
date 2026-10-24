@@ -1,7 +1,7 @@
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
 import { folderIcon } from './folder-icons.js';
-import { isSavedForLater, groupPath } from './model.js';
+import { groupPath } from './model.js';
 import { createFolderIndex } from './folder-index.js';
 import { normalizeNewTab, isNewTabPage, searchAddress } from './new-tab/preferences.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
@@ -164,7 +164,6 @@ function render() {
   $('links-section').hidden = false;
   $('search-section').hidden = !value.showSearch;
   $('folders-section').hidden = !value.showFolders;
-  $('later-section').hidden = !value.showLater;
   $('recent-section').hidden = !value.showRecent;
   $('preview-notice').hidden = !params.has('preview') && !demo;
   if (demo)
@@ -183,8 +182,7 @@ function render() {
   }
   const folderIndex = createFolderIndex(state);
   const counts = new Map();
-  for (const tab of available)
-    if (!isSavedForLater(tab)) counts.set(tab.groupId, (counts.get(tab.groupId) || 0) + 1);
+  for (const tab of available) counts.set(tab.groupId, (counts.get(tab.groupId) || 0) + 1);
   for (const group of [...folderIndex.order].reverse()) {
     const parent = folderIndex.parents.get(group.id);
     counts.set(parent, (counts.get(parent) || 0) + (counts.get(group.id) || 0));
@@ -233,14 +231,6 @@ function render() {
       return node;
     },
     'Folders you create in the sidebar appear here.',
-  );
-  showRows(
-    'later',
-    available.filter(isSavedForLater).sort((a, b) => b.savedForLaterAt - a.savedForLaterAt),
-    3,
-    (tab) =>
-      entry(tab, domain(tab.url), () => request('activateTab', { id: tab.id }), `later-${tab.id}`),
-    'Save tabs for later from the sidebar to see them here.',
   );
   showRows(
     'recent',
@@ -393,7 +383,7 @@ $('search-form').addEventListener('submit', async (event) => {
     error(err);
   }
 });
-for (const id of ['folders', 'later', 'recent'])
+for (const id of ['folders', 'recent'])
   $(`all-${id}`).addEventListener('click', () => {
     if (expanded.has(id)) expanded.delete(id);
     else expanded.add(id);
@@ -538,8 +528,7 @@ function suspend() {
   state = undefined;
   weatherKey = undefined;
   weatherData = null;
-  for (const id of ['links', 'folders', 'later', 'recent', 'search-matches'])
-    $(id).replaceChildren();
+  for (const id of ['links', 'folders', 'recent', 'search-matches']) $(id).replaceChildren();
   $('loading').hidden = false;
 }
 

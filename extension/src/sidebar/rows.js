@@ -9,7 +9,6 @@ import {
 import { guideColors } from '../appearance-colors.js';
 import { folderIcon, folderIconColor } from '../folder-icons.js';
 import { pinActionLabels } from '../pinned-items.js';
-import { isSavedForLater } from '../model.js';
 
 // One instance belongs to one sidebar document. The entry point owns application state.
 export function createSidebarRows({
@@ -28,7 +27,6 @@ export function createSidebarRows({
   treeMotion,
   getState,
   getSelected,
-  returnSavedTab,
   demo,
   el,
   button,
@@ -261,8 +259,7 @@ export function createSidebarRows({
         setWindowFocusedAt(-Infinity);
         action('toggleTab', { id, activate: true });
       } else if (kind === 'tab') {
-        if (actionName === 'return-tab') returnSavedTab(id);
-        else if (actionName === 'mute-tab') action('muteTab', { id });
+        if (actionName === 'mute-tab') action('muteTab', { id });
         else if (actionName === 'close-tab') closeTab(id);
       }
       return;
@@ -272,7 +269,7 @@ export function createSidebarRows({
       if (event.detail < 2) clickGroup(id, event);
       return;
     }
-    if (getDomainFilter() || isSavedForLater(getState().tabs.find((tab) => tab.id === id))) {
+    if (getDomainFilter()) {
       rowPress.delete(row);
       activateTab(id);
       return;
@@ -634,7 +631,7 @@ export function createSidebarRows({
     row.classList.toggle('discarded', Boolean(tab.discarded));
     row.setAttribute('aria-selected', String(Boolean(tab.active)));
     row.setAttribute('aria-label', tab.title || 'New tab');
-    if (getDomainFilter() || isSavedForLater(tab)) {
+    if (getDomainFilter()) {
       const location = tabFolderLabel(tab);
       row.title = `${tab.title || 'New tab'}\n${tab.url}\n${location}`;
       row.setAttribute('aria-description', location);
@@ -669,10 +666,6 @@ export function createSidebarRows({
       row.title += `\n${age}`;
       row.setAttribute('aria-description', `${row.getAttribute('aria-description')}. ${age}`);
     }
-    if (isSavedForLater(tab)) {
-      row.classList.add('saved-search-row');
-      row.append(rowButton('Return to original folder', 'group', 'return-tab'));
-    }
     if (childAudioCount(tab) && !playsAudio(tab))
       row.append(audioIndicator(playingLabel(childAudioCount(tab), 'in this tab’s children')));
     if (tab.audible || tab.mutedInfo?.muted)
@@ -694,7 +687,6 @@ export function createSidebarRows({
       !getDomainFilter() &&
       !getState().look.domains &&
       !stats.descendants &&
-      !isSavedForLater(tab) &&
       !tab.audible &&
       !tab.mutedInfo?.muted &&
       !childAudioCount(tab),
@@ -772,8 +764,7 @@ export function createSidebarRows({
           expanded,
           stats.descendants,
           stats.active,
-          getDomainFilter() || isSavedForLater(tab) ? tabFolderLabel(tab) : null,
-          isSavedForLater(tab),
+          getDomainFilter() ? tabFolderLabel(tab) : null,
           getDomainSort() === 'least-viewed' ? viewedAge(tab.lastAccessed) : null,
           getDomainSort() === 'least-viewed' ? tab.lastAccessed : null,
         ],
@@ -799,7 +790,7 @@ export function createSidebarRows({
   }
 
   function patchTabRow(row, tab, expanded, stats, previous, next) {
-    if (getDomainFilter() || isSavedForLater(tab) || previous.length !== next.length) return false;
+    if (getDomainFilter() || previous.length !== next.length) return false;
     // These positions are title, URL, active, discarded, expanded and descendant
     // activation in tabRow's presentation values. Every shape/icon/audio/colour
     // change still uses the established builder and focus-preserving replacement.
@@ -933,15 +924,9 @@ export function createSidebarRows({
     });
   }
 
-  let savedSearchSection;
-
   function finishRows() {
-    if (!getProjection().saved.length) savedSearchSection = undefined;
     if (!getTreeRenderer().virtual || getDomainFilter() || getState().look.domains)
       leafPool.length = 0;
-    const savedTabIds = new Set();
-    if (!getTreeRenderer().virtual || getProjection().saved.length)
-      for (const tab of getState().tabs) if (isSavedForLater(tab)) savedTabIds.add(tab.id);
     rowCache.finish((key) => {
       if (key.startsWith('pin:group:'))
         return getIndex().groups.has(key.slice('pin:group:'.length));
@@ -949,7 +934,7 @@ export function createSidebarRows({
       const kind = key.slice(0, separator);
       const id = key.slice(separator + 1);
       if (kind === 'tab' || kind === 'pin' || kind === 'new-child-tab')
-        return getIndex().byId.has(Number(id)) || (kind === 'tab' && savedTabIds.has(Number(id)));
+        return getIndex().byId.has(Number(id));
       return (kind === 'new-tab' && id === 'null') || getIndex().groups.has(id);
     });
     wrappers.forEach((wrapper, key) => {
@@ -981,7 +966,6 @@ export function createSidebarRows({
   });
 
   function clearRows() {
-    savedSearchSection = undefined;
     rowCache.clear();
     leafPool.length = 0;
     wrappers.clear();
@@ -999,19 +983,6 @@ export function createSidebarRows({
   function reuseRow(key) {
     rowCache.reuse(key);
     usedWrappers.add(key);
-  }
-
-  function renderSaved(nodes) {
-    if (!savedSearchSection) {
-      savedSearchSection = el('div', 'saved-search-results');
-      savedSearchSection.setAttribute('role', 'group');
-      savedSearchSection.setAttribute('aria-label', 'Saved for Later');
-      const heading = el('h2', '', 'Saved for Later');
-      heading.setAttribute('role', 'presentation');
-      savedSearchSection.append(heading);
-    }
-    reconcileTreeChildren(savedSearchSection, [savedSearchSection.firstElementChild, ...nodes]);
-    return savedSearchSection;
   }
 
   function renderRow(row, children) {
@@ -1073,6 +1044,5 @@ export function createSidebarRows({
     detachRows,
     beginRows,
     reuseRow,
-    renderSaved,
   };
 }

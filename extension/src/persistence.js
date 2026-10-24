@@ -24,7 +24,9 @@ export function serializeModel(value) {
 
 export function deserializeMembership(value) {
   if (value == null) return value;
-  const { folderId, hnStory, ...rest } = value;
+  // Retiring Later restores the original placement without a migration write.
+  // Old open/closed sessions may retain the marker until their next normal save.
+  const { folderId, hnStory, savedForLaterAt, ...rest } = value;
   // An absent membership means a newly created tab still needs placement.
   if (Object.hasOwn(value, 'groupId')) return rest;
   return Object.hasOwn(value, 'folderId') ? { ...rest, groupId: folderId } : rest;

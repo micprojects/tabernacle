@@ -565,11 +565,8 @@ export async function runNative(options, logPath) {
       };
     });
     await stage('search-and-clear', async () => {
-      const searchable = fixture.tabs.findLast(
-        (tab) =>
-          tab.windowId === 1 && !tab.pinned && !fixture.memberships.get(tab.id).savedForLaterAt,
-      );
-      assert(searchable, 'Search diagnostic needs an unpinned, unsaved fixture tab.');
+      const searchable = fixture.tabs.findLast((tab) => tab.windowId === 1 && !tab.pinned);
+      assert(searchable, 'Search diagnostic needs an unpinned fixture tab.');
       await browser.evaluate(() => document.getElementById('search-toggle').click());
       const samples = [];
       for (const query of [searchable.title, 'Fixture', '']) {

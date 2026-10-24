@@ -187,7 +187,7 @@ test('retired preferences and Hacker News routing cannot affect restored tabs or
         /Unknown Tabernacle action/,
       );
     await send('setLook', { partial: true, value: { domains: true } });
-    await send('saveForLater', { id: 1 });
+    await send('toggleTab', { id: 1 });
     for (const key of retired)
       assert.equal(Object.hasOwn(api.testing.saved['tabernacle.model.v1'], key), false);
     const membership = await api.sessions.getTabValue(1, 'tabernacle.membership.v1');

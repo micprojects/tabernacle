@@ -42,7 +42,6 @@ export function performanceFixture({ tabs = 60000, windows = 28, seed = 17 } = {
       ancestors,
       collapsed: index % 31 === 0,
       openedAt: 1700000000000 + i,
-      ...(index % 29 === 28 ? { savedForLaterAt: 1700000100000 + i } : {}),
       fixtureUnknown: { retained: true },
     });
     return {

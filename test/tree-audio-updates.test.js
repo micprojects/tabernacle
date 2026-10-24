@@ -15,7 +15,7 @@ function fixture() {
       { id: 3, groupId: 'b', parentTabId: 2, audible: true, mutedInfo: { muted: true } },
       { id: 4, groupId: 'b', parentTabId: 1, pinned: true, audible: true },
       { id: 5, groupId: 'b', parentTabId: 4 },
-      { id: 6, groupId: 'c', audible: true, savedForLaterAt: 1000 },
+      { id: 6, groupId: 'c', audible: true },
     ].map((tab, order) => ({ order, title: String(tab.id), ...tab })),
   };
 }
@@ -46,6 +46,7 @@ test('audio totals ignore sibling order while visible rows keep their declared o
       [3, 0],
       [4, 1],
       [5, 0],
+      [6, 1],
     ],
   );
   assert.deepEqual(
@@ -53,7 +54,7 @@ test('audio totals ignore sibling order while visible rows keep their declared o
     [
       ['a', 2],
       ['b', 2],
-      ['c', 0],
+      ['c', 1],
     ],
   );
   assert.deepEqual(
@@ -78,7 +79,7 @@ test('audio totals ignore sibling order while visible rows keep their declared o
   );
 });
 
-test('audio deltas match full summaries for nested tabs, pins, muted states and saved tabs', () => {
+test('audio deltas match full summaries for nested tabs, pins, muted states and separate folders', () => {
   let state = fixture();
   const index = createTreeIndex(state);
   const children = index.children;

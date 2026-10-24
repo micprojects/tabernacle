@@ -141,38 +141,6 @@ test('empty and hidden views have no range; unchanged ranges retain their identi
   assert.equal(treeLayout({ visibleRows: [] }).totalSize, 0);
 });
 
-test('Saved heading occupies one fixed slot without becoming a keyboard row or tree sibling', () => {
-  for (const tabHeight of [30, 38]) {
-    for (const ordinary of [
-      [],
-      [
-        ['folder', 'group'],
-        ['open', 'tab', 'folder'],
-      ],
-    ]) {
-      const input = projection([...ordinary, ['saved1', 'tab'], ['saved2', 'tab']]);
-      for (const row of input.visibleRows.slice(-2)) row.mode = 'saved';
-      const before = structuredClone(input);
-      const layout = treeLayout(input, { tabHeight, gap: 2, groupGap: 6 });
-      const start = ordinary.length ? 32 + tabHeight : 0;
-      assert.equal(layout.saved.start, start);
-      assert.equal(layout.saved.top, start + 34);
-      assert.equal(layout.totalSize, start + 34 + 2 * tabHeight);
-      assert.equal(layout.entries.length, input.visibleRows.length);
-      assert.equal(layout.byKey.get('saved1').top, start + 34);
-      assert.equal(layout.byKey.get('saved2').sibling, 1);
-      assert.equal(layout.sizes.get(layout.saved.key), 2);
-      assert.equal(layout.byKey.get('folder')?.end ?? 0, start);
-      assert.deepEqual(input, before);
-      for (const offset of [start, start + 15, start + 33, start + 34]) {
-        const range = visibleRange(layout.entries, offset, 30);
-        assert(range.startIndex <= input.visibleRows.length - 2);
-        assert(range.endIndex >= input.visibleRows.length - 2);
-      }
-    }
-  }
-});
-
 test('range lookup stays logarithmic for distant jumps and full-height views', () => {
   const { entries } = treeLayout(
     projection(Array.from({ length: 10000 }, (_, i) => [String(i), 'tab'])),

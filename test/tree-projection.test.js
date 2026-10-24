@@ -30,7 +30,7 @@ function fixture() {
       tab(1, 'work', { title: 'Parent', collapsed: true }),
       tab(2, 'work', { title: 'Target child', parentTabId: 1 }),
       tab(3, 'nested'),
-      tab(4, 'nested', { title: 'Target saved', savedForLaterAt: 1 }),
+      tab(4, 'nested', { title: 'Target article' }),
       tab(5, null),
       tab(10, 'work', { pinned: true }),
       tab(11, 'work', { parentTabId: 10 }),
@@ -53,7 +53,7 @@ test('complete logical hierarchy is separate from visible navigation and action 
     result.visibleRows.map((row) => row.key),
     ['group:work', 'group:other', 'new-tab:other', 'tab:5', 'new-tab:null'],
   );
-  assert.deepEqual(result.filterTabIds, [3, 1, 2, 11, 5]);
+  assert.deepEqual(result.filterTabIds, [3, 4, 1, 2, 11, 5]);
   assert(result.byKey.has('tab:2'));
   assert.equal(result.byKey.get('tab:2').visible, false);
   assert.equal(result.byKey.get('tab:2').parentKey, 'tab:1');
@@ -72,7 +72,7 @@ test('complete logical hierarchy is separate from visible navigation and action 
 });
 
 for (const query of ['target', 'work', 'not present'])
-  test(`search ${query} keeps authoritative collection order across collapsed branches and saved results`, () => {
+  test(`search ${query} keeps authoritative collection order across collapsed branches`, () => {
     const state = fixture();
     const result = projectTree(state, createTreeIndex(state, query), { query });
     assert.deepEqual(result.filterTabIds, searchTabOrder(state, query));
@@ -82,8 +82,7 @@ for (const query of ['target', 'work', 'not present'])
     );
     assert(!result.visibleRows.some((row) => row.kind === 'new-tab'));
     if (query === 'target') {
-      assert.equal(result.saved[0].id, 4);
-      assert.equal(result.saved[0].mode, 'saved');
+      assert.equal(result.byKey.get('tab:4').mode, 'tree');
       assert.equal(result.byKey.get('tab:1').expanded, true);
     }
   });
@@ -97,7 +96,7 @@ test('folder scope preserves local hierarchy without treating the scope fold as 
   assert.equal(result.byKey.get('group:nested').visible, true);
   assert.equal(result.byKey.get('tab:1').visible, true);
   assert.equal(result.byKey.get('tab:2').visible, false);
-  assert.deepEqual(result.filterTabIds, [3, 1, 2, 11]);
+  assert.deepEqual(result.filterTabIds, [3, 4, 1, 2, 11]);
   assert.deepEqual(result.byKey.get('new-tab:work').target, { kind: 'newTab', groupId: 'work' });
 });
 
@@ -113,7 +112,6 @@ for (const sort of ['tree', 'title', 'newest', 'oldest', 'viewed', 'least-viewed
     assert(!result.closeTabIds.includes(10));
     assert(result.filterTabIds.includes(10));
     assert.equal(result.pins.length, 0);
-    assert.equal(result.saved.length, 0);
     assert(
       result.visibleRows.every(
         (row) => row.depth === 0 && !row.disclosure && row.mode === 'domain',
@@ -146,8 +144,6 @@ function rendererFixture() {
     release: () => {
       released++;
     },
-
-    renderSaved: (children) => ({ section: 'saved', children }),
 
     renderRow(row, children) {
       const node = {

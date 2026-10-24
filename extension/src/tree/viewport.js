@@ -8,7 +8,6 @@ export function createViewportTreeRenderer({
   pins,
   full,
   renderRow,
-  renderSaved,
   reconcile,
   begin = () => {},
   prepare = () => {},
@@ -209,11 +208,7 @@ export function createViewportTreeRenderer({
         nodes.set(row.key, result.node);
       }
       const rootKey = projection.roots.find((row) => row.visible)?.parentKey ?? null;
-      const roots = list(rootKey, 0, geometry.saved?.start ?? geometry.totalSize);
-      if (geometry.saved) {
-        const { key, top } = geometry.saved;
-        roots.push(renderSaved(list(key, top, geometry.totalSize)));
-      }
+      const roots = list(rootKey, 0, geometry.totalSize);
       reconcile(tree, roots);
       reconcile(
         pins,

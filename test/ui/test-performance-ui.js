@@ -28,11 +28,10 @@ try {
     const addListener = EventTarget.prototype.addEventListener;
     const rowListeners = new WeakMap();
     window.rowListenerCount = () =>
-      [
-        ...document.querySelectorAll(
-          '.row, .row *, .later-row, .later-row *, .domains-row, .domains-row *',
-        ),
-      ].reduce((sum, node) => sum + (rowListeners.get(node) || 0), 0);
+      [...document.querySelectorAll('.row, .row *, .domains-row, .domains-row *')].reduce(
+        (sum, node) => sum + (rowListeners.get(node) || 0),
+        0,
+      );
     window.treeListenerAdds = 0;
     EventTarget.prototype.addEventListener = function (type, listener, options) {
       if (this instanceof Element) {
@@ -254,7 +253,7 @@ try {
     }
   }
 
-  // Search, domain and Later close criteria remain synchronous and current while hidden.
+  // Search and domain close criteria remain synchronous and current while hidden.
   const checkHiddenFilter = async (expected) => {
     await expect
       .poll(() => page.evaluate(async () => (await perfTest.closeFilter())?.tabIds?.length || 0))
@@ -295,28 +294,25 @@ try {
     (await page.evaluate(() => perfTest.closeFilter())).tabIds,
   );
   await page.evaluate(() => sidebarVisibilityTest.leaveDomain());
-  await page.evaluate(() => sidebarVisibilityTest.action('saveForLater', { id: 2 }));
   await page.evaluate(() => {
     sidebarProjectionTest.reveal('tab:500');
     document.querySelector('[data-key="tab:500"]').scrollIntoView({ block: 'start' });
   });
   const priorAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
-  await page.locator('#later-toggle').click();
+  await page.locator('#domains-toggle').click();
   expect(await checkProjection()).toEqual({ released: true, target: false });
-  await expect(page.locator('.later-row')).toHaveCount(1);
-  await checkHiddenFilter({ later: true, query: '', sort: 'newest' });
-  await page.locator('#later-close').click();
+  await page.locator('.domains-close').click();
   const restoredAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
   expect(restoredAnchor.key).toBe(priorAnchor.key);
   expect(Math.abs(restoredAnchor.offset - priorAnchor.offset)).toBeLessThan(1);
   await checkProjection();
   const paneFocus = await page.evaluate(() => {
     const panes = sidebarProjectionTest.panes;
-    // The header (including Home) is hidden while either pane is open.
+    // The header (including Home) is hidden while the pane is open.
     // Use a visible footer control to prove close(false) preserves caller focus.
     const external = document.getElementById('settings');
     const results = [];
-    for (const name of ['later', 'domains']) {
+    for (const name of ['domains']) {
       document.getElementById(name + '-toggle').focus();
       panes[name].open();
       external.focus();
@@ -330,42 +326,10 @@ try {
       document.removeEventListener('focusin', record);
       results.push({ name, selected: document.activeElement.id, changes });
     }
-    const switches = [];
-    for (const [from, to] of [
-      ['later', 'domains'],
-      ['domains', 'later'],
-    ]) {
-      document.getElementById(from + '-toggle').focus();
-      panes[from].open();
-      const changes = [];
-      const record = (event) =>
-        changes.push(event.target.id || event.target.dataset.key || event.target.className);
-      document.addEventListener('focusin', record);
-      panes[to].open();
-      document.removeEventListener('focusin', record);
-      switches.push({
-        from,
-        to,
-        selected: document.activeElement.id || document.activeElement.className,
-        changes,
-      });
-      external.focus();
-      panes[to].close({ restoreFocus: false });
-    }
-    return { results, switches };
+    return { results };
   });
-  expect(paneFocus.results).toEqual([
-    { name: 'later', selected: 'settings', changes: [] },
-    { name: 'domains', selected: 'settings', changes: [] },
-  ]);
-  expect(paneFocus.switches).toEqual([
-    { from: 'later', to: 'domains', selected: 'domains-close', changes: ['domains-close'] },
-    { from: 'domains', to: 'later', selected: 'later-close', changes: ['later-close'] },
-  ]);
-  console.log(
-    '✓ Renderer scroll restoration preserves explicit pane focus and never refocuses an old trigger during pane switches',
-  );
-  await page.evaluate(() => sidebarVisibilityTest.action('returnFromLater', { id: 2 }));
+  expect(paneFocus.results).toEqual([{ name: 'domains', selected: 'settings', changes: [] }]);
+  console.log('✓ Renderer scroll restoration preserves explicit pane focus');
   await expect
     .poll(async () => (await page.evaluate(() => sidebarProjectionTest.inspect())).matching?.length)
     .toBe(1000);
@@ -447,27 +411,26 @@ try {
   const lookupReads = await page.evaluate(async () => {
     const original = await perfTest.snapshot();
     const field = document.getElementById('search');
-    const saved = {
+    const searchState = {
       ...original,
       tabs: original.tabs.map((tab) => ({
         ...tab,
-        title: 'Saved lookup ' + tab.id,
-        savedForLaterAt: 1000 + tab.id,
+        title: 'Search lookup ' + tab.id,
       })),
     };
-    field.value = 'Saved lookup';
-    measureSidebarUpdate(saved);
+    field.value = 'Search lookup';
+    measureSidebarUpdate(searchState);
     const survivor = sidebarProjectionTest.mount('tab:3');
     const removed = sidebarProjectionTest.mount('tab:501');
     if (!survivor || !removed)
-      throw new Error('Saved lookup rows must mount before retention checks');
+      throw new Error('Search lookup rows must mount before retention checks');
     field.value = 'No matching lookup';
     const hiddenReads = measureSidebarLookupReads({
-      ...saved,
-      tabs: saved.tabs.filter((tab) => tab.id !== 501),
+      ...searchState,
+      tabs: searchState.tabs.filter((tab) => tab.id !== 501),
     });
-    field.value = 'Saved lookup';
-    measureSidebarUpdate(saved);
+    field.value = 'Search lookup';
+    measureSidebarUpdate(searchState);
     const retained = survivor === sidebarProjectionTest.mount('tab:3');
     const evicted = removed !== sidebarProjectionTest.mount('tab:501');
     field.value = '';
@@ -509,7 +472,7 @@ try {
     reopened: true,
   });
   console.log(
-    '✓ Hidden saved rows and collapsed folders use bounded lookup work without stale state',
+    '✓ Hidden search rows and collapsed folders use bounded lookup work without stale state',
   );
 
   await page.evaluate(() => {
@@ -821,132 +784,16 @@ try {
   });
   console.log('✓ Patched metadata matches full rendering for pins, nested and hidden tabs');
 
-  const laterPage = await page.context().browser().newPage();
+  const panePage = await page.context().browser().newPage();
   try {
-    await laterPage.route('**/lookup-fixture', (route) =>
+    await panePage.route('**/lookup-fixture', (route) =>
       route.fulfill({
         contentType: 'text/html',
-        body: '<!doctype html><section id="root"><button id="tree-toggle">Fold</button><footer><button id="domains-toggle">Domains</button></footer></section>',
+        body: '<!doctype html><section id="root"><button id="tree-toggle">Fold</button><footer></footer></section>',
       }),
     );
-    await laterPage.goto(base + '/lookup-fixture');
-    const result = await laterPage.evaluate(async () => {
-      const { createLaterView } = await import('/extension/src/later-view.js');
-      const reads = { tabs: 0, groups: 0 };
-      const track = (values, kind) =>
-        new Proxy(values, {
-          get(target, property, receiver) {
-            if (typeof property === 'string' && /^\d+$/.test(property)) reads[kind]++;
-            return Reflect.get(target, property, receiver);
-          },
-        });
-      const tabs = Array.from({ length: 300 }, (_, i) => ({
-        id: i + 1,
-        index: i,
-        title: 'Saved ' + (i + 1),
-        url: 'https://example.com/' + i,
-        groupId: 'group-' + i,
-        savedForLaterAt: 1000 + i,
-      }));
-      const groups = tabs.slice(0, -1).map((tab, i) => ({ id: tab.groupId, name: 'Folder ' + i }));
-      const state = { tabs: track(tabs, 'tabs'), groups: track(groups, 'groups') };
-      let reviewed;
-      const view = createLaterView({
-        root: document.getElementById('root'),
-        getState: () => state,
-
-        onOpen() {},
-
-        onClose() {},
-
-        onActions(_event, items, scope) {
-          reviewed = {
-            ids: items.map((tab) => tab.id),
-            titles: items.map((tab) => tab.title),
-            scope,
-          };
-        },
-      });
-      view.update(state);
-      view.open();
-      const renderReads = { ...reads };
-      const pane = document.getElementById('later-view');
-      const actions = pane.querySelector('[aria-label="Saved tabs actions"]');
-      const fallback =
-        pane.querySelector('.later-row[data-id="300"] [aria-label="Return to Home"]') !== null;
-      reads.tabs = 0;
-      actions.click();
-      const actionReads = reads.tabs;
-      const newest = reviewed.ids;
-      groups[0].name = 'Renamed folder';
-      tabs[0].title = 'Updated saved title';
-      view.update(state);
-      const renamed =
-        pane.querySelector('.later-row[data-id="1"] [aria-label="Return to Renamed folder"]') !==
-        null;
-      const sort = pane.querySelector('select');
-      sort.value = 'oldest';
-      sort.dispatchEvent(new Event('change'));
-      actions.click();
-      const oldest = reviewed.ids;
-      const currentTitle = reviewed.titles[0];
-      const search = pane.querySelector('input');
-      search.value = 'Saved 2';
-      search.dispatchEvent(new Event('input'));
-      actions.click();
-      const filtered = reviewed;
-      view.close();
-      const releasedRows = pane.querySelectorAll('.later-row').length;
-      state.tabs = track(
-        tabs.filter((tab) => tab.id !== 2),
-        'tabs',
-      );
-      view.update(state);
-      view.open();
-      actions.click();
-      const afterClose = reviewed.ids;
-      const filterIds = view.closeFilter().tabIds;
-      view.dispose();
-      view.update(state);
-      view.open();
-      const disposed =
-        !pane.isConnected && !document.getElementById('later-toggle') && !view.isOpen;
-      return {
-        releasedRows,
-        disposed,
-        renderReads,
-        actionReads,
-        newest,
-        oldest,
-        currentTitle,
-        filtered,
-        afterClose,
-        filterIds,
-        renamed,
-        fallback,
-      };
-    });
-    expect(result.renderReads.groups).toBeLessThan(3000);
-    expect(result.actionReads).toBeLessThan(3000);
-    expect(result.newest).toEqual(Array.from({ length: 300 }, (_, i) => 300 - i));
-    expect(result.oldest).toEqual(Array.from({ length: 300 }, (_, i) => i + 1));
-    expect(result).toMatchObject({
-      releasedRows: 0,
-      disposed: true,
-      currentTitle: 'Updated saved title',
-      renamed: true,
-      fallback: true,
-    });
-    const filtered = Array.from({ length: 300 }, (_, i) => i + 1).filter((id) =>
-      String(id).startsWith('2'),
-    );
-    expect(result.filtered.ids).toEqual(filtered);
-    expect(result.filtered.scope).toEqual({ kind: 'later', query: 'Saved 2' });
-    expect(result.afterClose).toEqual(filtered.filter((id) => id !== 2));
-    expect(result.filterIds).toEqual(result.afterClose);
-    console.log('✓ Later actions keep live ordered targets with linear tab and folder lookups');
-    const paneEvents = await laterPage.evaluate(async () => {
-      const { createLaterView } = await import('/extension/src/later-view.js');
+    await panePage.goto(base + '/lookup-fixture');
+    const paneEvents = await panePage.evaluate(async () => {
       const { createDomainsView } = await import('/extension/src/domains-view.js');
       const calls = [];
       const adds = new WeakMap();
@@ -956,93 +803,15 @@ try {
         return addListener.call(this, type, listener, options);
       };
       const count = (root) =>
-        [...root.querySelectorAll('.later-row, .later-row *, .domains-row, .domains-row *')].reduce(
+        [...root.querySelectorAll('.domains-row, .domains-row *')].reduce(
           (sum, node) => sum + (adds.get(node) || 0),
           0,
         );
       const root = document.getElementById('root');
       root.innerHTML =
-        '<button id="tree-toggle">Fold</button><footer><button id="domains-toggle">Domains</button><button id="recently-closed-toggle">Closed</button></footer>';
-      const state = {
-        tabs: Array.from({ length: 300 }, (_, i) => ({
-          id: i + 1,
-          title: 'Saved ' + i,
-          url: 'https://example.com/' + i,
-          savedForLaterAt: 1000 + i,
-        })),
-        groups: [],
-      };
+        '<button id="tree-toggle">Fold</button><footer><button id="recently-closed-toggle">Closed</button></footer>';
       let release;
-      let fail = false;
-      const view = createLaterView({
-        root,
-        getState: () => state,
-
-        onOpen() {},
-
-        onClose() {},
-
-        onActivate: (id) => calls.push(['activate', id]),
-
-        onReturn: (id) => {
-          calls.push(['return', id]);
-          return new Promise((resolve) => {
-            release = resolve;
-          });
-        },
-
-        onCloseTab: async (id) => {
-          calls.push(['close', id]);
-          if (fail) throw new Error('failed');
-        },
-
-        onMenu: (id) => calls.push(['menu', id]),
-        onError: (message) => calls.push(['error', message]),
-      });
-      view.update(state);
-      view.open();
-      const listenersAt300 = count(root);
-      const row = root.querySelector('.later-row[data-id="1"]');
-      const open = row.querySelector('.later-open-tab');
-      const restore = row.querySelector('[data-row-action="return"]');
-      const close = row.querySelector('[data-row-action="close"]');
-      open.querySelector('span').click();
-      restore.click();
-      restore.click();
-      const returnBusy = restore.getAttribute('aria-disabled');
-      release();
-      await Promise.resolve();
-      const returnReady = !restore.hasAttribute('aria-disabled');
-      fail = true;
-      close.click();
-      await Promise.resolve();
-      await Promise.resolve();
-      const errorReady = !close.hasAttribute('aria-disabled');
-      fail = false;
-      close.click();
-      await Promise.resolve();
-      row.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
-      await Promise.resolve();
-      open.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Delete' }));
-      await Promise.resolve();
-      row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-      open.dispatchEvent(
-        new KeyboardEvent('keydown', { bubbles: true, key: 'F10', shiftKey: true }),
-      );
-      const menuFocus = document.activeElement === open;
-      const liveCalls = calls.slice();
-      state.tabs = state.tabs.filter((tab) => tab.id !== 1);
-      open.click(); // A stale connected row must also fail authoritative ID validation.
-      view.update(state);
-      open.click();
-      close.click();
-      view.close();
-      restore.click();
-      const staleLaterCalls = calls.length - liveCalls.length;
-      view.open();
-      const reopenedListenerCount = count(root);
-      view.dispose();
-      document.getElementById('domains-toggle').remove();
+      const state = {};
       state.tabs = Array.from({ length: 600 }, (_, i) => ({
         id: i + 1,
         title: 'Domain ' + i,
@@ -1088,15 +857,7 @@ try {
       const staleDomainCalls = calls.length - currentCalls;
       EventTarget.prototype.addEventListener = addListener;
       return {
-        listenersAt300,
         domainListenersAt300,
-        reopenedListenerCount,
-        returnBusy,
-        returnReady,
-        errorReady,
-        menuFocus,
-        liveCalls,
-        staleLaterCalls,
         pinBusy,
         pinReady,
         selected,
@@ -1105,36 +866,18 @@ try {
       };
     });
     expect(paneEvents).toMatchObject({
-      listenersAt300: 0,
       domainListenersAt300: 0,
-      reopenedListenerCount: 0,
-      returnBusy: 'true',
-      returnReady: true,
-      errorReady: true,
-      menuFocus: true,
-      staleLaterCalls: 0,
       pinBusy: 'true',
       pinReady: true,
       selected: ['select', 'host0.example.com', 1000],
       staleDomainCalls: 0,
       pins: [['pin', 'host0.example.com', true]],
     });
-    expect(paneEvents.liveCalls).toEqual([
-      ['activate', 1],
-      ['return', 1],
-      ['close', 1],
-      ['error', 'Could not update this tab. Try again.'],
-      ['close', 1],
-      ['close', 1],
-      ['close', 1],
-      ['menu', 1],
-      ['menu', 1],
-    ]);
     console.log(
-      '✓ Delegated pane controls preserve nested clicks, busy guards, retry, middle/keyboard close and stale targets without row listeners',
+      '✓ Delegated pane controls preserve nested clicks, busy guards and stale targets without row listeners',
     );
   } finally {
-    await laterPage.close();
+    await panePage.close();
   }
   const queue = await page.evaluate(async () => {
     const result = await sidebarReleaseProbe.action('toggleGroup', { id: 'g0' });

@@ -1,6 +1,6 @@
 import { createFolderIndex } from '../folder-index.js';
 import { matchesText } from '../tab-source.js';
-import { isSavedForLater, sortTabs, unpinnedTabTree } from '../model.js';
+import { sortTabs, unpinnedTabTree } from '../model.js';
 
 function indexTabs(tabs) {
   const byId = new Map(tabs.map((tab) => [tab.id, tab]));
@@ -35,7 +35,6 @@ function descendantsFirst(roots, children) {
 // Build the summaries together. Filtering and individual row updates then use
 // constant-time lookups instead of repeatedly walking whole subtrees.
 export function createTreeIndex(state, query = '') {
-  state = { ...state, tabs: state.tabs.filter((tab) => !isSavedForLater(tab)) };
   const tabs = unpinnedTabTree(state.tabs);
   const visible = indexTabs(tabs);
   const all = new Map(state.tabs.map((tab) => [tab.id, tab]));
@@ -128,7 +127,6 @@ export function updateTreeAudio(index, changes) {
   const add = (map, id, delta) => map.set(id, (map.get(id) || 0) + delta);
 
   for (const { tab, wasPlaying } of changes) {
-    if (isSavedForLater(tab)) continue;
     if (typeof wasPlaying !== 'boolean' || !index.audio.has(tab.id)) return null;
     const delta = Number(Boolean(tab.audible && !tab.mutedInfo?.muted)) - Number(wasPlaying);
     if (!delta) continue;
@@ -140,7 +138,7 @@ export function updateTreeAudio(index, changes) {
       add(tabs, id, delta);
       id = index.byId.get(id).parentTabId;
     }
-    if (id != null && index.byId.has(id) && !isSavedForLater(index.byId.get(id))) return null;
+    if (id != null && index.byId.has(id)) return null;
     id = tab.groupId;
     const visitedGroups = new Set();
     while (id != null && index.groupStats.has(id)) {

@@ -284,7 +284,6 @@ for (const kind of ['fragment', 'document', 'article', 'selection']) {
     native.order = -1000;
     native.ancestors = ['opaque-native-ancestry'];
     native.futureNativeField = { opaque: ['preserved', { value: 7 }] };
-    if (kind === 'document') f.memberships.get(3).savedForLaterAt = 1700000300000;
     const controller = createController(f.api);
     t.after(() => controller.dispose());
     const read = () => controller.requestForTransport({ type: 'snapshot', windowId: 1 });
@@ -316,7 +315,6 @@ for (const kind of ['fragment', 'document', 'article', 'selection']) {
       'nativeGroupId',
       'order',
       'openedAt',
-      'savedForLaterAt',
       'ancestors',
       'collapsed',
       'parentTabId',

@@ -26,7 +26,6 @@ await page.route('**/preview/demo.js', (route) =>
 const send = (type, args = {}) =>
   page.evaluate(([type, args]) => collectionTest.send(type, args), [type, args]);
 const row = (id) => page.locator(`#tree .tab-row[data-id="${id}"]`);
-const later = page.locator('#later-view');
 const snapshot = () => send('snapshot');
 
 const captureLayouts = async (name) => {
@@ -48,48 +47,25 @@ const captureLayouts = async (name) => {
 try {
   await page.goto(`${base}/extension/sidebar.html?demo`);
   await expect(row(1)).toBeVisible();
-  await send('saveForLater', { id: 4 });
-  await send('saveForLater', { id: 5 });
-  await send('enterGroup', { id: 'work' });
-  await page.keyboard.press('Control+k');
-  await page.locator('#search').fill('Shared');
-  await expect(page.locator('.saved-search-results .tab-row')).toHaveCount(1);
-  await expect(row(4)).toBeVisible();
-  await captureLayouts('saved-search');
-  await row(4).click();
-  await expect(page.locator('#search')).toHaveValue('Shared');
-  expect((await snapshot()).tabs.find((tab) => tab.id === 4).savedForLaterAt).toBeTruthy();
-  await row(4).click({ button: 'right' });
+  await expect(page.locator('#later-toggle, #later-view')).toHaveCount(0);
+  await row(1).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: /Save.*later/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(page.locator('#search')).toHaveValue('Shared');
-  await row(4).getByRole('button', { name: 'Return to original folder' }).click();
-  await expect(page.locator('#search')).toHaveValue('Shared');
-  await expect(page.locator('.saved-search-results')).toHaveCount(0);
-  await expect(row(4)).toBeVisible();
+  await page.locator('[data-key="group:work"]').click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: /Save.*later/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
-
   await row(1).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Filter by domain', exact: true }).click();
   await page.keyboard.press('Control+k');
   await expect(page.locator('#domain-search')).toBeFocused();
   await page.locator('#domain-search').fill('Shared');
-  await expect(page.locator('#domain-count')).toHaveText('4 of 4 tabs');
+  await expect(page.locator('#domain-count')).toHaveText('5 of 5 tabs');
   await page.locator('#domain-search').fill('page');
   await expect(page.locator('#tree .tab-row')).toHaveCount(3);
   await page.locator('#domain-sort').selectOption('least-viewed');
   await captureLayouts('domain-search');
   await page.locator('#domain-actions').click();
-  await page.getByRole('menuitem', { name: 'Save 3 tabs for later', exact: true }).click();
-  await expect(page.locator('#domain-count')).toHaveText('0 of 1 tab');
-  const saved = (await snapshot()).tabs.filter((tab) => tab.savedForLaterAt);
-  expect(saved.map((tab) => tab.id).sort()).toEqual([1, 2, 3, 5]);
-  await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(page.locator('#tree .tab-row')).toHaveCount(3);
-  expect((await snapshot()).tabs.filter((tab) => tab.savedForLaterAt).map((tab) => tab.id)).toEqual(
-    [5],
-  );
-
-  await page.locator('#domain-actions').click();
+  await expect(page.getByRole('menuitem', { name: /Save.*later/ })).toHaveCount(0);
   await page.getByRole('menuitem', { name: 'Review duplicates…', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.locator('input[type="checkbox"]')).toHaveCount(3);
@@ -138,20 +114,7 @@ try {
   await page.getByRole('button', { name: 'Close 1 tab', exact: true }).click();
   expect((await snapshot()).tabs.some((tab) => tab.id === 4)).toBe(false);
 
-  await page.locator('#later-toggle').click();
-  await page.keyboard.press('Control+k');
-  await expect(page.locator('#later-search')).toBeFocused();
-  await page.locator('#later-search').fill('Shared');
-  await later
-    .locator('.later-row')
-    .getByRole('button', { name: 'Return to Personal', exact: true })
-    .click();
-  await expect(later).toBeVisible();
-  await expect(page.locator('#later-search')).toHaveValue('Shared');
-  await expect(page.locator('#later-search')).toBeFocused();
-  await page.locator('#toast').getByRole('button', { name: 'Show in folder' }).click();
-  await expect(later).toBeHidden();
-  await expect(page.locator('#scope-heading')).toHaveText('Personal');
+  await page.locator('#domain-close').click();
   // The result set includes rows outside the viewport. A batch must process them all.
   await page.evaluate(async () => {
     for (let i = 0; i < 240; i++)
@@ -185,43 +148,13 @@ try {
     Array.from({ length: 240 }, (_, i) => `Large collection ${i}`).sort(),
   );
   await page.locator('#domain-actions').click();
-  await page.getByRole('menuitem', { name: 'Save 240 tabs for later', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Close 240 tabs…', exact: true }).click();
+  await page.getByRole('button', { name: 'Close 240 tabs', exact: true }).click();
   await expect(page.locator('#tree .tab-row')).toHaveCount(0);
-  expect((await snapshot()).tabs.filter((tab) => tab.savedForLaterAt).length).toBe(240);
-  await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(page.locator('#tree')).toHaveClass(/viewport-tree/);
-  expect(await page.locator('#tree .tab-row').count()).toBeLessThan(100);
-
-  expect((await traverseResults()).sort()).toEqual(
-    Array.from({ length: 240 }, (_, i) => `Large collection ${i}`).sort(),
+  expect((await snapshot()).tabs.some((tab) => tab.url.startsWith('https://large.test/'))).toBe(
+    false,
   );
   await page.locator('#domain-close').click();
-  await send('enterGroup', { id: null });
-  const folderState = await snapshot();
-  const expectedFolderIds = folderState.tabs
-    .filter((tab) => ['work', 'design', 'research'].includes(tab.groupId) && !tab.savedForLaterAt)
-    .map((tab) => tab.id);
-  await page.locator('[data-key="group:work"]').click({ button: 'right' });
-  const folderSave = page.getByRole('menuitem', {
-    name: `Save tabs for later (${expectedFolderIds.length})`,
-    exact: true,
-  });
-  await expect(folderSave).toBeVisible();
-  const opened = await send('newTab', { groupId: 'work' });
-  const newId = opened.tabs.find(
-    (tab) => !folderState.tabs.some((before) => before.id === tab.id),
-  ).id;
-  await folderSave.click();
-  const afterFolderSave = await snapshot();
-  expect(
-    afterFolderSave.tabs
-      .filter((tab) => tab.savedForLaterAt)
-      .map((tab) => tab.id)
-      .sort(),
-  ).toEqual(expectedFolderIds.sort());
-  expect(afterFolderSave.tabs.find((tab) => tab.id === newId).savedForLaterAt).toBeFalsy();
-  await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
-  expect((await snapshot()).tabs.some((tab) => tab.savedForLaterAt)).toBe(false);
   const releasedDialog = {
     action: false,
     cancel: false,
@@ -492,9 +425,7 @@ try {
     '✓ Closed dialogs release captured collections and content; cancellation/replacement, retry and in-flight completion remain intact through disposal',
   );
   expect(errors).toEqual([]);
-  console.log(
-    '✓ Scoped saved search, domain search/sort, batch save/undo/close, stable duplicate review and Later return',
-  );
+  console.log('✓ Domain search/sort, batch close and stable duplicate review');
 } finally {
   await close();
 }

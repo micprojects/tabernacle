@@ -158,7 +158,14 @@ async function capture(windowIds, treeIds) {
 
 function preserved(before, after) {
   assert.deepEqual(after.organisation, before.organisation, 'Existing organisation must survive');
-  assert.deepEqual(after.raw.memberships, before.raw.memberships, 'Saved tab values must survive');
+  const withoutRetiredMarker = (records) =>
+    records.map(({ id, value: { savedForLaterAt, ...value } }) => ({ id, value }));
+  assert.deepEqual(
+    withoutRetiredMarker(after.raw.memberships),
+    withoutRetiredMarker(before.raw.memberships),
+    'Every membership field except the retired Later marker must survive',
+  );
+  assert(after.snapshots.every((state) => state.tabs.every((tab) => !Object.hasOwn(tab, 'savedForLaterAt'))));
   assert.deepEqual(after.raw.views, before.raw.views, 'Window views must survive');
   assert.deepEqual(after.raw.containers, before.raw.containers, 'Firefox containers must survive');
   assert.deepEqual(after.raw.storage[sentinelKey], before.raw.storage[sentinelKey]);
@@ -317,6 +324,18 @@ try {
       tintFavicons: true,
     },
   });
+  // The published version predates Later. Add its raw session marker to the
+  // representative fixture, including pins, both windows and a delayed restore.
+  await call(async (ids, key) => {
+    for (const id of ids) {
+      const value = await browser.sessions.getTabValue(id, key);
+      await browser.sessions.setTabValue(id, key, {
+        ...value,
+        savedForLaterAt: 1700000100000 + id,
+        retirementOpaque: { retained: id },
+      });
+    }
+  }, [ids[0], ids[3], ids[4], ids[6], ids[7]], tabKey);
   const all = (await capture(windowIds, [])).snapshots.flatMap((state) => state.tabs);
   const treeIds = ids.map((id) => all.find((tab) => tab.id === id).treeId);
   const delayed = all.find((tab) => tab.id === ids[4]);
@@ -405,6 +424,7 @@ try {
   // v0.2.0 predates openedAt. Current creation handling records an observed
   // restore when that field was absent; every existing field must remain exact.
   const expectedRestoredValue = { ...delayedValue };
+  delete expectedRestoredValue.savedForLaterAt;
   if (!Object.hasOwn(delayedValue, 'openedAt')) {
     assert(Number.isFinite(restoredValue.openedAt));
     assert(restoredValue.openedAt >= restoreStartedAt && restoredValue.openedAt <= Date.now());

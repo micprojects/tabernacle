@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  savedSearchResults,
   folderCollection,
   inCollection,
   searchTabOrder,
@@ -52,29 +51,6 @@ function fixture() {
   const send = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
   return { api, send, controller };
 }
-
-test('saved search follows folder scope and source URLs, with its own order and no tree counts', async () => {
-  const { send } = fixture();
-  await send('saveForLater', { id: 1 });
-  const state = await send('saveForLater', { id: 3 });
-  state.tabs.find((tab) => tab.id === 3).url =
-    'about:reader?url=https%3A%2F%2Fexample.com%2Farticle%23section';
-  assert.deepEqual(
-    savedSearchResults(state, 'example.com', 'work').map((tab) => tab.id),
-    [3, 1],
-  );
-  assert.deepEqual(
-    savedSearchResults(state, 'example.com', 'child').map((tab) => tab.id),
-    [3],
-  );
-  assert.deepEqual(
-    savedSearchResults(state, 'section', null).map((tab) => tab.id),
-    [3],
-  );
-  assert.deepEqual(savedSearchResults(state, '', null), []);
-  assert.equal(createTreeIndex(state).tabs.length, 2);
-  assert.deepEqual(searchTabOrder(state, 'Page', null), [2, 4, 3, 1]);
-});
 
 test('least viewed keeps unknown dates last and ties in tree order', async () => {
   const state = await fixture().send('snapshot');
@@ -132,33 +108,12 @@ test('suggestions preserve protected copies and choose recent or native-order ke
   assert.deepEqual(suggestedDuplicates(tabs.map((tab) => ({ ...tab, active: true }))), []);
 });
 
-test('batch saves retain displayed order, native state and guarded undo', async () => {
-  const { api, send } = fixture();
-  await api.tabs.update(1, { pinned: true });
-  const before = await send('snapshot');
-  const native = await api.tabs.query({ windowId: 1 });
-  const targets = [3, 1, 2].map((id) => captureTarget(before.tabs.find((tab) => tab.id === id)));
-  const saved = await send('saveTabsForLater', { scope: { kind: 'folder', id: 'work' }, targets });
-  assert.deepEqual(saved.batchResult.completed, [3, 1, 2]);
-  assert.deepEqual(
-    savedSearchResults(saved, 'Page', null).map((tab) => tab.id),
-    [3, 1, 2],
-  );
-  assert.deepEqual(await api.tabs.query({ windowId: 1 }), native);
-  await send('returnFromLater', { id: 1 });
-  await send('saveForLater', { id: 1 });
-  const undone = await send('undoSaveTabsForLater', { targets: saved.batchResult.undo });
-  assert.deepEqual(undone.batchResult.completed, [3, 2]);
-  assert.deepEqual(undone.batchResult.skipped, [1]);
-  assert(undone.tabs.find((tab) => tab.id === 1).savedForLaterAt);
-});
-
-test('batch skips navigation, folder moves, changed saved membership and foreign windows', async () => {
+test('batch skips navigation, folder moves, container changes and foreign windows', async () => {
   const { api, send } = fixture();
   const before = await send('snapshot');
   const targets = before.tabs.map(captureTarget);
   await api.tabs.update(1, { url: 'https://example.com/new' });
-  await send('saveForLater', { id: 2 });
+  await api.tabs.update(2, { cookieStoreId: 'firefox-container-1' });
   await send('moveTab', { id: 3, groupId: null });
   await api.testing.attach(4, 2);
   const result = await send('closeTabSet', {
@@ -168,26 +123,6 @@ test('batch skips navigation, folder moves, changed saved membership and foreign
   assert.deepEqual(result.batchResult.completed, []);
   assert.deepEqual(result.batchResult.skipped, [1, 2, 3, 4]);
 });
-
-for (const kind of ['window', 'folder']) {
-  test(`batch reports partial failure and undo covers only saved members (${kind} scope)`, async () => {
-    const { api, send } = fixture();
-    const before = await send('snapshot');
-    const write = api.sessions.setTabValue;
-    api.sessions.setTabValue = async (id, ...args) => {
-      if (id === 2) throw new Error('Disk full');
-      return write(id, ...args);
-    };
-    const result = await send('saveTabsForLater', {
-      scope: { kind, id: 'work' },
-      targets: before.tabs.map(captureTarget),
-    });
-    assert.deepEqual(result.batchResult.completed, [1, 3, 4]);
-    assert.equal(result.batchResult.failed[0].id, 2);
-    assert.equal(result.batchResult.undo.length, 3);
-    assert.equal(result.tabs.find((tab) => tab.id === 2).savedForLaterAt, undefined);
-  });
-}
 
 test('duplicate close requires a surviving reviewed keeper and preserves descendants', async () => {
   const { api, send } = fixture();
@@ -203,9 +138,9 @@ test('duplicate close requires a surviving reviewed keeper and preserves descend
   assert(closed.tabs.some((tab) => tab.id === 3));
 });
 
-test('search close chooses a saved match without jumping to an unrelated native successor', async () => {
+test('search close chooses a matching tab without jumping to an unrelated native successor', async () => {
   const { send } = fixture();
-  const before = await send('saveForLater', { id: 3 });
+  const before = await send('snapshot');
   const after = structuredClone(before);
   after.tabs = after.tabs.filter((tab) => tab.id !== 2);
   after.tabs.forEach((tab) => {
@@ -236,12 +171,10 @@ test('nested pins count a remaining child only once regardless of pin order', ()
     );
 });
 
-test('returned Reader View tabs match the same source query in ordinary search', async () => {
+test('Reader View tabs match the same source query in ordinary search', async () => {
   const { api, send } = fixture();
   await api.tabs.update(1, { url: 'about:reader?url=https%3A%2F%2Fexample.com%2Fstory%23part' });
-  let state = await send('saveForLater', { id: 1 });
-  assert.deepEqual(searchTabOrder(state, 'example.com/story#part', null), [1]);
-  state = await send('returnFromLater', { id: 1 });
+  const state = await send('snapshot');
   assert.deepEqual(searchTabOrder(state, 'example.com/story#part', null), [1]);
   assert.deepEqual(
     domainResults(createTreeIndex(state), 'example.com', 'story#part').map((tab) => tab.id),
@@ -249,14 +182,14 @@ test('returned Reader View tabs match the same source query in ordinary search',
   );
 });
 
-test('reviewed keepers that close or change saved membership never permit closure', async () => {
-  for (const change of ['close', 'save']) {
+test('reviewed keepers that close or change containers never permit closure', async () => {
+  for (const change of ['close', 'container']) {
     const { api, send } = fixture();
     const state = await send('snapshot');
     const target = state.tabs.find((tab) => tab.id === 1);
     const keeper = state.tabs.find((tab) => tab.id === 2);
     if (change === 'close') await api.tabs.remove(2);
-    else await send('saveForLater', { id: 2 });
+    else await api.tabs.update(2, { cookieStoreId: 'firefox-container-1' });
     const next = await send('closeDuplicateTabs', {
       scope: { kind: 'window' },
       targets: [captureTarget(target)],
@@ -406,10 +339,10 @@ test('a title change that leaves the domain query is skipped', async () => {
   assert.deepEqual(next.batchResult.skipped, [1]);
 });
 
-test('folder collections include descendant pins and saved items in a deterministic order', async () => {
+test('folder collections include descendant pins and ordinary tabs in a deterministic order', async () => {
   const { api, send } = fixture();
   await api.tabs.update(2, { pinned: true });
-  const state = await send('saveForLater', { id: 4 });
+  const state = await send('snapshot');
   assert.deepEqual(
     folderCollection(state, 'work').map((tab) => tab.id),
     [2, 3, 1, 4],
@@ -420,7 +353,7 @@ test('folder collections include descendant pins and saved items in a determinis
   );
 });
 
-test('folder collection and saved search do linear folder reads and preserve scope boundaries', () => {
+test('folder collections do linear folder reads and preserve scope boundaries', () => {
   let reads = 0;
   const groups = Array.from({ length: 1000 }, (_, i) => ({
     id: `g${i}`,
@@ -439,22 +372,14 @@ test('folder collection and saved search do linear folder reads and preserve sco
       index: i,
       groupId: group.id,
       title: `Needle ${i}`,
-      savedForLaterAt: i % 2 ? 1000 - i : null,
     })),
     view: { scopeId: 'g990', collapsed: [] },
   };
   assert.deepEqual(
     folderCollection(state, 'g990').map((tab) => tab.id),
-    [993, 995, 997, 999, 991, 992, 994, 996, 998, 1000],
+    [992, 993, 994, 995, 996, 997, 998, 999, 1000, 991],
   );
   assert(reads <= groups.length * 5, `Expected linear folder reads, got ${reads}`);
-  reads = 0;
-  assert.deepEqual(
-    savedSearchResults(state, 'Needle').map((tab) => tab.id),
-    [992, 994, 996, 998, 1000],
-  );
-  assert(reads <= groups.length * 3, `Expected linear folder reads, got ${reads}`);
-
   const folders = createFolderIndex(state);
   for (const scopeId of [null, 'g0', 'g990', 'g999', 'missing']) {
     const scope = { kind: 'folder', id: scopeId };
@@ -464,19 +389,9 @@ test('folder collection and saved search do linear folder reads and preserve sco
         isWithin({ groups }, tab.groupId, scopeId),
       );
   }
-  reads = 0;
-  assert.equal(savedSearchResults(state, 'Needle', null).length, 500);
-  assert.deepEqual(savedSearchResults(state, '   '), []);
-  assert.equal(reads, 0, 'Root and empty searches do not need a folder index');
-
   groups[999].parentId = 'g0';
-  assert.deepEqual(
-    savedSearchResults(state, 'Needle').map((tab) => tab.id),
-    [992, 994, 996, 998],
-  );
   assert(!folderCollection(state, 'g990').some((tab) => tab.id === 1000));
   state.groups = groups.filter((group) => group.id !== 'g990');
-  assert.deepEqual(savedSearchResults(state, 'Needle'), []);
   assert.deepEqual(folderCollection(state, 'g990'), []);
 });
 
@@ -486,18 +401,18 @@ test('folder batches rebuild scope after a folder move and revalidate duplicate 
   const before = await send('snapshot');
   const target = captureTarget(before.tabs.find((tab) => tab.id === 3));
   await send('moveGroup', { id: 'child', parentId: null });
-  const skipped = await send('saveTabsForLater', {
+  const skipped = await send('closeTabSet', {
     scope: { kind: 'folder', id: 'work' },
     targets: [target],
   });
   assert.deepEqual(skipped.batchResult.skipped, [3]);
-  assert.equal(skipped.tabs.find((tab) => tab.id === 3).savedForLaterAt, undefined);
+  assert(skipped.tabs.some((tab) => tab.id === 3));
   await send('moveGroup', { id: 'child', parentId: 'work' });
-  const saved = await send('saveTabsForLater', {
+  const closedBatch = await send('closeTabSet', {
     scope: { kind: 'folder', id: 'work' },
     targets: [target],
   });
-  assert.deepEqual(saved.batchResult.completed, [3]);
+  assert.deepEqual(closedBatch.batchResult.completed, [3]);
   const current = await send('moveTab', { id: 2, groupId: 'child' });
   const targets = [captureTarget(current.tabs.find((tab) => tab.id === 1))];
   const keepers = [captureTarget(current.tabs.find((tab) => tab.id === 2))];
@@ -620,15 +535,3 @@ for (const failQuery of [false, true]) {
     assert.equal((await api.tabs.get(5)).windowId, 2);
   });
 }
-
-test('Later searches are revalidated before batch writes', async () => {
-  const { api, send } = fixture();
-  await api.tabs.update(1, { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw' });
-  const state = await send('saveForLater', { id: 1 });
-  const next = await send('closeDuplicateTabs', {
-    scope: { kind: 'later', query: 'no matching title' },
-    targets: [captureTarget(state.tabs[0])],
-    keepers: [],
-  });
-  assert.deepEqual(next.batchResult.skipped, [1]);
-});

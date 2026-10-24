@@ -7,7 +7,6 @@ export function createFullTreeRenderer({
   tree,
   pins,
   renderRow,
-  renderSaved,
   reconcile,
   release = () => {},
   captureView = () => ({
@@ -45,7 +44,6 @@ export function createFullTreeRenderer({
       const nodes = new Map();
       for (let i = next.visibleRows.length - 1; i >= 0; i--) {
         const row = next.visibleRows[i];
-        if (row.mode === 'saved') continue;
         if (!row.visible) continue;
         const children = row.children
           .filter((child) => child.visible)
@@ -53,7 +51,6 @@ export function createFullTreeRenderer({
         nodes.set(row.key, render(row, children));
       }
       const roots = next.roots.filter((row) => row.visible).map((row) => nodes.get(row.key));
-      if (next.saved.length) roots.push(renderSaved(next.saved.map((row) => render(row))));
       reconcile(tree, roots);
       reconcile(
         pins,
