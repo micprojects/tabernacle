@@ -24,7 +24,7 @@ test('window removal releases memberships after its native tab list was invalida
     await controller.request({ type: 'snapshot', windowId: 1 });
     await controller.request({ type: 'snapshot', windowId: 2 });
     assert.equal(controller.cacheStats().memberships, 40);
-    await f.api.tabs.update(2, { url: 'https://navigated.invalid/' });
+    await f.api.tabs.update(2, { url: 'about:blank' });
     await closeWithoutTabEvents(f, 2);
     assert.equal(controller.cacheStats().treeOwners, 20);
     assert.equal(controller.cacheStats().memberships, 20);
@@ -42,7 +42,7 @@ test('a late native query cannot restore memberships for a removed known window'
   let release;
   try {
     await controller.request({ type: 'snapshot', windowId: 1 });
-    await f.api.tabs.update(2, { url: 'https://navigated.invalid/' });
+    await f.api.tabs.update(2, { url: 'about:blank' });
     const query = f.api.tabs.query;
     let started;
     const waiting = new Promise((resolve) => {
@@ -93,7 +93,7 @@ test('a cold membership read settling after window closure cannot retain closed 
   try {
     const reading = controller.request({ type: 'snapshot', windowId: 1 });
     await waiting;
-    await f.api.tabs.update(2, { url: 'https://navigated.invalid/' });
+    await f.api.tabs.update(2, { url: 'about:blank' });
     await closeWithoutTabEvents(f, 2);
     release();
     const open = await reading;
@@ -182,7 +182,7 @@ test('a failed authoritative query preserves unverified entries until a successf
   try {
     const reading = controller.request({ type: 'snapshot', windowId: 1 });
     await waiting;
-    await f.api.tabs.update(2, { url: 'https://navigated.invalid/' });
+    await f.api.tabs.update(2, { url: 'about:blank' });
     await closeWithoutTabEvents(f, 2);
     f.api.tabs.query = async () => {
       throw new Error('Temporary native read failure');

@@ -591,13 +591,13 @@ test('adoption cannot resurrect a structural cache invalidated during another sn
   const pending = f.read();
   await waiting;
   await new Promise(setImmediate);
-  await f.api.tabs.update(1, { url: 'https://new-location.invalid/' });
+  await f.api.tabs.update(1, { url: 'about:blank' });
   release();
   await pending;
   f.api.sessions.getWindowValue = original;
   f.resetStats();
   const next = await f.read();
-  assert.equal(next.tabs.find((tab) => tab.id === 1).url, 'https://new-location.invalid/');
+  assert.equal(next.tabs.find((tab) => tab.id === 1).url, 'about:blank');
   assert.equal(
     f.stats().calls['tabs.query'],
     1,

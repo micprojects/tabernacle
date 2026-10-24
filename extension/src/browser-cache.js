@@ -83,7 +83,7 @@ export function createBrowserCache(api, changed = () => {}) {
     /^https?:\/\//.test(left) &&
     left.split('#', 1)[0] === right.split('#', 1)[0];
 
-  function sameOriginAddress(left, right) {
+  function webNavigation(left, right) {
     if (
       typeof left !== 'string' ||
       typeof right !== 'string' ||
@@ -92,7 +92,8 @@ export function createBrowserCache(api, changed = () => {}) {
     )
       return false;
     try {
-      return new URL(left).origin === new URL(right).origin;
+      // Origins may differ; complete native records still validate topology.
+      return new URL(left).origin !== 'null' && new URL(right).origin !== 'null';
     } catch {
       return false;
     }
@@ -109,7 +110,7 @@ export function createBrowserCache(api, changed = () => {}) {
     const fragment = samePageAddress(before?.url, properties.url);
     if (
       !fragment &&
-      (!sameOriginAddress(before?.url, properties.url) ||
+      (!webNavigation(before?.url, properties.url) ||
         internalPage(api, before.url) ||
         internalPage(api, properties.url))
     )
