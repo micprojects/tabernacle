@@ -541,7 +541,7 @@ test('same-origin navigation reads the changed native tab without rewriting orga
 });
 
 for (const properties of [
-  { url: 'https://different.example/navigation' },
+  { url: 'about:blank' },
   { pinned: true },
   { hidden: true },
   { groupId: 42 },

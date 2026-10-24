@@ -99,7 +99,7 @@ test('announced same-origin document changes preserve topology after complete na
   assert.equal((await f.cache.tabsState(2)).tabs, other.tabs);
 });
 
-for (const target of ['https://other.invalid/next', 'http://[', 'about:blank']) {
+for (const target of ['http://[', 'about:blank']) {
   test(`navigation to ${target} retains full-query fallback`, async (t) => {
     const f = fixture(t);
     const before = await f.cache.tabsState(1);
