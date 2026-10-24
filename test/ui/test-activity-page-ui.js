@@ -258,7 +258,57 @@ try {
       .locator('.item-button')
       .evaluateAll((nodes) => nodes.slice(0, 50).map((node) => node.dataset.key)),
   );
+  for (const options of [
+    { locale: 'en-US', timezoneId: 'America/New_York' },
+    { locale: 'ar-EG', timezoneId: 'Africa/Cairo' },
+    { locale: 'ja-JP', timezoneId: 'Asia/Tokyo' },
+  ]) {
+    const context = await page.context().browser().newContext(options);
+    try {
+      const localPage = await context.newPage();
+      localPage.on('pageerror', (error) => errors.push(error.message));
+      await localPage.goto(`${base}/extension/activity.html?demo&mockup`);
+      await expect(localPage.locator('.activity-row')).toHaveCount(18);
+
+      const checkTimes = async () => {
+        const result = await localPage.locator('.item-time').evaluateAll((nodes) => {
+          const older = nodes.filter((node) => Date.now() - Date.parse(node.dateTime) >= 86400000);
+          return {
+            older: older.length,
+            mismatches: older.filter(
+              (node) =>
+                node.textContent !==
+                new Date(node.dateTime).toLocaleTimeString(undefined, {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+            ).length,
+            changedTooltips: nodes.filter(
+              (node) => node.title !== new Date(node.dateTime).toLocaleString(),
+            ).length,
+            locale: new Intl.DateTimeFormat().resolvedOptions().locale,
+            timeZone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
+          };
+        });
+        expect(result.older).toBeGreaterThan(0);
+        expect(result.mismatches).toBe(0);
+        expect(result.changedTooltips).toBe(0);
+        expect(result.locale).toBe(options.locale);
+        expect(result.timeZone).toBe(options.timezoneId);
+      };
+
+      await checkTimes();
+      await localPage.getByLabel('Search recent activity').fill('nothing-matches');
+      await expect(localPage.getByText('No matching activity', { exact: true })).toBeVisible();
+      await localPage.getByRole('button', { name: 'Clear filters' }).click();
+      await expect(localPage.locator('.activity-row')).toHaveCount(18);
+      await checkTimes();
+    } finally {
+      await context.close();
+    }
+  }
   expect(errors).toEqual([]);
+  console.log('✓ Activity clock labels and tooltips preserve locale and time zone after filtering');
   console.log(
     '✓ Recent popup opens first; More opens/reuses the activity page with launcher errors, item actions and live updates covered',
   );

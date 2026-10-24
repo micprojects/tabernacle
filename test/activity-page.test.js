@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activityItems, filterActivity, activityDay } from '../extension/src/activity-data.js';
+import {
+  activityItems,
+  filterActivity,
+  activityDay,
+  activityTime,
+} from '../extension/src/activity-data.js';
 import { normalizeView, VIEW_KEY } from '../extension/src/model.js';
 import { createController } from '../extension/src/controller.js';
 import { memoryBrowser } from '../preview/browser.js';
@@ -245,6 +250,50 @@ test('page excludes itself and private tabs, searches folder paths, and uses loc
   assert.equal(filterActivity(items, { period: 'today', now })[0].kind, 'closed');
   assert.equal(filterActivity(items, { period: 'yesterday', now })[0].kind, 'viewed');
   assert.equal(activityDay(now - 1200000, now), 'Yesterday');
+});
+
+test('activity times preserve relative labels without formatting a clock time', () => {
+  const now = new Date(2026, 9, 24, 12).getTime();
+  const unexpectedFormat = () => assert.fail('relative labels do not need a formatter');
+  for (const [timestamp, expected] of [
+    [0, ''],
+    [undefined, ''],
+    [now + 60000, 'Just now'],
+    [now - 59000, 'Just now'],
+    [now - 60000, '1m ago'],
+    [now - 59 * 60000, '59m ago'],
+    [now - 60 * 60000, '1h ago'],
+    [now - 1439 * 60000, '23h ago'],
+  ]) {
+    assert.equal(activityTime(timestamp, now, unexpectedFormat), expected);
+  }
+});
+
+test('older activity times allow a shared formatter and retain invalid-date behaviour', () => {
+  const now = new Date(2026, 9, 24, 12).getTime();
+  const formatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+  const formatted = [];
+
+  const formatTime = (date) => {
+    assert.ok(date instanceof Date);
+    formatted.push(date.getTime());
+    return formatter.format(date);
+  };
+
+  const timestamps = [now - 86400000, now - 30 * 86400000];
+  for (const timestamp of timestamps) {
+    const expected = new Date(timestamp).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    assert.equal(activityTime(timestamp, now), expected);
+    assert.equal(activityTime(timestamp, now, formatTime), expected);
+  }
+  assert.deepEqual(formatted, timestamps);
+  for (const timestamp of [-Infinity, -9e15]) {
+    assert.equal(activityTime(timestamp, now, formatTime), 'Invalid Date');
+  }
+  assert.deepEqual(formatted, timestamps);
 });
 
 test('activity enrichment preserves frozen source records and returns independent items', () => {
