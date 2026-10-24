@@ -71,6 +71,128 @@ function pauseMembership(api, id) {
   return { waiting, release, restore: () => (api.sessions.getTabValue = get) };
 }
 
+async function compareRestart(f, state, windowId = 1) {
+  const restarted = createController(f.api);
+  try {
+    const fresh = await restarted.request({ type: 'snapshot', windowId });
+    for (const key of ['tabs', 'groups', 'view', 'pins', 'containers', 'recentlyClosed'])
+      assert.deepEqual(state[key], fresh[key], key);
+  } finally {
+    await restarted.dispose();
+  }
+}
+
+test('confirmed removals reuse saved memberships and resolve surviving ancestry from complete native rows', async (t) => {
+  const f = fixture(20);
+  t.after(() => f.controller.dispose());
+  f.memberships.get(4).ancestors = ['perf-tab-3', 'perf-tab-1'];
+  f.memberships.get(4).groupId = f.memberships.get(1).groupId;
+  Object.assign(f.native.get(4), { futureNative: { value: 'before' }, groupId: 42 });
+  const before = await f.send();
+  const untouched = await f.send('snapshot', {}, 2);
+  const saved = structuredClone(f.memberships.get(4));
+  await f.api.tabs.remove(3);
+  // A native query can reveal fields not carried by the removal event.
+  Object.assign(f.native.get(4), { index: 2, futureNative: { value: 'after' } });
+  delete f.native.get(4).favIconUrl;
+  const after = await f.send();
+  const row = after.tabs.find((tab) => tab.id === 4);
+  assert.equal(row.parentTabId, 1);
+  assert.equal(row.nativeGroupId, 42);
+  assert.equal(row.index, 2);
+  assert.equal(Object.hasOwn(row, 'favIconUrl'), false);
+  assert.deepEqual(row.futureNative, { value: 'after' });
+  assert.deepEqual(f.memberships.get(4), saved);
+  assert(before.tabs.some((tab) => tab.id === 3));
+  assert.deepEqual(before.tabs.find((tab) => tab.id === 4).futureNative, { value: 'before' });
+  assert.deepEqual((await f.send('snapshot', {}, 2)).tabs, untouched.tabs);
+  await compareRestart(f, after);
+});
+
+test('removal reuse reduces identity lookups compared with full reconciliation of the same rows', async (t) => {
+  const samples = [];
+  for (const invalidate of [false, true]) {
+    const f = fixture(100);
+    t.after(() => f.controller.dispose());
+    await f.send('snapshot', {}, 2);
+    await f.api.tabs.remove(10);
+    if (invalidate) f.api.tabs.onMoved.emit(11, { windowId: 2 });
+    samples.push(await mapProbe(() => f.send('snapshot', {}, 2)));
+  }
+  assert.deepEqual(samples[0].result.tabs, samples[1].result.tabs);
+  assert(samples[0].stats.treeKeyReads < samples[1].stats.treeKeyReads);
+});
+
+test('adapters without tab-update events retain the full removal reconciliation fallback', async (t) => {
+  const f = performanceBrowser(performanceFixture({ tabs: 20, windows: 2 }));
+  delete f.api.tabs.onUpdated;
+  const controller = createController(f.api);
+  t.after(() => controller.dispose());
+  await controller.request({ type: 'snapshot', windowId: 1 });
+  await f.api.tabs.remove(3);
+  const after = await controller.request({ type: 'snapshot', windowId: 1 });
+  assert(!after.tabs.some((tab) => tab.id === 3));
+  await compareRestart(f, after);
+});
+
+test('batched removals and failed native reads preserve retry and restart parity', async (t) => {
+  const f = fixture(20);
+  t.after(() => f.controller.dispose());
+  await f.send();
+  await f.api.tabs.remove([3, 4]);
+  const query = f.api.tabs.query;
+  f.api.tabs.query = async () => {
+    throw new Error('Native read temporarily unavailable');
+  };
+  await assert.rejects(f.send(), /Native read temporarily unavailable/);
+  f.api.tabs.query = query;
+  const after = await f.send();
+  assert.deepEqual(
+    after.tabs.map((tab) => tab.id),
+    [1, 2],
+  );
+  assert.equal(f.controller.cacheStats().treeOwners, 18);
+  await compareRestart(f, after);
+});
+
+for (const change of ['create', 'membership', 'internal-page']) {
+  test(`a ${change} change during a removal query cannot reuse stale membership resolution`, async (t) => {
+    const f = fixture(20);
+    t.after(() => f.controller.dispose());
+    await f.send();
+    await f.api.tabs.remove(3);
+    const query = f.api.tabs.query;
+    let announce, release;
+    const started = new Promise((resolve) => (announce = resolve));
+    const held = new Promise((resolve) => (release = resolve));
+    f.api.tabs.query = async (...args) => {
+      const result = await query(...args);
+      announce();
+      await held;
+      return result;
+    };
+    const reading = f.send();
+    await started;
+    let next;
+    if (change === 'create') {
+      next = await f.api.tabs.create({ windowId: 1, url: 'https://example.test/restored' });
+      f.memberships.set(next.id, { ...f.memberships.get(4), treeId: 'perf-tab-3' });
+    } else if (change === 'internal-page') {
+      await f.api.tabs.update(4, { url: f.api.runtime.getURL('settings.html') });
+    } else {
+      // Controller writes are serialised behind the in-flight snapshot.
+      next = f.send('toggleTab', { id: 4 });
+    }
+    f.api.tabs.query = query;
+    release();
+    let after = await reading;
+    if (change === 'membership') after = await next;
+    if (change === 'create') assert(after.tabs.some((tab) => tab.treeId === 'perf-tab-3'));
+    if (change === 'internal-page') assert(!after.tabs.some((tab) => tab.id === 4));
+    await compareRestart(f, after);
+  });
+}
+
 test('small-window title refreshes do not traverse global ownership or resolve trees again', async (t) => {
   const f = fixture();
   t.after(() => f.controller.dispose());

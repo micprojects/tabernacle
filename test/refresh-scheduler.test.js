@@ -37,6 +37,54 @@ test('coalesces notifications without postponing a continuous stream', async (t)
   assert.equal(f.calls, 1);
 });
 
+test('an idle refresh can start promptly while subsequent bursts keep the normal delay', async (t) => {
+  let time = 0;
+  const f = fixture(t, { delay: 16, idleDelay: 0, getTime: () => time });
+  f.scheduler.schedule({ revision: 2 });
+  await f.tick(0);
+  assert.equal(f.calls, 1);
+  time = 8;
+  await f.tick(8);
+  f.scheduler.schedule({ revision: 3 });
+  time = 16;
+  await f.tick(8);
+  assert.equal(f.calls, 1);
+  f.scheduler.schedule({ revision: 4 });
+  time = 24;
+  await f.tick(8);
+  assert.equal(f.calls, 2);
+  time = 80;
+  await f.tick(56);
+  f.scheduler.schedule({ revision: 5 });
+  await f.tick(0);
+  assert.equal(f.calls, 3);
+});
+
+test('the fast idle refresh does not increase sustained refresh frequency', async (t) => {
+  let time = 0;
+  const baseline = fixture(t, { delay: 16, getTime: () => time });
+  const candidate = { calls: 0 };
+  candidate.scheduler = createRefreshScheduler({
+    delay: 16,
+    idleDelay: 0,
+    getTime: () => time,
+    refresh: () => candidate.calls++,
+  });
+  t.after(() => candidate.scheduler.dispose());
+  for (let revision = 2; revision <= 62; revision++) {
+    baseline.scheduler.schedule({ revision });
+    candidate.scheduler.schedule({ revision });
+    time += 4;
+    t.mock.timers.tick(4);
+    await setImmediate();
+  }
+  time += 32;
+  t.mock.timers.tick(32);
+  await setImmediate();
+  assert(candidate.calls <= baseline.calls + 1, 'only the initial prompt refresh may be extra');
+  assert(candidate.calls > 1, 'continuous events must not postpone refresh indefinitely');
+});
+
 test('ignores other windows and revisions already included in an action response', async (t) => {
   const f = fixture(t);
   f.scheduler.schedule({ windowIds: [2], revision: 2 });

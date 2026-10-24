@@ -99,8 +99,18 @@ export function createController(
     ({ windowId, removedTabId, detachedTabId, removedWindowId, removedTabIds = [] }) => {
       requestTabs.clear();
       if (windowId != null) {
-        const structureToken = resolvedTabs.get(windowId)?.structureToken;
+        const resolved = resolvedTabs.get(windowId);
+        const structureToken = resolved?.structureToken;
         if (
+          removedTabId !== undefined &&
+          resolved?.positions.has(removedTabId) &&
+          (resolved.removed?.size || 0) < 32 &&
+          !resolved.folds?.size
+        ) {
+          // Keep the last resolved memberships until a complete native query
+          // confirms this removal. Other structural events still discard them.
+          (resolved.removed ??= new Set()).add(removedTabId);
+        } else if (
           !cache.isTabsStateCurrent(windowId, structureToken) &&
           !cache.isTabsRefreshPending(windowId, structureToken)
         )
@@ -671,6 +681,49 @@ export function createController(
     return cached.tabs;
   }
 
+  function resolveRemovedTabs(cached, state, windowId) {
+    if (
+      !state.positions ||
+      !cached.removed?.size ||
+      state.tabs.length !== cached.native.length - cached.removed.size
+    )
+      return;
+    // Use complete native records, including fields absent from onRemoved.
+    // Missing, additional, moved or newly excluded tabs need normal identity
+    // reconciliation. Never infer a closure from a failed native read.
+    for (const tab of state.tabs) {
+      const previous = cached.native[cached.positions.get(tab.id)];
+      if (
+        !previous ||
+        cached.removed.has(tab.id) ||
+        tab.windowId !== windowId ||
+        tab.incognito !== previous.incognito ||
+        internalPage(api, tab.url) !== internalPage(api, previous.url)
+      )
+        return;
+    }
+    const positions = state.positions;
+    const rows = [];
+    for (const row of cached.tabs) {
+      if (cached.removed.has(row.id)) continue;
+      if (treeOwners.get(row.treeId) !== row.id || tabTreeKeys.get(row.id) !== row.treeId) return;
+      rows.push(withNativeMetadata(row, state.tabs[positions.get(row.id)]));
+    }
+    // A removed ancestor can promote descendants; recompute parents without
+    // reading, cloning and repairing every unchanged saved membership again.
+    const tabs = resolveTabTree(rows);
+    resolvedTabs.set(windowId, {
+      native: state.tabs,
+      positions,
+      structureToken: state.structureToken,
+      groupIdsVersion,
+      membershipVersion: membershipEpoch(windowId),
+      unknownMembershipVersion,
+      tabs,
+    });
+    return tabs;
+  }
+
   async function loadTabs(windowId) {
     for (;;) {
       // Establish global identity ownership once after an event-page wake.
@@ -686,12 +739,17 @@ export function createController(
       const key = windowId ?? null;
       const cached = resolvedTabs.get(key);
       if (
-        cached?.structureToken === state.structureToken &&
+        cached &&
         cached.groupIdsVersion === groupIdsVersion &&
         cached.membershipVersion === membershipEpoch(key) &&
         cached.unknownMembershipVersion === unknownMembershipVersion
-      )
-        return refreshResolved(cached, state);
+      ) {
+        if (cached.structureToken === state.structureToken) return refreshResolved(cached, state);
+        if (!allWindows && !disposed) {
+          const removed = resolveRemovedTabs(cached, state, windowId);
+          if (removed) return removed;
+        }
+      }
 
       const beforeOwnership = ownershipVersion;
       const closed = new Set();

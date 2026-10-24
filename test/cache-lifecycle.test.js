@@ -28,7 +28,9 @@ test('closed windows release temporary state and keep forgotten pins for open wi
       assert.equal(sizes.forgottenWindows, 1, 'the still-open window must keep its forgotten pins');
       assert.equal(sizes.treeOwners, f.native.size);
       assert.equal(sizes.tabTreeKeys, f.native.size);
-      assert.equal(sizes.resolvedWindows, 12 - windowId);
+      // Window 1 retains its last resolution until its pending removal is read.
+      // Closed windows must release theirs immediately.
+      assert.equal(sizes.resolvedWindows, 13 - windowId);
     }
     await controller.request({ type: 'snapshot', windowId: 1 });
     assert.equal(controller.cacheStats().forgottenWindows, 0);

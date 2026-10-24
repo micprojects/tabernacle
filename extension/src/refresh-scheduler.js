@@ -7,11 +7,14 @@ export function createRefreshScheduler({
   globalOnly = false,
   canRefresh = () => true,
   delay = 16,
+  idleDelay = delay,
+  getTime = () => performance.now(),
   onError = (error) => console.error(error),
 }) {
   let pending, timer, running;
   let forced = false;
   let disposed = false;
+  let lastFinished = -Infinity;
 
   function needed() {
     if (forced) return true;
@@ -26,10 +29,13 @@ export function createRefreshScheduler({
 
   function resume() {
     if (disposed || timer || running || !canRefresh() || !needed()) return;
-    timer = setTimeout(() => {
-      timer = undefined;
-      run().catch(onError);
-    }, delay);
+    timer = setTimeout(
+      () => {
+        timer = undefined;
+        run().catch(onError);
+      },
+      getTime() - lastFinished >= delay * 2 ? idleDelay : delay,
+    );
   }
 
   async function run() {
@@ -44,6 +50,7 @@ export function createRefreshScheduler({
     try {
       return await running;
     } finally {
+      lastFinished = getTime();
       running = undefined;
       resume();
     }

@@ -458,6 +458,9 @@ function clickGroup(id, event) {
 }
 
 const refreshScheduler = createRefreshScheduler({
+  // Background notifications already coalesce events. Refresh promptly after
+  // idle, retaining the normal delay for continuing bursts to bound CPU work.
+  idleDelay: 0,
   getState: () => confirmedState,
   getWindowId: () => windowId,
   canRefresh: () => Boolean(request) && !document.hidden && !pointerHeld && !activeActions,
