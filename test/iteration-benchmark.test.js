@@ -265,7 +265,7 @@ test('quiet idle is a bounded wait without observer work and participates in fix
     new URL('../scripts/memory/iteration-native.js', import.meta.url),
     'utf8',
   );
-  const body = source.split("await phase('quiet-idle', async () => {")[1].split('\n  });')[0];
+  const body = source.split("await phase('quiet-idle', async () => {")[1].split(/\n\s*\}\);/)[0];
   assert.match(body, /await wait\(iterationFixture.native.quietIdleMs\)/);
   assert(!/settle\(|browser\.|nativeMemory\(/.test(body));
   assert.match(source, /quietIdleMs: iterationFixture.native.quietIdleMs/);

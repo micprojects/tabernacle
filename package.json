@@ -38,6 +38,7 @@
     "test:toolbar:firefox": "node test/firefox/test-toolbar-icon-firefox.js",
     "qa:release": "node scripts/release-qa.js",
     "benchmark:optim": "node scripts/benchmark-optimisation.js",
+    "benchmark:idle:stress": "node scripts/benchmark-optimisation.js --report --idle-scaling",
     "benchmark:report": "node scripts/benchmark-optimisation.js --report",
     "benchmark:memory:synthetic": "node scripts/benchmark-optimisation.js --synthetic-only",
     "benchmark:memory:stress": "node scripts/benchmark-memory.js --stress",

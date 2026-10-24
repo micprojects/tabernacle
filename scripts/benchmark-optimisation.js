@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { exec, fingerprintSource, machineInfo, repositoryRoot } from './memory/common.js';
 import { runGuarded } from './memory/guard.js';
 import {
-  iterationFixture,
+  iterationWorkload,
   iterationLimits,
   iterationOptions,
   validateNoise,
@@ -31,9 +31,12 @@ Every run writes report.md alongside report.json and report.html.
 --confirm: five comparison pairs, first calibrating if no matching cache exists.
 --pilot: one candidate sample; diagnostics only.
 --synthetic-only: no Firefox evidence. Useful for fast controller experiments; uses a separate calibration.
-No option increases this workload. Exceptional high-capacity tests use benchmark:memory:stress or benchmark:memory:firefox:stress.`);
+Idle headline: a separate 1,000-tab / 100-folder, three-level fixture in two sidebars, with natural memory settlement before enabled/disabled samples.
+--idle-scaling: dedicated 5,000-tab / 500-folder idle stress comparison, with the same resource ceilings. Omits the active and synthetic workloads; compare this with the ordinary 1,000-tab headline to track scaling.
+Other exceptional high-capacity tests use benchmark:memory:stress or benchmark:memory:firefox:stress.`);
 } else {
   assert.equal(Number(process.versions.node.split('.')[0]), 24, 'Use Node 24 from .nvmrc.');
+  const fixture = iterationWorkload(options);
   const started = Date.now();
   const resultsRoot = resolve(repositoryRoot, 'test-results/memory/iteration');
   await mkdir(resultsRoot, { recursive: true });
@@ -71,7 +74,7 @@ No option increases this workload. Exceptional high-capacity tests use benchmark
     baseline: sources.baseline.sha256,
     harness: harness.sha256,
     environment,
-    fixture: iterationFixture,
+    fixture,
     syntheticOnly: options.syntheticOnly,
   });
   const noisePath = options.noise || resolve(resultsRoot, `noise-${contextKey}.json`);
@@ -102,8 +105,9 @@ No option increases this workload. Exceptional high-capacity tests use benchmark
       sources,
       harness,
       environment,
-      fixture: iterationFixture,
+      fixture,
       syntheticOnly: options.syntheticOnly,
+      idleOnly: Boolean(options.idleScaling),
       limits: iterationLimits,
       startedAt: new Date().toISOString(),
       runs: [],
@@ -144,7 +148,7 @@ No option increases this workload. Exceptional high-capacity tests use benchmark
           };
           report.runs.push(run);
           const jobs = [
-            ...(!options.syntheticOnly
+            ...(!options.syntheticOnly && fixture.native
               ? [
                   {
                     kind: 'native',
@@ -153,7 +157,14 @@ No option increases this workload. Exceptional high-capacity tests use benchmark
                   },
                 ]
               : []),
-            ...iterationFixture.synthetic.map(({ tabs, windows }) => ({
+            ...(!options.syntheticOnly
+              ? fixture.idle.sizes.map(({ tabs, folders }) => ({
+                  kind: 'idle-native',
+                  script: 'iteration-native.js',
+                  args: [source.root, String(tabs), String(fixture.idle.windows), String(folders)],
+                }))
+              : []),
+            ...fixture.synthetic.map(({ tabs, windows }) => ({
               kind: 'synthetic',
               script: 'iteration-synthetic.js',
               args: [source.root, String(tabs), String(windows)],
@@ -214,7 +225,9 @@ No option increases this workload. Exceptional high-capacity tests use benchmark
             );
             if (worker.guard.status !== 'completed' || worker.result?.status !== 'completed') {
               report.status = run.status =
-                worker.guard.status === 'aborted' ? 'inconclusive' : 'failed';
+                worker.guard.status === 'aborted' || worker.result?.status === 'inconclusive'
+                  ? 'inconclusive'
+                  : 'failed';
               report.error =
                 worker.guard.reason ||
                 worker.result?.error ||
@@ -236,7 +249,7 @@ No option increases this workload. Exceptional high-capacity tests use benchmark
                 'Worker fixture or Node runtime changed.',
               );
             else workerContexts.set(workerKey, context);
-            if (job.kind === 'native') {
+            if (job.kind === 'native' || job.kind === 'idle-native') {
               assert(
                 worker.residentSamples.length &&
                   worker.residentSamples.every((sample) => sample.complete),
@@ -249,7 +262,16 @@ No option increases this workload. Exceptional high-capacity tests use benchmark
               );
               Object.assign(
                 run.metrics,
-                nativeMetrics(worker.result, worker.guard, worker.residentSamples),
+                Object.fromEntries(
+                  Object.entries(
+                    nativeMetrics(worker.result, worker.guard, worker.residentSamples),
+                  ).map(([name, value]) => [
+                    job.kind === 'idle-native'
+                      ? name.replace('Firefox/', `Firefox/idle-${worker.tabs}/`)
+                      : name,
+                    value,
+                  ]),
+                ),
               );
             } else Object.assign(run.metrics, syntheticMetrics(worker.result));
             assert(

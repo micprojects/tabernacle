@@ -9,6 +9,7 @@ import { FrameBrowser } from './frame-browser.js';
 import { nativeMemory } from './native.js';
 import { fingerprintSource, machineInfo } from './common.js';
 import { iterationFixture } from './iteration-policy.js';
+import { runIdleFixture } from './idle-fixture.js';
 import {
   expectedSidebar,
   observeSidebar,
@@ -17,9 +18,10 @@ import {
   waitForStableObservation,
 } from './native-settlement.js';
 
-const [sourceRoot, tabsText, windowsText] = process.argv.slice(2),
+const [sourceRoot, tabsText, windowsText, foldersText] = process.argv.slice(2),
   tabs = Number(tabsText),
-  windowCount = Number(windowsText);
+  windowCount = Number(windowsText),
+  idleFolders = Number(foldersText) || 0;
 const browser = new FrameBrowser(),
   source = await fingerprintSource(sourceRoot);
 const { createTreeIndex } = await import(pathToFileURL(await sourceFile(sourceRoot, 'treeIndex')));
@@ -35,15 +37,19 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const emit = (type, data = {}) => process.send?.({ type, ...data });
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const report = {
-  kind: 'optimisation-native',
+  kind: idleFolders ? 'optimisation-idle-native' : 'optimisation-native',
   status: 'running',
   source,
+  ...(idleFolders ? { memoryBaselinePhase: 'disabled-final' } : {}),
   environment: machineInfo(),
   fixture: {
     tabs,
     windows: windowCount,
     seed: 17,
-    shape: 'existing unorganised discarded tabs, then common folder operations',
+    shape: idleFolders
+      ? 'all discarded tabs in expanded folders, three levels deep; settled idle enabled/disabled'
+      : 'existing unorganised discarded tabs, then common folder operations',
+    ...(idleFolders ? { folders: idleFolders, idle: iterationFixture.idle } : {}),
     control:
       'One fixed extension control page, no background script/timers. Keeps the shared extension process alive while Tabernacle is disabled.',
   },
@@ -80,15 +86,16 @@ async function phase(name, work, { memory = false } = {}) {
   if (memory) {
     assert(await browser.noDebugger(), 'DevTools must not be attached');
     result.beforeCollection = await nativeMemory(browser, false);
-    result.afterCollection = await nativeMemory(browser, true);
+    if (memory !== 'unforced') result.afterCollection = await nativeMemory(browser, true);
     if (value.sidebars) {
-      const after = await settle();
+      const after = await settle({ stableSamples: memory === 'unforced' ? 1 : 3 });
       assert.deepEqual(
         after.sidebars.map((s) => [s.windowId, s.rowsHash, s.pins, s.nativeTabs]),
         value.sidebars.map((s) => [s.windowId, s.rowsHash, s.pins, s.nativeTabs]),
-        'Sidebar content changed during memory collection',
+        'Sidebar content changed during memory measurement',
       );
-      result.verifiedAfterCollection = true;
+      result.verifiedAfterMeasurement = true;
+      if (memory !== 'unforced') result.verifiedAfterCollection = true;
     }
   }
   report.phases.push(result);
@@ -115,7 +122,7 @@ async function authority(panel) {
   });
 }
 
-async function settle() {
+async function settle({ stableSamples = 3 } = {}) {
   const panelsResult = await waitForStableObservation(() => browser.panels(), {
     matches: (panels) =>
       panels.length === windowCount &&
@@ -161,7 +168,7 @@ async function settle() {
     settled = await waitForStableObservation(read, {
       matches: (rows) => rows.every((row) => sidebarMatches(row, expected.get(row.browserId))),
       timeoutMs: 30000,
-      stableSamples: 3,
+      stableSamples,
       label: 'complete sidebar IDs/order/titles/pins',
 
       progress: (value) => {
@@ -274,214 +281,232 @@ try {
     cycles: 3,
     idleMs: 1500,
     quietIdleMs: iterationFixture.native.quietIdleMs,
+    ...(idleFolders ? { folders: idleFolders, idle: iterationFixture.idle } : {}),
   });
-  await phase(
-    'disabled-before',
-    async () => {
-      await wait(1500);
-      const processes = await browser.cpu();
-      assert(processes.some((p) => p.type === 'extension'));
-      emit('extension-processes', {
-        pids: processes.filter((p) => p.type === 'extension').map((p) => p.pid),
-      });
-      return { nativeCount: (await browser.control(() => browser.tabs.query({}))).length };
-    },
-    { memory: true },
-  );
-  await phase(
-    'enabled-initial',
-    async () => {
-      await browser.install(sourceRoot);
-      await browser.show();
-      return await settle();
-    },
-    { memory: false },
-  );
-  await phase(
-    'enabled-idle',
-    async () => {
-      await wait(1500);
-      return await settle();
-    },
-    { memory: true },
-  );
-  // No snapshot requests, DOM traversal or collection inside this CPU window.
-  // It follows enabled-idle's collection and is a short controlled idle sample.
-  await phase('quiet-idle', async () => {
-    await wait(iterationFixture.native.quietIdleMs);
-    return { requestedIdleMs: iterationFixture.native.quietIdleMs };
-  });
-  identities = await identitiesNow();
-  assert.equal(identities.length, tabs + windowCount);
-  await phase('warm-snapshots', async () => {
-    const windows = [];
-    for (const p of await browser.panels())
-      windows.push(
-        await browser.frame(p.browserId, async () => {
-          const windowId = (await browser.windows.getCurrent()).id;
-          const samples = [];
-          for (let reader = 0; reader < 2; reader++) {
-            let token;
-            for (let round = 0; round < 5; round++) {
-              const start = performance.now();
-              const response = await browser.runtime.sendMessage(
-                clone({
-                  type: 'tabernacle:snapshot',
-                  windowId,
-                  incremental: true,
-                  snapshotToken: token,
-                }),
-              );
-              if (!response.ok) throw new Error(response.error);
-              token = response.data.token;
-              samples.push({
-                reader,
-                round,
-                ms: performance.now() - start,
-                bytes: new TextEncoder().encode(JSON.stringify(response)).length,
-                delta: !!response.data.baseToken,
-              });
+  if (idleFolders) {
+    await runIdleFixture({
+      browser,
+      sourceRoot,
+      tabs,
+      folders: idleFolders,
+      windows: windowCount,
+      created,
+      nativeWindows,
+      policy: iterationFixture.idle,
+      settle,
+      authority,
+      phase,
+      emit,
+    });
+  } else {
+    await phase(
+      'disabled-before',
+      async () => {
+        await wait(1500);
+        const processes = await browser.cpu();
+        assert(processes.some((p) => p.type === 'extension'));
+        emit('extension-processes', {
+          pids: processes.filter((p) => p.type === 'extension').map((p) => p.pid),
+        });
+        return { nativeCount: (await browser.control(() => browser.tabs.query({}))).length };
+      },
+      { memory: true },
+    );
+    await phase(
+      'enabled-initial',
+      async () => {
+        await browser.install(sourceRoot);
+        await browser.show();
+        return await settle();
+      },
+      { memory: false },
+    );
+    await phase(
+      'enabled-idle',
+      async () => {
+        await wait(1500);
+        return await settle();
+      },
+      { memory: true },
+    );
+    // No snapshot requests, DOM traversal or collection inside this CPU window.
+    // It follows enabled-idle's collection and is a short controlled idle sample.
+    await phase('quiet-idle', async () => {
+      await wait(iterationFixture.native.quietIdleMs);
+      return { requestedIdleMs: iterationFixture.native.quietIdleMs };
+    });
+    identities = await identitiesNow();
+    assert.equal(identities.length, tabs + windowCount);
+    await phase('warm-snapshots', async () => {
+      const windows = [];
+      for (const p of await browser.panels())
+        windows.push(
+          await browser.frame(p.browserId, async () => {
+            const windowId = (await browser.windows.getCurrent()).id;
+            const samples = [];
+            for (let reader = 0; reader < 2; reader++) {
+              let token;
+              for (let round = 0; round < 5; round++) {
+                const start = performance.now();
+                const response = await browser.runtime.sendMessage(
+                  clone({
+                    type: 'tabernacle:snapshot',
+                    windowId,
+                    incremental: true,
+                    snapshotToken: token,
+                  }),
+                );
+                if (!response.ok) throw new Error(response.error);
+                token = response.data.token;
+                samples.push({
+                  reader,
+                  round,
+                  ms: performance.now() - start,
+                  bytes: new TextEncoder().encode(JSON.stringify(response)).length,
+                  delta: !!response.data.baseToken,
+                });
+              }
             }
-          }
-          return { windowId, samples };
-        }),
-      );
-    return { windows, ...(await settle()) };
-  });
-  await phase('search', async () => {
-    const samples = [];
-    for (const query of ['000007', 'Fixture', '']) {
-      const start = performance.now();
-      const response = await browser.frame(
-        firstPanel,
-        async (query) => {
-          const input = document.getElementById('search');
-          const start = performance.now();
-          input.value = query;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          // The input handler queues rendering in the first animation frame.
-          // Measure the following frame separately from exhaustive correctness
-          // traversal and the benchmark's stability-observation floor.
-          await new Promise((resolve) => window.requestAnimationFrame(resolve));
-          document.getElementById('tree').getBoundingClientRect();
-          const renderFrameMs = performance.now() - start;
-          await new Promise((resolve) => window.requestAnimationFrame(resolve));
-          return { renderFrameMs, nextFrameMs: performance.now() - start };
+            return { windowId, samples };
+          }),
+        );
+      return { windows, ...(await settle()) };
+    });
+    await phase('search', async () => {
+      const samples = [];
+      for (const query of ['000007', 'Fixture', '']) {
+        const start = performance.now();
+        const response = await browser.frame(
+          firstPanel,
+          async (query) => {
+            const input = document.getElementById('search');
+            const start = performance.now();
+            input.value = query;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            // The input handler queues rendering in the first animation frame.
+            // Measure the following frame separately from exhaustive correctness
+            // traversal and the benchmark's stability-observation floor.
+            await new Promise((resolve) => window.requestAnimationFrame(resolve));
+            document.getElementById('tree').getBoundingClientRect();
+            const renderFrameMs = performance.now() - start;
+            await new Promise((resolve) => window.requestAnimationFrame(resolve));
+            return { renderFrameMs, nextFrameMs: performance.now() - start };
+          },
+          query,
+        );
+        const settled = await settle();
+        samples.push({ query, ms: performance.now() - start, response, settled });
+      }
+      return { samples };
+    });
+    await phase('title-burst', async () => {
+      const ids = await browser.control(
+        async (url, windowId) => {
+          const ids = [];
+          for (let i = 0; i < 1; i++)
+            ids.push((await browser.tabs.create({ windowId, url: url + i, active: false })).id);
+          return ids;
         },
-        query,
+        `http://127.0.0.1:${server.address().port}/`,
+        nativeWindows[0],
+      );
+      await waitForStableObservation(
+        () =>
+          browser.control(
+            async (ids) =>
+              (await Promise.all(ids.map((id) => browser.tabs.get(id)))).map((tab) => tab.title),
+            ids,
+          ),
+        {
+          matches: (titles) => titles.every((t) => t === 'Memory update 6'),
+          timeoutMs: 15000,
+          stableSamples: 1,
+          label: 'native title events',
+        },
       );
       const settled = await settle();
-      samples.push({ query, ms: performance.now() - start, response, settled });
-    }
-    return { samples };
-  });
-  await phase('title-burst', async () => {
-    const ids = await browser.control(
-      async (url, windowId) => {
-        const ids = [];
-        for (let i = 0; i < 1; i++)
-          ids.push((await browser.tabs.create({ windowId, url: url + i, active: false })).id);
-        return ids;
-      },
-      `http://127.0.0.1:${server.address().port}/`,
-      nativeWindows[0],
-    );
-    await waitForStableObservation(
-      () =>
-        browser.control(
-          async (ids) =>
-            (await Promise.all(ids.map((id) => browser.tabs.get(id)))).map((tab) => tab.title),
-          ids,
-        ),
-      {
-        matches: (titles) => titles.every((t) => t === 'Memory update 6'),
-        timeoutMs: 15000,
-        stableSamples: 1,
-        label: 'native title events',
-      },
-    );
-    const settled = await settle();
-    await browser.control(async (ids) => {
-      await browser.tabs.remove(ids);
-    }, ids);
-    await settle();
-    return { livePages: 1, titleChanges: 6, settled };
-  });
-  await phase('folder-actions', async () => {
-    const state = await send('snapshot');
-    const targets = state.tabs.filter((tab) => created.includes(tab.id)).slice(0, 8);
-    assert(targets.length >= 3);
-    const group = (await send('createGroup', { name: 'Benchmark folder' })).createdGroupId;
-    const times = [];
-    for (const tab of targets) {
-      const start = performance.now();
-      await send('moveTab', { id: tab.id, groupId: group });
-      times.push({ action: 'move', ms: performance.now() - start });
-    }
-    await send('nestTab', { id: targets[1].id, parentTabId: targets[0].id });
-    await send('enterGroup', { id: null });
-    await settle();
-    for (let i = 0; i < 1; i++)
-      for (const action of ['collapse', 'expand']) {
+      await browser.control(async (ids) => {
+        await browser.tabs.remove(ids);
+      }, ids);
+      await settle();
+      return { livePages: 1, titleChanges: 6, settled };
+    });
+    await phase('folder-actions', async () => {
+      const state = await send('snapshot');
+      const targets = state.tabs.filter((tab) => created.includes(tab.id)).slice(0, 8);
+      assert(targets.length >= 3);
+      const group = (await send('createGroup', { name: 'Benchmark folder' })).createdGroupId;
+      const times = [];
+      for (const tab of targets) {
         const start = performance.now();
-        await send('toggleGroup', { id: group });
-        const settled = await settle();
-        times.push({
-          action,
-          ms: performance.now() - start,
-          rows: settled.sidebars.map((s) => s.rows),
-        });
+        await send('moveTab', { id: tab.id, groupId: group });
+        times.push({ action: 'move', ms: performance.now() - start });
       }
-    return { actions: times, group, ...(await settle()) };
-  });
-  identities = await identitiesNow();
-  await phase(
-    'sidebars-closed',
-    async () => {
-      await browser.hide();
-      await wait(1500);
-      assert((await browser.panels()).every((p) => !p.open));
-      return { closed: true };
-    },
-    { memory: true },
-  );
-  await phase('sidebars-reopened', async () => {
-    await browser.show();
-    return await settle();
-  });
-  await phase(
-    'view-cycles',
-    async () => {
-      for (let i = 0; i < 3; i++) {
+      await send('nestTab', { id: targets[1].id, parentTabId: targets[0].id });
+      await send('enterGroup', { id: null });
+      await settle();
+      for (let i = 0; i < 1; i++)
+        for (const action of ['collapse', 'expand']) {
+          const start = performance.now();
+          await send('toggleGroup', { id: group });
+          const settled = await settle();
+          times.push({
+            action,
+            ms: performance.now() - start,
+            rows: settled.sidebars.map((s) => s.rows),
+          });
+        }
+      return { actions: times, group, ...(await settle()) };
+    });
+    identities = await identitiesNow();
+    await phase(
+      'sidebars-closed',
+      async () => {
         await browser.hide();
-        await wait(150);
-        await browser.show();
-        await settle();
-        emit('progress', { name: 'view-cycle', cycle: i + 1 });
-      }
+        await wait(1500);
+        assert((await browser.panels()).every((p) => !p.open));
+        return { closed: true };
+      },
+      { memory: true },
+    );
+    await phase('sidebars-reopened', async () => {
+      await browser.show();
       return await settle();
-    },
-    { memory: true },
-  );
-  assert.deepEqual(await identitiesNow(), identities, 'Organisation changed across view cycles');
-  await phase(
-    'disabled-final',
-    async () => {
-      await browser.toggle(false);
-      await wait(1500);
-      assert((await browser.panels()).every((p) => !p.isTarget || !p.open));
-      assert.equal(
-        (await browser.control(() => browser.tabs.query({}))).length,
-        tabs + windowCount,
-      );
-      return { disabled: true, preservedNativeCount: tabs + windowCount };
-    },
-    { memory: true },
-  );
+    });
+    await phase(
+      'view-cycles',
+      async () => {
+        for (let i = 0; i < 3; i++) {
+          await browser.hide();
+          await wait(150);
+          await browser.show();
+          await settle();
+          emit('progress', { name: 'view-cycle', cycle: i + 1 });
+        }
+        return await settle();
+      },
+      { memory: true },
+    );
+    assert.deepEqual(await identitiesNow(), identities, 'Organisation changed across view cycles');
+    await phase(
+      'disabled-final',
+      async () => {
+        await browser.toggle(false);
+        await wait(1500);
+        assert((await browser.panels()).every((p) => !p.isTarget || !p.open));
+        assert.equal(
+          (await browser.control(() => browser.tabs.query({}))).length,
+          tabs + windowCount,
+        );
+        return { disabled: true, preservedNativeCount: tabs + windowCount };
+      },
+      { memory: true },
+    );
+  }
   assert.equal((await fingerprintSource(sourceRoot)).sha256, source.sha256);
   report.status = 'completed';
 } catch (error) {
-  report.status = closing ? 'inconclusive' : 'failed';
+  report.status = closing || error.code === 'IDLE_NOT_SETTLED' ? 'inconclusive' : 'failed';
   report.error = String(error) + '\n' + error.stack;
   report.errorObservation = error.observation;
   report.expected = error.expected;

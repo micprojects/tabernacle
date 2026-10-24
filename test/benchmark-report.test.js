@@ -121,6 +121,7 @@ test('missing stable tags and invalid revisions never fall back to HEAD', async 
 function pairedReport() {
   const keys = {
     'Firefox/enabled-idle/unforced/resident.bytes': [80e6, 60e6, 1e6],
+    'Firefox/idle-1000/enabled-idle/settled-added-resident.bytes': [40e6, 20e6, 0.1e6],
     'Firefox/warm-snapshots/reply-p95.ms': [20, 15, 0.1],
     'Firefox/enabled-idle/DOM-elements.count': [1000, 500, 0],
     'Node-100/cold-readers/reads.count': [100, 0, 0],
@@ -285,7 +286,7 @@ test('headlines keep five relevant measures, compact units and adverse or uncert
   );
   assert.match(
     summary,
-    /Memory while idle \(extension process\) \| 80 MB \| 60 MB \| Improved 25%/,
+    /Idle RAM added \(1,000 tabs \/ 100 folders\) \| 40 MB \| 20 MB \| Improved 50%/,
   );
   assert.match(
     summary,
@@ -299,6 +300,7 @@ test('headlines keep five relevant measures, compact units and adverse or uncert
   assert(!summary.includes('payload'));
   assert.match(summary, /2 Firefox metrics; 2 synthetic controller metrics/);
   assert.match(summary, /not total browser RAM/);
+  assert.match(summary, /30–60 second quiet period, with no forced GC\/CC/);
   assert.match(summary, /not a complete click-to-screen response/);
   assert.match(summary, /not a battery-life measurement/);
   assert.deepEqual(report, before);
@@ -403,4 +405,22 @@ test('CLI help describes reporting without launching Firefox and refuses existin
     /EEXIST/,
   );
   assert.equal(await readFile(resolve(destination, 'report.md'), 'utf8'), 'preserve me');
+});
+
+test('settled idle headline never substitutes flat-tab memory and keeps scaling explicit', () => {
+  const report = pairedReport();
+  report.comparison = report.comparison.filter((item) => !item.name.startsWith('Firefox/idle-'));
+  let markdown = iterationMarkdown(report);
+  assert.match(markdown, /Idle RAM added \(1,000 tabs \/ 100 folders\) \| N\/A \| N\/A/);
+  assert(!markdown.includes('5,000 tabs / 500 folders'));
+  report.fixture.idle = { sizes: [{ tabs: 5000, folders: 500 }], windows: 2 };
+  report.idleOnly = true;
+  markdown = iterationMarkdown(report);
+  const summary = markdown.split('## Headline results\n')[1].split('## Settled idle memory\n')[0];
+  assert.equal(summary.split('\n').filter((line) => line.startsWith('|')).length, 3);
+  assert(!markdown.includes('## CPU and memory overview'));
+  assert(!markdown.includes('## Firefox\n'));
+  assert.match(summary, /Idle RAM added \(5,000 tabs \/ 500 folders\) \| N\/A \| N\/A/);
+  assert.match(markdown, /median OS RSS from the final stable window/);
+  assert.match(markdown, /Negative estimates are retained, not clamped/);
 });

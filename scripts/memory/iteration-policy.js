@@ -2,9 +2,20 @@ import { resolve } from 'node:path';
 import { compareSamples } from './summary.js';
 
 export const iterationFixture = {
-  version: 2,
+  version: 3,
   seed: 17,
   native: { tabs: 1000, windows: 2, livePages: 1, cycles: 3, idleMs: 1500, quietIdleMs: 5000 },
+  idle: {
+    sizes: [{ tabs: 1000, folders: 100 }],
+    windows: 2,
+    depth: 3,
+    minQuietMs: 30000,
+    maxQuietMs: 60000,
+    stableMs: 10000,
+    sampleMs: 2000,
+    stableBytes: 1024 ** 2,
+    stableRatio: 0.01,
+  },
   synthetic: [
     { tabs: 100, windows: 1 },
     { tabs: 1000, windows: 2 },
@@ -14,6 +25,16 @@ export const iterationFixture = {
 };
 export const iterationLimits = { maxRssBytes: 4 * 1024 ** 3, maxMs: 5 * 60000 };
 
+export function iterationWorkload(options) {
+  const fixture = structuredClone(iterationFixture);
+  if (options.idleScaling) {
+    fixture.native = null;
+    fixture.synthetic = [];
+    fixture.idle.sizes = [{ tabs: 5000, folders: 500 }];
+  }
+  return fixture;
+}
+
 export function iterationOptions(argv) {
   const result = { syntheticOnly: false };
   for (let i = 0; i < argv.length; i++) {
@@ -22,6 +43,7 @@ export function iterationOptions(argv) {
       if (result.mode) throw new Error('Choose one benchmark mode.');
       result.mode = arg.slice(2);
     } else if (arg === '--synthetic-only') result.syntheticOnly = true;
+    else if (arg === '--idle-scaling') result.idleScaling = true;
     else if (arg === '--report') result.report = true;
     else if (arg === '--working-tree') result.workingTree = true;
     else if (arg === '--help') result.help = true;
@@ -36,6 +58,8 @@ export function iterationOptions(argv) {
   }
   if (result.workingTree && result.candidate)
     throw new Error('Choose --candidate REF or --working-tree, not both.');
+  if (result.idleScaling && result.syntheticOnly)
+    throw new Error('Idle scaling requires native Firefox measurements.');
   result.baseline ??= result.report ? 'latest-release' : 'HEAD';
   result.candidate ??= result.report && !result.workingTree ? 'HEAD' : undefined;
   result.mode ??= result.report ? 'confirm' : 'screen';

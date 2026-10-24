@@ -2,14 +2,13 @@
 // catalogue remain in report.json/report.html beside this summary.
 // Select headlines by user relevance, never by the largest favourable delta.
 const headlineRows = [
-  ['Memory while idle (extension process)', 'Firefox/enabled-idle/unforced/resident.bytes'],
   ['Peak memory (sampled extension process)', 'Firefox/sampled-extension-RSS-peak.bytes'],
   ['Tab data reply time (p95)', 'Firefox/warm-snapshots/reply-p95.ms'],
   ['Folder action time (test sequence)', 'Firefox/folder-actions/elapsed.ms'],
   ['Processor time during folder actions', 'Firefox/folder-actions/extensionCPU.ms'],
 ];
 const resourceRows = [
-  ['Idle memory added versus disabled', 'Firefox/enabled-idle/unforced/added-resident.bytes'],
+  ['Idle memory added (unorganised tabs)', 'Firefox/enabled-idle/unforced/added-resident.bytes'],
   ['Idle CPU time (five-second quiet sample)', 'Firefox/quiet-idle/extensionCPU.ms'],
   ['Total CPU time (fixed active workload)', 'Firefox/active-workload/extensionCPU.ms'],
   ['Total elapsed time (fixed active workload)', 'Firefox/active-workload/elapsed.ms'],
@@ -160,6 +159,7 @@ function correct(report, role, kind, tabs) {
 }
 
 export function iterationMarkdown(report) {
+  const idleOnly = Boolean(report.idleOnly);
   const complete = report.status === 'completed' && report.kind === 'optimisation-comparison';
   const metrics = new Map(
     (complete ? report.comparison || [] : []).map((item) => [item.name, item]),
@@ -205,28 +205,87 @@ export function iterationMarkdown(report) {
       '',
       '## Headline results',
       '',
-      `Firefox workload: ${native?.tabs ?? 'N/A'} mostly discarded tabs across ${native?.windows ?? 'N/A'} sidebars. These five measures stay fixed across reports, including when they worsen or show no demonstrated change.`,
+      `Firefox workload: ${idleOnly ? number(report.fixture.idle.sizes[0].tabs) : (native?.tabs ?? 'N/A')} mostly discarded tabs across ${idleOnly ? report.fixture.idle.windows : (native?.windows ?? 'N/A')} sidebars. The idle rows use populated folder fixtures; their sizes are shown below. These measures stay fixed for the selected workload, including when they worsen or show no demonstrated change.`,
       '',
-      table(headlineRows, metrics, headers, undefined, { headline: true }),
+      table(
+        [
+          ...(report.fixture?.idle?.sizes || [{ tabs: 1000, folders: 100 }]).map(
+            ({ tabs, folders }) => [
+              `Idle RAM added (${number(tabs)} tabs / ${number(folders)} folders)`,
+              `Firefox/idle-${tabs}/enabled-idle/settled-added-resident.bytes`,
+            ],
+          ),
+          ...(idleOnly ? [] : headlineRows),
+        ],
+        metrics,
+        headers,
+        undefined,
+        { headline: true },
+      ),
       '',
-      'Memory is for the extension process, including Firefox runtime and the control extension, not total browser RAM. The p95 reply time describes the slower end of warm tab-data requests, not a complete click-to-screen response. Folder timings include test settlement overhead; processor time is not a battery-life measurement.',
+      'Idle RAM is the added resident memory after natural settlement with all folders expanded, compared with Tabernacle disabled in the same profile. Setup and verification finish before a 30–60 second quiet period, with no forced GC/CC. It is not total browser RAM.' +
+        (idleOnly
+          ? ''
+          : ' Peak memory includes Firefox runtime and the control extension. The p95 reply time describes the slower end of warm tab-data requests, not a complete click-to-screen response. Folder timings include test settlement overhead; processor time is not a battery-life measurement.'),
       '',
       `Regression review flags across the full comparison: **${nativeFlags} Firefox metrics; ${syntheticFlags} synthetic controller metrics**. See the detailed tables for every flag. Synthetic heap is not Firefox RAM; multiple flags can describe related effects.`,
-      '',
-      '## CPU and memory overview',
-      '',
-      table(resourceRows, metrics, headers),
-      '',
-      'Read these alongside idle and peak process memory in the headlines. Added memory subtracts the same profile with Tabernacle disabled; it is an estimate of the extension’s additional process cost.',
-      '',
-      'Quiet idle waits five seconds with both sidebars open and no snapshot requests or DOM traversal inside the CPU window. It follows forced collection and includes CPU-sampling boundary overhead; it is not a long-term idle or battery test. For scale, 50 ms of CPU over five seconds is about 1% of one core, not 1% of the whole machine.',
-      '',
-      'The fixed active workload totals startup, warm requests, search, title updates, folder actions, reopening and three view cycles. CPU and elapsed times are summed within each run before comparing medians. They include verification/settlement work, exclude idle/closed/disable phases and explicit memory collection, and do not measure all work performed by Firefox on the extension’s behalf. Lower CPU time means less processor work for this fixture; it is not an instantaneous CPU percentage.',
     );
+    if (!idleOnly)
+      lines.push(
+        '',
+        '## CPU and memory overview',
+        '',
+        table(resourceRows, metrics, headers),
+        '',
+        'Read these alongside the settled folder-idle memory in the headlines. Added memory subtracts the same profile with Tabernacle disabled; it is an estimate of the extension’s additional process cost.',
+        '',
+        'Quiet idle waits five seconds with both sidebars open and no snapshot requests or DOM traversal inside the CPU window. It follows forced collection and includes CPU-sampling boundary overhead; it is not a long-term idle or battery test. For scale, 50 ms of CPU over five seconds is about 1% of one core, not 1% of the whole machine.',
+        '',
+        'The fixed active workload totals startup, warm requests, search, title updates, folder actions, reopening and three view cycles. CPU and elapsed times are summed within each run before comparing medians. They include verification/settlement work, exclude idle/closed/disable phases and explicit memory collection, and do not measure all work performed by Firefox on the extension’s behalf. Lower CPU time means less processor work for this fixture; it is not an instantaneous CPU percentage.',
+      );
   }
 
   const selected = new Set();
   if (!report.syntheticOnly) {
+    const rows = (report.fixture?.idle?.sizes || [{ tabs: 1000, folders: 100 }]).flatMap(
+      ({ tabs, folders }) => {
+        const label = `${number(tabs)} tabs / ${number(folders)} folders`,
+          prefix = `Firefox/idle-${tabs}`;
+        return [
+          [
+            `${label}: resident memory added`,
+            `${prefix}/enabled-idle/settled-added-resident.bytes`,
+          ],
+          [
+            `${label}: enabled process resident memory`,
+            `${prefix}/enabled-idle/settled-resident.bytes`,
+          ],
+          [
+            `${label}: disabled process resident memory`,
+            `${prefix}/disabled-final/settled-resident.bytes`,
+          ],
+          [`${label}: time allowed to settle`, `${prefix}/enabled-idle/elapsed.ms`],
+        ];
+      },
+    );
+    rows.forEach(([, key]) => selected.add(key));
+    lines.push(
+      '',
+      '## Settled idle memory',
+      '',
+      table(
+        rows,
+        metrics,
+        headers,
+        ['baseline', 'candidate'].map((role) => correct(report, role, 'idle-native')),
+      ),
+      '',
+      'Each size runs in a fresh isolated Firefox profile. All folders are expanded and populated in both sidebars, with three levels of folders and unloaded native tabs. After setup and complete sidebar verification, the extension gets at least 30 seconds to release startup memory naturally. OS RSS is sampled every two seconds; the final ten-second window must span no more than 1 MiB or 1% of resident memory, whichever is larger. If it has not settled within 60 seconds, the run is inconclusive.',
+      '',
+      'No forced GC/CC, snapshot requests, DOM traversal or tab/folder actions occur during the quiet period. The headline uses median OS RSS from the final stable window, before diagnostic memory reporters run. It subtracts the settled disabled sample from the settled enabled sample of the same extension process. Both retain the same native tabs and saved organisation. Negative estimates are retained, not clamped; memory retained by the allocator after disabling can make this estimate conservative. These are estimates of added extension-process RAM, not exact ownership or whole-browser RAM.',
+    );
+  }
+  if (!report.syntheticOnly && !idleOnly) {
     const rows = nativeRows.map(([label, key]) => [label, `Firefox/${key}`]);
     rows.forEach(([, key]) => selected.add(key));
     lines.push(
