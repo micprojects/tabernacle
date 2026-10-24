@@ -121,7 +121,12 @@ await page.addInitScript(() => {
         });
         const data =
           message.incremental && !fixture.legacy
-            ? fixture.encoder.encode(message.windowId, state, message.snapshotToken)
+            ? fixture.encoder.encode(
+                message.windowId,
+                state,
+                message.snapshotToken,
+                message.incremental,
+              )
             : state;
         fixture.replies.push({
           type,
@@ -131,6 +136,7 @@ await page.addInitScript(() => {
           full: !data.baseToken,
           changes: data.changes?.length,
           hasPreferences: Boolean((data.state || data).newTab),
+          hasGroups: Object.hasOwn(data.state || data, 'groups'),
         });
         return structuredClone({ ok: true, data });
       },
@@ -148,7 +154,7 @@ try {
     const rows = page.locator(path === 'activity.html' ? '.activity-row' : '#folders .folder');
     await expect(rows.first()).toBeVisible();
     const first = await page.evaluate(() => transportFixture.replies.at(-1));
-    expect(first).toMatchObject({ type, incremental: true, full: true });
+    expect(first).toMatchObject({ type, incremental: 3, full: true, hasGroups: true });
     if (type === 'getNewTabState') {
       expect(first.hasPreferences).toBe(true);
       await expect(page.locator('#links a')).toHaveText(['Fixture link']);
@@ -160,6 +166,7 @@ try {
         type,
         full: false,
         changes: 0,
+        hasGroups: false,
       });
     for (const windowId of [2, 1]) {
       const before = await page.evaluate(() => transportFixture.replies.length);

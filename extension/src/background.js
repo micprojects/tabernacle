@@ -69,7 +69,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
         data:
           (['tabernacle:snapshot', 'tabernacle:getNewTabState'].includes(message.type) &&
             (message.incremental === true || message.incremental === 1)) ||
-          (message.incremental === 2 &&
+          ([2, 3].includes(message.incremental) &&
             Array.isArray(data?.tabs) &&
             Array.isArray(data.groups) &&
             typeof data.generation === 'string' &&
@@ -78,7 +78,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
                 message.windowId,
                 data,
                 message.snapshotToken,
-                message.incremental === 2 ? 2 : 1,
+                [2, 3].includes(message.incremental) ? message.incremental : 1,
               )
             : data,
       }),

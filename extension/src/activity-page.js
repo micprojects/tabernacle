@@ -414,7 +414,7 @@ async function start() {
     };
 
     readSnapshot = createSnapshotReader((snapshotToken) =>
-      send('snapshot', { incremental: true, snapshotToken }),
+      send('snapshot', { incremental: 3, snapshotToken }),
     );
     request = (type, args) => (type === 'snapshot' ? readSnapshot() : send(type, args));
 

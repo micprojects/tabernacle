@@ -1454,13 +1454,13 @@ async function start() {
     };
 
     readSnapshot = createSnapshotReader((snapshotToken) =>
-      send('snapshot', { incremental: 2, snapshotToken }),
+      send('snapshot', { incremental: 3, snapshotToken }),
     );
     request = (type, args) =>
       (type === 'snapshot'
         ? readSnapshot()
         : readSnapshot.perform((snapshotToken) =>
-            send(type, { ...args, incremental: 2, snapshotToken }),
+            send(type, { ...args, incremental: 3, snapshotToken }),
           )
       ).finally(() => {
         // Late action and recovery responses cannot repopulate a disposed view.

@@ -133,7 +133,9 @@ try {
       secondMounted: Boolean(
         second?.isConnected && tree.querySelector('[data-key="group:g4"]')?.isConnected,
       ),
-      firstReleased: !tree.querySelector('[data-key="tab:1000"]') && !firstAncestor?.isConnected,
+      firstReleased:
+        !tree.querySelector('[data-key="tab:1000"]') &&
+        !tree.querySelector('[data-key="group:g9"]'),
       scrollUnchanged: firstTop === top && tree.scrollTop === top,
     };
   });
@@ -1545,6 +1547,159 @@ try {
     ).toBe(true);
   }
   console.log('✓ Narrow filtered trees cross the 100-row rendering boundary in both directions');
+  const folderReuse = await page.evaluate(async () => {
+    viewportTest.search('');
+    viewportTest.poolDomain(null);
+    const next = structuredClone(fixture);
+    next.tabs = [];
+    next.groups = Array.from({ length: 500 }, (_, i) => ({
+      id: `reuse-${i}`,
+      name: `Reuse folder ${i}`,
+      parentId: null,
+    }));
+    next.view = { scopeId: null, collapsed: [] };
+    viewportTest.set(next);
+    viewportTest.resetRows();
+    viewportTest.reveal('group:reuse-0');
+    viewportGroupBuilds = 0;
+    viewportCreationBuilds = 0;
+    const tree = document.getElementById('tree');
+    const first = tree.querySelector('[data-key="group:reuse-0"]');
+    const children = [...first.childNodes];
+    const icon = first.querySelector('.disclosure').firstChild;
+    const changed = structuredClone(next);
+    changed.tabs = [
+      {
+        id: 9001,
+        treeId: 'reuse-tab',
+        windowId: 1,
+        index: 0,
+        order: 0,
+        groupId: 'reuse-0',
+        parentTabId: null,
+        title: 'Playing',
+        audible: true,
+      },
+    ];
+    viewportTest.patch(changed);
+    const counted = tree.querySelector('[data-key="group:reuse-0"]');
+    const patched =
+      first === counted &&
+      children.every((child) => counted.contains(child)) &&
+      counted.querySelector('.group-count').textContent === '1' &&
+      counted.querySelector('.disclosure').firstChild === icon &&
+      counted.querySelector('.audio-indicator')?.getAttribute('aria-label') ===
+        '1 tab playing audio in this folder';
+    viewportTest.patch(next);
+    const silent =
+      !first.querySelector('.audio-indicator') &&
+      first.querySelector('.group-count').textContent === '0';
+    document.getElementById('home').focus();
+    let correct = true,
+      maxPool = 0;
+    for (let offset = 0; offset < tree.scrollHeight; offset += 620) {
+      tree.scrollTop = offset;
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      maxPool = Math.max(maxPool, sidebarRowsProbe().totalPooled);
+      for (const row of tree.querySelectorAll('.group-row')) {
+        const i = Number(row.dataset.id.slice('reuse-'.length));
+        correct &&=
+          row.dataset.dropId === row.dataset.id &&
+          row.querySelector('.label').textContent === `Reuse folder ${i}`;
+      }
+      for (const add of tree.querySelectorAll('.new-tab-action'))
+        correct &&=
+          add.dataset.key === `new-tab:${add.dataset.groupId || 'null'}` &&
+          add.closest('.new-tab-item').dataset.dropId === add.dataset.groupId;
+    }
+    return {
+      patched,
+      silent,
+      correct,
+      maxPool,
+      groups: viewportGroupBuilds,
+      creation: viewportCreationBuilds,
+    };
+  });
+  expect(folderReuse.patched).toBe(true);
+  expect(folderReuse.silent).toBe(true);
+  expect(folderReuse.correct).toBe(true);
+  expect(folderReuse.maxPool).toBeLessThanOrEqual(64);
+  expect(folderReuse.groups).toBeLessThan(150);
+  expect(folderReuse.creation).toBeLessThan(150);
+  const reusedAdd = page.locator('#tree .new-tab-action[data-group-id^="reuse-"]').last();
+  const destination = await reusedAdd.getAttribute('data-group-id');
+  await reusedAdd.click();
+  expect(await page.evaluate(() => viewportTest.calls.at(-1))).toMatchObject({
+    type: 'newTab',
+    groupId: destination,
+  });
+  console.log(
+    '✓ Folder and creation rows reuse bounded controls with current identities and in-place counts/audio',
+  );
+
+  await page.evaluate(() => {
+    document.getElementById('home').focus();
+    viewportTest.reveal('group:reuse-0');
+  });
+  const heldCreation = page.locator('[data-key="new-tab:reuse-0"]');
+  await heldCreation.scrollIntoViewIfNeeded();
+  const heldBounds = await heldCreation.boundingBox();
+  await page.mouse.move(heldBounds.x + heldBounds.width / 2, heldBounds.y + heldBounds.height / 2);
+  await page.mouse.down();
+  await page.evaluate(() => {
+    window.heldCreation = document.querySelector('[data-key="new-tab:reuse-0"]');
+    document.getElementById('tree').scrollTop = document.getElementById('tree').scrollHeight;
+  });
+  await page.waitForTimeout(40);
+  expect(
+    await page.evaluate(() => ({
+      key: heldCreation.dataset.key,
+      connected: heldCreation.isConnected,
+    })),
+  ).toEqual({ key: 'new-tab:reuse-0', connected: true });
+  await page.mouse.up();
+
+  for (const childControls of [true, false]) {
+    const target = await page.evaluate((childControls) => {
+      document.getElementById('home').focus();
+      const before = new Set(document.querySelectorAll('#tree .new-tab-action'));
+      const next = structuredClone(fixture);
+      next.groups = childControls
+        ? []
+        : Array.from({ length: 500 }, (_, i) => ({
+            id: `reuse-${i}`,
+            name: `Reuse folder ${i}`,
+            parentId: null,
+          }));
+      next.tabs = childControls
+        ? Array.from({ length: 300 }, (_, i) => ({
+            ...fixture.tabs[i],
+            groupId: null,
+            parentTabId: i % 2 ? i : null,
+          }))
+        : [];
+      viewportTest.set(next);
+      const prefix = childControls ? 'new-child-tab:' : 'new-tab:reuse-';
+      const control = [...document.querySelectorAll('#tree .new-tab-action')].find(
+        (node) => before.has(node) && node.dataset.key.startsWith(prefix),
+      );
+      if (!control) throw new Error('Expected an existing control to cross creation row kinds');
+      const key = control.dataset.key;
+      const expected = childControls
+        ? { type: 'newChildTab', id: Number(control.dataset.parentTabId) }
+        : { type: 'newTab', groupId: control.dataset.groupId };
+      viewportTest.reveal(key);
+      return { key, expected };
+    }, childControls);
+    await page.locator(`[data-key="${target.key}"]`).click();
+    expect(await page.evaluate(() => viewportTest.calls.at(-1))).toMatchObject(target.expected);
+  }
+  console.log(
+    '✓ Recycled creation controls switch between folders and child tabs with the current action target',
+  );
+  await page.evaluate(() => viewportTest.set(structuredClone(fixture)));
   expect(errors).toEqual([]);
 } finally {
   await close();

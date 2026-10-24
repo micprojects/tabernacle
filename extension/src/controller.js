@@ -499,7 +499,7 @@ export function createController(
 
   async function selectionState(windowId) {
     const [tabs, view] = await readTogether([listTabs(windowId), viewFor(windowId)]);
-    return { groups: structuredClone(model.groups), tabs, view };
+    return { groups: presentation.record(model.groups), tabs, view };
   }
 
   async function settleClose(windowId, before, closedId, current) {
@@ -925,7 +925,7 @@ export function createController(
       }
     }
     closeSelection.remember(windowId, {
-      groups: structuredClone(model.groups),
+      groups: presentation.record(model.groups),
       tabs: presentedTabs,
       view,
     });

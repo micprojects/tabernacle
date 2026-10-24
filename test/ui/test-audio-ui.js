@@ -80,13 +80,13 @@ try {
       const value = await (await ready).requestForTransport({ type, windowId: 1, ...args });
       if (
         (type === 'snapshot' && args.incremental) ||
-        (args.incremental === 2 && Array.isArray(value?.tabs))
+        ([2, 3].includes(args.incremental) && Array.isArray(value?.tabs))
       ) {
         const wire = testing.encoder.encode(
           1,
           value,
           args.snapshotToken,
-          args.incremental === 2 ? 2 : 1,
+          [2, 3].includes(args.incremental) ? args.incremental : 1,
         );
         if (type !== 'snapshot' && wire.baseToken) testing.actionDeltas++;
         return structuredClone(wire);

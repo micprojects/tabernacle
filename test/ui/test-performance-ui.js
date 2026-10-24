@@ -111,14 +111,14 @@ try {
           const state = await controller.requestForTransport(message);
           if (
             !(message.type === 'snapshot' && message.incremental) &&
-            !(message.incremental === 2 && Array.isArray(state?.tabs))
+            !([2, 3].includes(message.incremental) && Array.isArray(state?.tabs))
           )
             return structuredClone(state);
           const result = snapshots.encode(
             message.windowId,
             state,
             message.snapshotToken,
-            message.incremental === 2 ? 2 : 1,
+            [2, 3].includes(message.incremental) ? message.incremental : 1,
           );
           testing.transfer = result;
           return structuredClone(result);
@@ -391,6 +391,7 @@ try {
     2,
   ]);
   expect(await page.evaluate(() => Object.hasOwn(perfTest.transfer.state, 'tabs'))).toBe(false);
+  expect(await page.evaluate(() => Object.hasOwn(perfTest.transfer.state, 'groups'))).toBe(false);
   console.log('✓ A title update keeps unrelated rows and their contents in place');
 
   await page.locator('#search-toggle').click();

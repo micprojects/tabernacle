@@ -425,7 +425,7 @@ async function start() {
     };
 
     readSnapshot = createSnapshotReader((snapshotToken) =>
-      send('getNewTabState', { incremental: true, snapshotToken }),
+      send('getNewTabState', { incremental: 3, snapshotToken }),
     );
     request = (type, args) => (type === 'getNewTabState' ? readSnapshot() : send(type, args));
     const token = params.get('preview');

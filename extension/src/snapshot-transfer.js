@@ -1,4 +1,4 @@
-import { isPlainPresentation } from './presentation-cache.js';
+import { isImmutablePresentation, isPlainPresentation } from './presentation-cache.js';
 
 // Native messaging copies every object across processes. Keep unchanged tabs
 // in the receiving view, while continuing to read authoritative full snapshots.
@@ -47,6 +47,7 @@ export function createSnapshotEncoder(options = {}) {
     if (!Number.isSafeInteger(value) || value < 0)
       throw new RangeError('Snapshot retention limits must be non-negative integers.');
   const previous = new Map();
+  const groupTokens = new WeakMap();
   const generation = crypto.randomUUID();
   let sequence = 0;
   let tabReferences = 0;
@@ -69,6 +70,14 @@ export function createSnapshotEncoder(options = {}) {
       const before = previous.get(baseToken);
       const retainable = isPlainPresentation(state);
       const token = `${generation}:${++sequence}`;
+      let groupsToken;
+      if (version === 3 && isImmutablePresentation(state.groups)) {
+        groupsToken = groupTokens.get(state.groups);
+        if (!groupsToken) {
+          groupsToken = `${token}:groups`;
+          groupTokens.set(state.groups, groupsToken);
+        }
+      }
       let result = { token, state };
       if (
         retainable &&
@@ -87,8 +96,9 @@ export function createSnapshotEncoder(options = {}) {
           for (const [index, tab] of state.tabs.entries())
             if (!sameValue(tab, before.tabs[index])) changes.push({ index, tab });
         // Large structural changes are cheaper and simpler to send in full.
-        if (changes.length < state.tabs.length / 2) {
+        if (changes.length < state.tabs.length / 2 || (version === 3 && !changes.length)) {
           const { tabs, ...rest } = state;
+          if (groupsToken && groupsToken === before.groupsToken) delete rest.groups;
           result = { token, baseToken, state: rest, changes };
         }
       }
@@ -102,10 +112,13 @@ export function createSnapshotEncoder(options = {}) {
           windowId,
           generation: state.generation,
           tabs: state.tabs,
+          ...(groupsToken ? { groupsToken } : {}),
           lastUsed: time,
         });
         tabReferences += state.tabs.length;
       }
+      if (version === 3)
+        return { ...result, snapshotProtocol: 3, ...(groupsToken ? { groupsToken } : {}) };
       return version === 2 ? { ...result, snapshotProtocol: 2 } : result;
     },
 
@@ -145,9 +158,24 @@ export function createSnapshotReader(send) {
       if (Array.isArray(value.tabs)) return true;
       if (!value.token || !value.state) return false;
       if (value.baseToken && value.baseToken !== before?.token) return false;
-      if (value.snapshotProtocol !== 2) return value.snapshotProtocol === undefined;
+      if (![2, 3].includes(value.snapshotProtocol)) return value.snapshotProtocol === undefined;
       if (typeof value.token !== 'string' || typeof value.state.generation !== 'string')
         return false;
+      if (value.snapshotProtocol === 3) {
+        if (
+          value.groupsToken !== undefined &&
+          (typeof value.groupsToken !== 'string' || !value.groupsToken)
+        )
+          return false;
+        if (Object.hasOwn(value.state, 'groups')) {
+          if (!Array.isArray(value.state.groups)) return false;
+        } else if (
+          !value.baseToken ||
+          !value.groupsToken ||
+          value.groupsToken !== before?.groupsToken
+        )
+          return false;
+      }
       if (!value.baseToken) return Array.isArray(value.state.tabs);
       if (
         !before ||
@@ -188,17 +216,24 @@ export function createSnapshotReader(send) {
       const tabs = before.state.tabs.slice();
       for (const { index, tab } of result.changes) tabs[index] = tab;
       state = { ...state, tabs };
+      if (result.snapshotProtocol === 3 && !Object.hasOwn(state, 'groups'))
+        state.groups = before.state.groups;
     }
     if (requestEpoch === epoch && requestSequence > completed) {
       completed = requestSequence;
-      previous = envelope ? { token: result.token, state } : undefined;
+      previous = envelope
+        ? { token: result.token, groupsToken: result.groupsToken, state }
+        : undefined;
     }
     const returned = extras ? { ...extras, ...state } : state;
-    if (requestEpoch === epoch && result.snapshotProtocol === 2) {
+    if (requestEpoch === epoch && [2, 3].includes(result.snapshotProtocol)) {
       details.set(
         returned,
         Object.freeze({
           token: result.token,
+          ...(result.snapshotProtocol === 3 && result.groupsToken
+            ? { groupsToken: result.groupsToken }
+            : {}),
           baseToken: result.baseToken,
           indices: result.baseToken
             ? Object.freeze(result.changes.map(({ index }) => index))

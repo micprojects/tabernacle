@@ -7,6 +7,10 @@ const plain = (value) => {
 // walking an unchanged immutable snapshot again. Mutable inputs are never marked.
 const plainPresentations = new WeakSet();
 
+// Only copies owned and deeply frozen by this module can supply identity-based
+// versions. Plain borrowed records can still change without changing identity.
+export const isImmutablePresentation = (value) => plainPresentations.has(value);
+
 export function isPlainPresentation(value) {
   if (value === null || typeof value !== 'object')
     return typeof value !== 'function' && typeof value !== 'symbol';

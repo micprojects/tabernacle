@@ -56,18 +56,22 @@ export function createSidebarRows({
 }) {
   // Keep the previous 96-view dormant budget shared between identity caching
   // and cross-identity reuse. Mounted and interaction-owned rows remain separate.
-  const pooledLeafLimit = 64;
+  const pooledViewLimit = 64;
 
   const virtualDormantLimit = 96;
 
   const rowCache = createRowCache({
-    retain: () => (getTreeRenderer().virtual ? virtualDormantLimit - leafPool.length : 2048),
+    retain: () => (getTreeRenderer().virtual ? virtualDormantLimit - pooledCount() : 2048),
     owned: (node) => treeMotion.owns(node),
   });
 
   const wrappers = new Map();
 
   const leafPool = [];
+  const groupPool = [];
+  const creationPool = [];
+  const creationViews = new Map();
+  const pooledCount = () => leafPool.length + groupPool.length + creationPool.length;
 
   const pooledLeafParts = new WeakMap();
 
@@ -75,11 +79,14 @@ export function createSidebarRows({
 
   const guideColorsApplied = new WeakMap();
 
+  const groupIconsApplied = new WeakMap();
+
   function wrapperFor(kind, id, needsBranch = true, recyclable = false) {
     const key = `${kind}:${id}`;
     usedWrappers.add(key);
     if (!wrappers.has(key)) {
-      const recycled = recyclable && !rowCache.has(key) && leafPool.pop();
+      const pool = kind === 'group' ? groupPool : leafPool;
+      const recycled = recyclable && !rowCache.has(key) && pool.pop();
       if (recycled) {
         wrappers.set(key, recycled.wrapper);
         rowCache.adopt(key, recycled.entry);
@@ -97,7 +104,7 @@ export function createSidebarRows({
     return wrapper;
   }
 
-  // Release only departing, unowned leaf views before assigning entering rows.
+  // Release departing, unowned views before assigning entering rows.
   // Overlapping keys retain their existing controls and loaded favicon.
   function prepareViewportRows(rows, pins, owners) {
     const keep = new Set([
@@ -108,9 +115,12 @@ export function createSidebarRows({
       ...owners,
     ]);
     wrappers.forEach((wrapper, key) => {
-      if (leafPool.length >= pooledLeafLimit || keep.has(key) || wrapper.branch) return;
+      if (pooledCount() >= pooledViewLimit || keep.has(key)) return;
+      const folder = key.startsWith('group:');
+      if (!folder && wrapper.branch) return;
       const row = wrapper.node.firstElementChild;
-      if (!pooledLeafParts.has(row) || wrapper.node.contains(document.activeElement)) return;
+      if ((!folder && !pooledLeafParts.has(row)) || wrapper.node.contains(document.activeElement))
+        return;
       if (
         treeMotion.owns(wrapper.node) ||
         wrapper.node.querySelector(
@@ -122,7 +132,26 @@ export function createSidebarRows({
       if (!entry) return;
       wrapper.node.remove();
       wrappers.delete(key);
-      leafPool.push({ wrapper, entry });
+      // Recycled branches must not retain their previous descendants. Each child
+      // keeps its own cache/interaction ownership and can be reused independently.
+      if (folder) wrapper.branch.replaceChildren();
+      (folder ? groupPool : leafPool).push({ wrapper, entry });
+    });
+    creationViews.forEach((node, key) => {
+      if (
+        pooledCount() >= pooledViewLimit ||
+        keep.has(key) ||
+        node.contains(document.activeElement)
+      )
+        return;
+      const owned =
+        '.dragging, .drop-before, .drop-after, .drop-inside, .drop-invalid, .move-complete, [data-tree-motion]';
+      if (treeMotion.owns(node) || node.matches(owned) || node.querySelector(owned)) return;
+      const entry = rowCache.take(key);
+      if (!entry) return;
+      node.remove();
+      creationViews.delete(key);
+      creationPool.push(entry);
     });
   }
 
@@ -374,6 +403,36 @@ export function createSidebarRows({
     return row;
   }
 
+  function updateGroupRow(row, group, container) {
+    const key = `group:${group.id}`;
+    if (row.dataset.key !== key) {
+      rowPress.delete(row);
+      row.className = 'row group-row';
+      row.dataset.key = key;
+      row.dataset.id = group.id;
+      dropTarget(row, 'group', group.id);
+    }
+    setAttribute(row, 'aria-label', `${group.name}, ${count(group.id)} tabs`);
+    row.title = `${group.name}\nClick to expand/collapse · Double-click to open · Right-click for options`;
+    describeContainer(row, { container }, 'Default container');
+    const label = row.querySelector('.label');
+    if (label.textContent !== group.name) label.textContent = group.name;
+    const total = row.querySelector('.group-count');
+    const countText = String(count(group.id));
+    if (total.textContent !== countText) total.textContent = countText;
+    const playing = getAudioInGroups().get(group.id) || 0;
+    const audio = playingLabel(playing, 'in this folder');
+    const marker = row.querySelector('.audio-indicator');
+    if (playing) {
+      describeAudio(row, audio);
+      if (marker) {
+        setAttribute(marker, 'title', audio);
+        setAttribute(marker, 'aria-label', audio);
+      } else total.before(audioIndicator(audio));
+    } else marker?.remove();
+    return true;
+  }
+
   function paintGuide(branch, color) {
     const key = color || '';
     if (guideColorsApplied.get(branch) === key) return;
@@ -404,16 +463,30 @@ export function createSidebarRows({
           container?.iconUrl,
         ],
         () => createGroupRow(group, container),
+        (row) => updateGroupRow(row, group, container),
       ),
     );
     labelColors.apply(row, appearance.color);
     setAttribute(row, 'aria-expanded', expanded);
     const disclosure = row.querySelector('.disclosure');
     const label = `${expanded ? 'Collapse' : 'Expand'} ${group.name}`;
-    if (disclosure.getAttribute('aria-expanded') !== String(expanded))
+    // Reassigned folders often use the same glyph. Preserve it as well as the
+    // disclosure; counts, names and audio updates do not affect this signature.
+    const iconValues = [
+      expanded,
+      appearance.icon,
+      appearance.color,
+      group.defaultCookieStoreId,
+      container?.icon,
+      container?.iconUrl,
+    ];
+    const previousIcon = groupIconsApplied.get(disclosure);
+    if (!previousIcon || iconValues.some((value, i) => value !== previousIcon[i])) {
       disclosure.replaceChildren(
         folderIcon(group, container, { className: 'group', expanded, appearance }),
       );
+      groupIconsApplied.set(disclosure, iconValues);
+    }
     setAttribute(disclosure, 'aria-expanded', expanded);
     setAttribute(disclosure, 'aria-label', label);
     setAttribute(disclosure, 'title', label);
@@ -421,7 +494,7 @@ export function createSidebarRows({
   }
 
   function groupNode({ group, expanded }, children) {
-    const { node, branch } = wrapperFor('group', group.id);
+    const { node, branch } = wrapperFor('group', group.id, true, getTreeRenderer().virtual);
     const { appearance } = getIndex().folders.details.get(group.id);
     const color = folderIconColor(appearance.color) || 'var(--folder-icon)';
     node.style.setProperty('--item-colour', color);
@@ -872,6 +945,40 @@ export function createSidebarRows({
     return node;
   }
 
+  const creationTarget = (node) => ({
+    groupId: node.dataset.groupId || null,
+    parentTabId: node.dataset.parentTabId ? Number(node.dataset.parentTabId) : null,
+  });
+
+  function createFromRow(event) {
+    const { groupId, parentTabId } = creationTarget(event.currentTarget);
+    const result =
+      parentTabId !== null
+        ? blankAreaAction('newChildTab', { id: parentTabId })
+        : blankAreaAction('newTab', { groupId });
+    treeMotion.addFeedback(event.currentTarget);
+    return result;
+  }
+
+  function creationMenu(event) {
+    const { groupId, parentTabId } = creationTarget(event.currentTarget);
+    return newTabMenu(event, groupId, parentTabId);
+  }
+
+  function creationKeydown(event) {
+    const add = event.currentTarget;
+    if (creationMenu(event) || moveTreeFocus(event, add)) return;
+    if (event.key === 'ArrowLeft' && !event.altKey) {
+      event.preventDefault();
+      const { groupId, parentTabId } = creationTarget(add);
+      const parentKey = parentTabId !== null ? `tab:${parentTabId}` : `group:${groupId}`;
+      getTreeRenderer().ensureVisible(parentKey);
+      const parentRow = getTreeRenderer().mount(parentKey);
+      if (parentRow) selectRow(parentRow);
+      else parent();
+    }
+  }
+
   function newTabItem(groupId, parentTab = null) {
     const group = getIndex().groups.get(groupId);
     const folderColor = getIndex().folders.details.get(groupId)?.appearance.color;
@@ -884,49 +991,51 @@ export function createSidebarRows({
         ? `New tab in ${group.name}`
         : 'New tab';
     const key = parentTab ? `new-child-tab:${parentTabId}` : `new-tab:${groupId}`;
-    return rowCache.get(key, [label, color], () => {
-      const item = el('div', 'new-tab-item');
+    if (getTreeRenderer().virtual && !rowCache.has(key) && creationPool.length)
+      rowCache.adopt(key, creationPool.pop());
+
+    const update = (item) => {
       item.style.setProperty('--item-colour', color);
-      item.setAttribute('role', 'treeitem');
-      item.setAttribute('aria-label', label);
-      const add = button(
-        label,
-        null,
-        (event) => {
-          const result =
-            parentTabId !== null
-              ? blankAreaAction('newChildTab', { id: parentTabId })
-              : blankAreaAction('newTab', { groupId });
-          treeMotion.addFeedback(event.currentTarget);
-          return result;
-        },
-        'new-tab-action',
-      );
+      setAttribute(item, 'aria-label', label);
+      const add = item.querySelector('.new-tab-action');
       add.dataset.key = key;
-      const slot = el('span', 'icon-slot');
-      slot.append(icon('plus'));
-      add.append(slot);
-      add.addEventListener('contextmenu', (event) => newTabMenu(event, groupId, parentTabId));
-      add.addEventListener('keydown', (event) => {
-        if (newTabMenu(event, groupId, parentTabId) || moveTreeFocus(event, add)) return;
-        if (event.key === 'ArrowLeft' && !event.altKey) {
-          event.preventDefault();
-          const parentKey = parentTabId !== null ? `tab:${parentTabId}` : `group:${groupId}`;
-          getTreeRenderer().ensureVisible(parentKey);
-          const parentRow = getTreeRenderer().mount(parentKey);
-          if (parentRow) selectRow(parentRow);
-          else parent();
-        }
-      });
-      item.append(add);
+      add.dataset.groupId = groupId ?? '';
+      add.dataset.parentTabId = parentTabId ?? '';
+      setAttribute(add, 'aria-label', label);
+      setAttribute(add, 'title', label);
       dropTarget(item, parentTab ? 'tab' : 'inside', parentTabId ?? groupId);
-      return item;
-    });
+      return true;
+    };
+
+    const node = rowCache.get(
+      key,
+      [key, label, color],
+      () => {
+        const item = el('div', 'new-tab-item');
+        item.style.setProperty('--item-colour', color);
+        item.setAttribute('role', 'treeitem');
+        item.setAttribute('aria-label', label);
+        const add = button(label, null, createFromRow, 'new-tab-action');
+        add.dataset.key = key;
+        const slot = el('span', 'icon-slot');
+        slot.append(icon('plus'));
+        add.append(slot);
+        add.addEventListener('contextmenu', creationMenu);
+        add.addEventListener('keydown', creationKeydown);
+        item.append(add);
+        update(item);
+        return item;
+      },
+      update,
+    );
+    creationViews.set(key, node);
+    return node;
   }
 
   function finishRows() {
     if (!getTreeRenderer().virtual || getDomainFilter() || getState().look.domains)
       leafPool.length = 0;
+    if (!getTreeRenderer().virtual || getDomainFilter()) groupPool.length = creationPool.length = 0;
     rowCache.finish((key) => {
       if (key.startsWith('pin:group:'))
         return getIndex().groups.has(key.slice('pin:group:'.length));
@@ -940,6 +1049,7 @@ export function createSidebarRows({
     wrappers.forEach((wrapper, key) => {
       if (!usedWrappers.has(key) && !treeMotion.owns(wrapper.node)) wrappers.delete(key);
     });
+    for (const key of creationViews.keys()) if (!rowCache.has(key)) creationViews.delete(key);
     usedWrappers.clear();
   }
 
@@ -968,6 +1078,8 @@ export function createSidebarRows({
   function clearRows() {
     rowCache.clear();
     leafPool.length = 0;
+    groupPool.length = creationPool.length = 0;
+    creationViews.clear();
     wrappers.clear();
     usedWrappers.clear();
   }

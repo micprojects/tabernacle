@@ -124,6 +124,17 @@ test('background validates messages and forwards container and session lifecycle
       }
     }
     const generation = success.data.generation;
+    for (const type of ['tabernacle:snapshot', 'tabernacle:getNewTabState']) {
+      const initial = await receive({ type, windowId: 1, incremental: 3 }, sender);
+      assert.equal(initial.data.snapshotProtocol, 3);
+      assert(Array.isArray(initial.data.state.groups));
+      const delta = await receive(
+        { type, windowId: 1, incremental: 3, snapshotToken: initial.data.token },
+        sender,
+      );
+      assert.equal(delta.data.groupsToken, initial.data.groupsToken);
+      assert.equal(Object.hasOwn(delta.data.state, 'groups'), false);
+    }
     assert.equal(typeof generation, 'string');
     const failure = await receive({ type: 'tabernacle:unknown', windowId: 1 }, sender);
     assert.deepEqual(failure, { ok: false, error: 'Unknown Tabernacle action.' });
