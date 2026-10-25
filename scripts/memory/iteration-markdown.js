@@ -1,3 +1,5 @@
+import { attributionNote, idleAttribution, reporterNote } from './attribution.js';
+
 // Keep the posting table stable across releases; raw samples and the full metric
 // catalogue remain in report.json/report.html beside this summary.
 // Select headlines by user relevance, never by the largest favourable delta.
@@ -282,8 +284,26 @@ export function iterationMarkdown(report) {
       '',
       'Each size runs in a fresh isolated Firefox profile. All folders are expanded and populated in both sidebars, with three levels of folders and unloaded native tabs. After setup and complete sidebar verification, the extension gets at least 30 seconds to release startup memory naturally. OS RSS is sampled every two seconds; the final ten-second window must span no more than 1 MiB or 1% of resident memory, whichever is larger. If it has not settled within 60 seconds, the run is inconclusive.',
       '',
-      'No forced GC/CC, snapshot requests, DOM traversal or tab/folder actions occur during the quiet period. The headline uses median OS RSS from the final stable window, before diagnostic memory reporters run. It subtracts the settled disabled sample from the settled enabled sample of the same extension process. Both retain the same native tabs and saved organisation. Negative estimates are retained, not clamped; memory retained by the allocator after disabling can make this estimate conservative. These are estimates of added extension-process RAM, not exact ownership or whole-browser RAM.',
+      'No forced GC/CC, snapshot requests, DOM traversal or tab/folder actions occur during the quiet period. The headline uses median OS RSS from the final stable window, before diagnostic memory reporters run. It subtracts the settled disabled sample from the settled enabled sample of the same extension process. Both retain the same native tabs and saved organisation. Negative estimates are retained, not clamped; variation in the disabled control can amplify, hide or reverse the enabled-process difference. These are estimates of added extension-process RAM, not exact ownership or whole-browser RAM.',
     );
+  }
+  if (!report.syntheticOnly) {
+    lines.push('', reporterNote);
+    const attribution = idleAttribution(report);
+    if (attribution.length)
+      lines.push(
+        '',
+        '### Paired RAM attribution',
+        '',
+        attributionNote,
+        '',
+        '| Fixture / pair | Old enabled / disabled | New enabled / disabled | Δ enabled | Δ control | Δ added | Diagnostic |',
+        '| :--- | ---: | ---: | ---: | ---: | ---: | :--- |',
+        ...attribution.map((row) => {
+          const mb = (amount) => value('resident.bytes', amount);
+          return `| ${escape(row.prefix)} / ${row.pair} | ${mb(row.baseline.enabled)} / ${mb(row.baseline.disabled)} | ${mb(row.candidate.enabled)} / ${mb(row.candidate.disabled)} | ${mb(row.enabledDelta)} | ${mb(row.controlDelta)} | ${mb(row.addedDelta)} | ${escape(row.note)} |`;
+        }),
+      );
   }
   if (!report.syntheticOnly && !idleOnly) {
     const rows = nativeRows.map(([label, key]) => [label, `Firefox/${key}`]);
