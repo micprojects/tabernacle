@@ -150,6 +150,18 @@ function row(item, timeLabel) {
   return li;
 }
 
+function updateTime(row, before, after) {
+  if (
+    before.length !== after.length ||
+    before.some((value, index) => index !== 7 && value !== after[index])
+  )
+    return false;
+  const time = row.querySelector('.item-time');
+  time.firstChild.data = after[7];
+  if (after[4]) time.title = new Date(after[4]).toLocaleString();
+  return true;
+}
+
 function timeline(items) {
   const folders = createFolderIndex(state);
   const days = new Map();
@@ -192,6 +204,7 @@ function timeline(items) {
             group?.defaultCookieStoreId,
           ],
           () => row(item, timeLabel),
+          updateTime,
         ),
       );
   }

@@ -52,6 +52,85 @@ try {
     '✓ Timeline: search, folder filters, dates, dark mode, narrow screens and forced colours',
   );
 
+  const clockContext = await page.context().browser().newContext({
+    locale: 'en-GB',
+  });
+  try {
+    const clockPage = await clockContext.newPage();
+    clockPage.on('pageerror', (error) => errors.push(error.message));
+    const protocol = await clockContext.newCDPSession(clockPage);
+    await protocol.send('Emulation.setTimezoneOverride', { timezoneId: 'Europe/London' });
+    await clockPage.clock.install({ time: new Date('2026-10-25T12:00:00Z') });
+    await clockPage.goto(`${base}/extension/activity.html?demo&mockup`);
+    await expect(clockPage.locator('.activity-row')).toHaveCount(18);
+    const viewed = clockPage.getByRole('button', { name: 'Switch to tab: CSS grid' });
+    await expect(viewed.locator('.item-time')).toHaveText('3m ago');
+    await viewed.focus();
+    await viewed.evaluate((node) => {
+      const title = node.querySelector('.item-title');
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      document.getSelection().removeAllRanges();
+      document.getSelection().addRange(range);
+      window.clockBefore = {
+        node,
+        descendants: [...node.querySelectorAll('*')],
+        timeNode: node.querySelector('.item-time').firstChild,
+        dateTime: node.querySelector('.item-time').dateTime,
+        tooltip: node.querySelector('.item-time').title,
+      };
+    });
+    await protocol.send('Emulation.setTimezoneOverride', { timezoneId: 'America/New_York' });
+    for (const [advance, label] of [
+      [60000, '4m ago'],
+      [56 * 60000, '1h ago'],
+    ]) {
+      await clockPage.clock.fastForward(advance);
+      await expect(viewed.locator('.item-time')).toHaveText(label);
+      expect(
+        await viewed.evaluate((node) => {
+          const before = window.clockBefore;
+          const time = node.querySelector('.item-time');
+          const selection = document.getSelection();
+          return {
+            sameButton: node === before.node,
+            sameContents: before.descendants.every((child) => node.contains(child)),
+            sameTimeNode: time.firstChild === before.timeNode,
+            focused: document.activeElement === node,
+            selectedTitle: selection.toString(),
+            connectedSelection: selection.anchorNode.isConnected,
+            sameTimestamp: time.dateTime === before.dateTime,
+            currentTooltip: time.title === new Date(time.dateTime).toLocaleString(),
+            changedTooltip: time.title !== before.tooltip,
+          };
+        }),
+      ).toEqual({
+        sameButton: true,
+        sameContents: true,
+        sameTimeNode: true,
+        focused: true,
+        selectedTitle: 'CSS grid layout — MDN',
+        connectedSelection: true,
+        sameTimestamp: true,
+        currentTooltip: true,
+        changedTooltip: true,
+      });
+    }
+    await clockPage.clock.resume();
+    await viewed.click();
+    await expect(clockPage.locator('#activity-status')).toHaveText(
+      'Switched to CSS grid layout — MDN.',
+    );
+    await expect(viewed).toBeEnabled();
+    await clockPage.getByLabel('Search recent activity').fill('nothing-matches');
+    await expect(clockPage.getByText('No matching activity', { exact: true })).toBeVisible();
+    await clockPage.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(clockPage.locator('.activity-row')).toHaveCount(18);
+  } finally {
+    await clockContext.close();
+  }
+  console.log('✓ Minute and hour refreshes preserve focus, selection, actions and date tooltips');
+
   // Real document messaging with a shared controller and simulated browser tabs.
   await page.context().addInitScript(() => {
     const shared = window.opener?.activityTest || { listeners: new Set(), tabs: [], calls: [] };
