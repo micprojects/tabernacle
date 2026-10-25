@@ -846,7 +846,7 @@ function render(motionKey = null) {
   renderPending = false;
   state = pointerMoves?.project(state) || state;
   recentlyClosed?.render();
-  const domainsOpen = domainsView.update(state);
+  const domainsOpen = domainsView.update(state, currentSnapshotDetails());
   if (domainsOpen) {
     previousRender = null;
     return;

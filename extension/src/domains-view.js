@@ -64,6 +64,7 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
   const fold = root.querySelector('#tree-toggle');
   const rows = new Map();
   let state;
+  let renderedToken;
   let savedFocus;
   let foldDisabled;
   let selectedDomain;
@@ -79,6 +80,7 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
     pinnedList.replaceChildren();
     otherList.replaceChildren();
     state = null;
+    renderedToken = null;
     trigger.setAttribute('aria-expanded', 'false');
     fold.disabled = foldDisabled;
     onClose();
@@ -113,14 +115,14 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
       if (control.dataset.rowAction === 'open') {
         selectedDomain = domain;
         selectedIndex = [...content.querySelectorAll('.domains-open-domain')].indexOf(item.open);
-        const sourceId = item.entry.source.id;
+        const sourceId = item.sourceId;
         close({ restoreFocus: false });
         onSelect(domain, sourceId);
       } else if (control.dataset.rowAction === 'pin') {
         if (control.getAttribute('aria-disabled') === 'true') return;
         control.setAttribute('aria-disabled', 'true');
         try {
-          await onPin(domain, !item.entry.pinned);
+          await onPin(domain, !item.pinned);
         } finally {
           control.removeAttribute('aria-disabled');
         }
@@ -143,7 +145,8 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
       alive.add(entry.domain);
       if (!rows.has(entry.domain)) rows.set(entry.domain, makeRow(entry.domain));
       const item = rows.get(entry.domain);
-      item.entry = entry;
+      // Row controls need only the ID, not an older source-tab record.
+      item.sourceId = entry.source.id;
       if (item.count !== entry.count) {
         item.count = entry.count;
         item.open.setAttribute('aria-label', `${entry.domain}, ${entry.count} tabs`);
@@ -196,6 +199,29 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
         : nextButtons[Math.min(focusedIndex, nextButtons.length - 1)] || dismiss;
       target.focus({ preventScroll: true });
     }
+  }
+
+  function unchangedDomains(next, details) {
+    // Only an exact rendered base makes the changed positions exhaustive.
+    // Legacy reads, skipped replies and local projections still render fully.
+    if (
+      !state ||
+      !details?.baseToken ||
+      details.baseToken !== renderedToken ||
+      state.generation !== next.generation ||
+      state.tabs.length !== next.tabs.length
+    )
+      return false;
+    const pins = state.domainPins || [];
+    const nextPins = next.domainPins || [];
+    if (pins.length !== nextPins.length || pins.some((pin, i) => pin !== nextPins[i])) return false;
+    return details.indices.every((i) => {
+      const before = state.tabs[i];
+      const after = next.tabs[i];
+      return (
+        before.id === after.id && before.url === after.url && before.favIconUrl === after.favIconUrl
+      );
+    });
   }
 
   function open({ restore = false } = {}) {
@@ -269,6 +295,7 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
       disposed = true;
       events.abort();
       state = savedFocus = savedScroll = null;
+      renderedToken = null;
       rows.clear();
       pinnedList.replaceChildren();
       otherList.replaceChildren();
@@ -282,11 +309,13 @@ export function createDomainsView({ root, getState, onOpen, onClose, onSelect, o
       trigger.setAttribute('aria-expanded', String(active || !pane.hidden));
     },
 
-    update(next) {
+    update(next, details = null) {
       if (disposed) return false;
+      const unchanged = !pane.hidden && unchangedDomains(next, details);
       state = pane.hidden ? null : next;
       trigger.disabled = false;
-      render();
+      if (!unchanged) render();
+      renderedToken = pane.hidden ? null : details?.token;
       return !pane.hidden;
     },
   };

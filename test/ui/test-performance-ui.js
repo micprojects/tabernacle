@@ -2,6 +2,8 @@ import { instrumentTransfer, instrumentSource } from '../helpers/probes/performa
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startUiTest } from '../helpers/ui-test.js';
+import { replaceSource } from '../../scripts/instrumentation/source.js';
+import { listDomains } from '../../extension/src/domains.js';
 
 const { page, close, base } = await startUiTest({ viewport: { width: 320, height: 820 } });
 const errors = [];
@@ -11,6 +13,17 @@ try {
   const source = await readFile('extension/src/sidebar.js', 'utf8');
   expect(source.match(/createTreeIndex\(state, query\)/g)).toHaveLength(1);
   const transferSource = await readFile('extension/src/snapshot-transfer.js', 'utf8');
+  const domainsSource = await readFile('extension/src/domains.js', 'utf8');
+  await page.route('**/extension/src/domains.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: replaceSource(
+        domainsSource,
+        'export function listDomains(tabs, pins = []) {',
+        'export function listDomains(tabs, pins = []) { window.perfDomainBuilds = (window.perfDomainBuilds || 0) + 1;',
+      ),
+    }),
+  );
   await page.route('**/extension/src/snapshot-transfer.js', (route) =>
     route.fulfill({
       contentType: 'application/javascript',
@@ -89,6 +102,7 @@ try {
       });
 
       const notify = (notice) => {
+        if (testing.suppressNotify) return;
         for (const listener of listeners)
           listener({
             type: 'tabernacle:changed',
@@ -331,6 +345,89 @@ try {
   const priorAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
   await page.locator('#domains-toggle').click();
   expect(await checkProjection()).toEqual({ released: true, target: false });
+  // Domain rows depend on ordered IDs, URLs, icons and pins, not title/audio/activation.
+  await page.evaluate(async () => {
+    perfTest.suppressNotify = true;
+    await sidebarReleaseProbe.refresh();
+  });
+
+  const verifyDomains = async () => {
+    const snapshot = await page.evaluate(() => perfTest.snapshot());
+    const expected = listDomains(snapshot.tabs, snapshot.domainPins).map((entry) => ({
+      domain: entry.domain,
+      count: String(entry.count),
+      pinned: String(entry.pinned),
+      icon: entry.source.favIconUrl || null,
+    }));
+    expect(
+      await page.locator('.domains-row').evaluateAll((rows) =>
+        rows.map((row) => ({
+          domain: row.dataset.domain,
+          count: row.querySelector('.domains-tab-count').textContent,
+          pinned: row.querySelector('.domains-pin').getAttribute('aria-pressed'),
+          icon: row.querySelector('.domains-favicon img')?.getAttribute('src') || null,
+        })),
+      ),
+    ).toEqual(expected);
+  };
+
+  const updateDomainTab = async (id, values, rebuild) => {
+    const before = await page.evaluate(() => perfDomainBuilds);
+    await page.evaluate(
+      async ({ id, values }) => {
+        await perfTest.api.tabs.update(id, values);
+        await sidebarReleaseProbe.refresh();
+      },
+      { id, values },
+    );
+    expect(await page.evaluate(() => perfDomainBuilds)).toBe(before + Number(rebuild));
+    await verifyDomains();
+  };
+
+  await updateDomainTab(2, { title: 'Domain title only' }, false);
+  await updateDomainTab(3, { active: true }, false);
+  await updateDomainTab(2, { audible: true }, false);
+  await updateDomainTab(2, { audible: false, title: 'Tab 1' }, false);
+  await updateDomainTab(2, { url: 'https://child.example.com/two' }, true);
+  const domainIcon = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E';
+  await updateDomainTab(3, { favIconUrl: domainIcon }, true);
+  await page.evaluate(async () => {
+    await sidebarReleaseProbe.action('setDomainPin', { domain: 'child.example.com', pinned: true });
+  });
+  await verifyDomains();
+  // A missing URL update cannot be masked by the following title-only delta.
+  await page.evaluate(async () => {
+    await perfTest.api.tabs.update(2, { url: 'https://example.com/1' });
+    await sidebarReleaseProbe.request('snapshot');
+  });
+  await updateDomainTab(2, { title: 'Skipped domain response' }, true);
+  await page.evaluate(async () => {
+    await sidebarReleaseProbe.action('setDomainPin', {
+      domain: 'child.example.com',
+      pinned: false,
+    });
+  });
+  await updateDomainTab(3, { favIconUrl: undefined }, true);
+  await page.evaluate(() => perfTest.restart());
+  await updateDomainTab(2, { title: 'Tab 1' }, true);
+  // Unversioned snapshots may have been edited in place; identity is not enough.
+  const legacyBuilds = await page.evaluate(() => perfDomainBuilds);
+  await page.evaluate(async () => {
+    const snapshot = await perfTest.snapshot();
+    measureSidebarUpdate(snapshot);
+    snapshot.tabs[1].url = 'https://legacy.test/';
+    measureSidebarUpdate(snapshot);
+  });
+  expect(await page.evaluate(() => perfDomainBuilds)).toBe(legacyBuilds + 2);
+  await expect(page.locator('[data-domain="example.com"] .domains-tab-count')).toHaveText('999');
+  await page.evaluate(async () => {
+    await sidebarReleaseProbe.refresh();
+    perfTest.suppressNotify = false;
+  });
+  await verifyDomains();
+  console.log(
+    '✓ Domains deltas skip irrelevant work and recover changed inputs, skipped replies and legacy reads',
+  );
   await page.locator('.domains-close').click();
   const restoredAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
   expect(restoredAnchor.key).toBe(priorAnchor.key);
