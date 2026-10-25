@@ -340,7 +340,7 @@ export function iterationMarkdown(report) {
     '## Measurement notes',
     '',
     '- The extension process includes Firefox runtime and a fixed control extension. “Added” memory subtracts the disabled sample in the same profile; absolute process memory is not Tabernacle alone.',
-    '- Collected heap measures retention after GC/CC, not ordinary settled RAM. Later lifecycle samples have earlier collections in their history. RSS peaks are sampled once per second, not exact peaks.',
+    '- Collected heap measures retention after GC/CC, not ordinary settled RAM. Later lifecycle samples have earlier collections in their history. RSS peaks are sampled once per second, not exact peaks. Short workers may finish before the first watchdog sample; a zero observed peak does not mean zero memory use.',
     '- Search, enable, folder and reopening times include harness/settlement overhead and a 200 ms stability-observation floor. They are workload timings, not pure interaction latency. CPU rows measure process CPU time during those phases, not CPU percentage. The older enabled-idle CPU phase also includes sidebar verification; use the separate quiet-idle row for the controlled five-second sample.',
     '- Discarded tabs with fallback icons do not represent heavy websites, extensive favicons or other installed extensions. Fixture checks do not replace functional, upgrade or high-capacity suites.',
     '- The tables use a fixed metric selection and include additional regression flags from the full comparison. Missing metrics are N/A; an incompatible revision or failed worker prevents a successful comparison.',

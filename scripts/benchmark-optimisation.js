@@ -14,6 +14,7 @@ import { iterationMarkdown } from './memory/iteration-markdown.js';
 import {
   comparisons,
   iterationHtml,
+  mergeWorkerMetrics,
   nativeMetrics,
   syntheticMetrics,
 } from './memory/iteration-report.js';
@@ -250,6 +251,7 @@ Other exceptional high-capacity tests use benchmark:memory:stress or benchmark:m
                 'Worker fixture or Node runtime changed.',
               );
             else workerContexts.set(workerKey, context);
+            let metrics;
             if (job.kind === 'native' || job.kind === 'idle-native') {
               assert(
                 worker.residentSamples.length &&
@@ -261,20 +263,18 @@ Other exceptional high-capacity tests use benchmark:memory:stress or benchmark:m
                 environment.firefoxVersion,
                 'Firefox runtime changed.',
               );
-              Object.assign(
-                run.metrics,
-                Object.fromEntries(
-                  Object.entries(
-                    nativeMetrics(worker.result, worker.guard, worker.residentSamples),
-                  ).map(([name, value]) => [
-                    job.kind === 'idle-native'
-                      ? name.replace('Firefox/', `Firefox/idle-${worker.tabs}/`)
-                      : name,
-                    value,
-                  ]),
-                ),
+              metrics = Object.fromEntries(
+                Object.entries(
+                  nativeMetrics(worker.result, worker.guard, worker.residentSamples),
+                ).map(([name, value]) => [
+                  job.kind === 'idle-native'
+                    ? name.replace('Firefox/', `Firefox/idle-${worker.tabs}/`)
+                    : name,
+                  value,
+                ]),
               );
-            } else Object.assign(run.metrics, syntheticMetrics(worker.result));
+            } else metrics = syntheticMetrics(worker.result);
+            mergeWorkerMetrics(run.metrics, metrics, worker.guard);
             assert(
               Object.values(run.metrics).every(Number.isFinite),
               'A metric is missing or non-finite.',

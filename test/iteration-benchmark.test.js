@@ -9,7 +9,12 @@ import {
   assessMetric,
 } from '../scripts/memory/iteration-policy.js';
 import { lowerGuardLimits, memoryGuard } from '../scripts/memory/common.js';
-import { comparisons, iterationHtml, nativeMetrics } from '../scripts/memory/iteration-report.js';
+import {
+  comparisons,
+  iterationHtml,
+  mergeWorkerMetrics,
+  nativeMetrics,
+} from '../scripts/memory/iteration-report.js';
 
 const now = Date.now();
 
@@ -171,6 +176,46 @@ function memory(pid, resident, heap) {
     },
   };
 }
+
+test('worker aggregation preserves the largest observed peak across native, idle and synthetic runs', () => {
+  for (const [peaks, expected] of [
+    [
+      [2000, 1000, 500],
+      [2000, 2000, 2000],
+    ],
+    [
+      [1000, 2000, 500],
+      [1000, 2000, 2000],
+    ],
+    [
+      [1000, 500, 2000],
+      [1000, 1000, 2000],
+    ],
+  ]) {
+    const metrics = {};
+    const names = ['Firefox/active.ms', 'Firefox/idle-1000/idle.ms', 'Node-100/cold.ms'];
+    for (const [i, peakRssBytes] of peaks.entries()) {
+      const worker = { [names[i]]: i + 1 };
+      if (i < 2) Object.assign(worker, nativeMetrics({ phases: [] }, { peakRssBytes }));
+      const original = { ...worker };
+      mergeWorkerMetrics(metrics, worker, { peakRssBytes });
+      assert.equal(metrics['Watchdog/owned-peak.bytes'], expected[i]);
+      assert.deepEqual(worker, original);
+    }
+    assert.deepEqual(metrics, {
+      [names[0]]: 1,
+      [names[1]]: 2,
+      [names[2]]: 3,
+      'Watchdog/owned-peak.bytes': 2000,
+    });
+    mergeWorkerMetrics(metrics, { 'Node-100/disposed.ms': 1 }, { peakRssBytes: 0 });
+    assert.equal(metrics['Watchdog/owned-peak.bytes'], 2000);
+  }
+  const syntheticOnly = {};
+  mergeWorkerMetrics(syntheticOnly, { 'Node-100/cold.ms': 1 }, { peakRssBytes: 0 });
+  mergeWorkerMetrics(syntheticOnly, { 'Node-1000/cold.ms': 2 }, { peakRssBytes: 1500 });
+  assert.equal(syntheticOnly['Watchdog/owned-peak.bytes'], 1500);
+});
 
 test('native attribution uses a stable shared extension PID and never conflates heap with RAM', () => {
   const phase = (name, pid, resident, heap) => ({
