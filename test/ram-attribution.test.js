@@ -111,3 +111,21 @@ test('HTML and Markdown expose the same raw paired arithmetic, including calibra
     }
   }
 });
+
+test('reports distinguish deferred reporter protocols from unrecorded historical protocols', () => {
+  const report = {
+    status: 'completed',
+    kind: 'optimisation-noise',
+    requestedPairs: 1,
+    fixture: { idle: { reporterTiming: 'after-both-endpoints', sizes: [] } },
+  };
+  for (const render of [iterationHtml, iterationMarkdown]) {
+    const text = render(report);
+    assert.match(text, /finishes both enabled and disabled OS RSS endpoints before requesting/);
+    assert.match(text, /enabled reporter categories are unavailable/);
+    assert(!text.includes('different reporter histories'));
+    const historical = render({ ...report, fixture: {} });
+    assert.match(historical, /does not record deferred idle reporters/);
+    assert.match(historical, /different reporter histories/);
+  }
+});

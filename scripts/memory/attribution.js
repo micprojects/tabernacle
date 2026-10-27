@@ -4,7 +4,15 @@ export const attributionNote =
   'Added RSS = enabled RSS − disabled RSS. Each delta below is new − old, so Δ added = Δ enabled − Δ control. A changing disabled control can amplify, hide or reverse the enabled-process difference. These diagnostics do not establish a cause, exclude samples or replace matched A/A calibration.';
 
 export const reporterNote =
-  '“Unforced” means no explicit GC/CC request, not an observation without side effects. On macOS, Firefox’s resident memory reporter can purge freed allocator pages even with minimisation disabled. The idle worker reads enabled OS RSS before its memory report, then measures the disabled control after that report. Those endpoints have different reporter histories. A short stable RSS window also does not prove completed reclamation. Do not mix OS RSS, reporter RSS, physical footprint and collected heap.';
+  '“Unforced” means no explicit GC/CC request, not an observation without side effects. On macOS, Firefox’s resident memory reporter can purge freed allocator pages even with minimisation disabled. A short stable RSS window also does not prove completed reclamation. Do not mix OS RSS, reporter RSS, physical footprint and collected heap.';
+
+export function idleReporterNote(report) {
+  return `${reporterNote} ${
+    report.fixture?.idle?.reporterTiming === 'after-both-endpoints'
+      ? 'This idle protocol finishes both enabled and disabled OS RSS endpoints before requesting any memory reporters. The final disabled report is diagnostic; enabled reporter categories are unavailable in this worker.'
+      : 'This report does not record deferred idle reporters. Older idle workers requested a memory report between enabled and disabled OS samples, giving those endpoints different reporter histories. Inspect the recorded harness before treating either endpoint as unperturbed.'
+  }`;
+}
 
 export function idleAttribution(report) {
   const runs = report.runs || [];

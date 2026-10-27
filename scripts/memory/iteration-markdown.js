@@ -1,4 +1,4 @@
-import { attributionNote, idleAttribution, reporterNote } from './attribution.js';
+import { attributionNote, idleAttribution, idleReporterNote } from './attribution.js';
 
 // Keep the posting table stable across releases; raw samples and the full metric
 // catalogue remain in report.json/report.html beside this summary.
@@ -288,7 +288,7 @@ export function iterationMarkdown(report) {
     );
   }
   if (!report.syntheticOnly) {
-    lines.push('', reporterNote);
+    lines.push('', idleReporterNote(report));
     const attribution = idleAttribution(report);
     if (attribution.length)
       lines.push(

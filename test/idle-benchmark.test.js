@@ -4,6 +4,7 @@ import {
   idleFixture,
   verifyIdleSnapshot,
   waitForIdleMemory,
+  runIdleFixture,
 } from '../scripts/memory/idle-fixture.js';
 import {
   iterationFixture,
@@ -176,4 +177,107 @@ test('routine idle work is bounded and the larger scaling fixture is explicit', 
   assert.deepEqual(heavy.idle.sizes, [{ tabs: 5000, folders: 500 }]);
   assert.equal(heavy.idle.minQuietMs, ordinary.idle.minQuietMs);
   assert.deepEqual(iterationFixture.idle.sizes, [{ tabs: 1000, folders: 100 }]);
+});
+
+async function simulatedIdle({ changedContent = false } = {}) {
+  const fixture = idleFixture(100, 10, 2);
+  const created = Array.from({ length: 100 }, (_, i) => i + 1);
+  const nativeIds = [...created, 101, 102];
+  let enabled = false;
+  const events = [];
+  const browser = {
+    async install() {
+      enabled = true;
+    },
+
+    async show() {
+      assert(enabled);
+    },
+
+    async toggle(value) {
+      enabled = value;
+      events.push(value ? 'enable' : 'disable');
+    },
+
+    async panels() {
+      return [1, 2].map((id) => ({ browserId: id, isTarget: enabled, open: enabled }));
+    },
+
+    async frame() {},
+
+    async control() {
+      return nativeIds;
+    },
+
+    async cpu() {
+      return [{ pid: 7, type: 'extension' }];
+    },
+  };
+  const phases = [];
+  let observations = 0;
+  await runIdleFixture({
+    browser,
+    tabs: 100,
+    folders: 10,
+    windows: 2,
+    created,
+    nativeWindows: [1, 2],
+
+    settle: async () => {
+      observations++;
+      return {
+        sidebars: [1, 2].map((windowId) => ({
+          windowId,
+          rowsHash: changedContent && observations === 2 ? 'changed' : 'complete-identities',
+          pins: 0,
+          nativeTabs: 51,
+        })),
+      };
+    },
+
+    authority: async (windowId) => ({
+      windowId,
+      snapshot: {
+        groups: fixture.groups,
+        view: { scopeId: null, collapsed: [] },
+        tabs: [
+          ...fixture.memberships.flatMap((member, i) =>
+            i % 2 === windowId - 1 ? [{ ...member, id: created[i], discarded: true }] : [],
+          ),
+          { id: 100 + windowId },
+        ],
+      },
+    }),
+
+    // Replace the measurement boundary, not the fixture orchestration. Native
+    // smoke coverage executes the actual quiet callbacks and OS sampler.
+    phase: async (name, _work, { memory }) => {
+      events.push(name);
+      const result = { name, enabled, memory };
+      phases.push(result);
+      return result;
+    },
+
+    emit() {},
+
+    policy: iterationFixture.idle,
+  });
+  return { phases, events };
+}
+
+test('idle workflow requests its only memory report after both OS endpoints', async () => {
+  const { phases, events } = await simulatedIdle();
+  assert.deepEqual(phases, [
+    { name: 'enabled-idle', enabled: true, memory: false, verifiedAfterMeasurement: true },
+    { name: 'disabled-final', enabled: false, memory: 'unforced' },
+  ]);
+  assert.deepEqual(events.slice(-3), ['enabled-idle', 'disable', 'disabled-final']);
+  assert.equal(iterationFixture.idle.reporterTiming, 'after-both-endpoints');
+});
+
+test('deferred reporting preserves the check for sidebar changes during the quiet window', async () => {
+  await assert.rejects(
+    simulatedIdle({ changedContent: true }),
+    /Sidebar content changed during idle measurement/,
+  );
 });

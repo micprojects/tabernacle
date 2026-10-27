@@ -163,8 +163,9 @@ export async function runIdleFixture({
   }
 
   async function quiet(name, state = {}) {
-    // All authority/DOM verification finishes BEFORE the quiet period. Memory
-    // reporters run after it, with no forced GC/CC anywhere in this worker.
+    // Finish both OS RSS endpoints before requesting any memory reporters.
+    // On macOS even an unminimised report can purge freed allocator pages.
+    // The final disabled report is diagnostic and cannot perturb either endpoint.
     return phase(
       name,
       async () => {
@@ -178,7 +179,7 @@ export async function runIdleFixture({
         );
         return { ...state, idle };
       },
-      { memory: 'unforced' },
+      { memory: name === 'disabled-final' ? 'unforced' : false },
     );
   }
 
@@ -193,7 +194,18 @@ export async function runIdleFixture({
   await browser.show();
   const settled = await settle();
   await verify();
-  await quiet('enabled-idle', settled);
+  const enabled = await quiet('enabled-idle', settled);
+  // Deferring the reporter also defers the phase helper's usual DOM check.
+  // Preserve it here, after the RSS window and before disabling the add-on.
+  const after = await settle({ stableSamples: 1 });
+  const identities = (value) =>
+    value.sidebars.map((row) => [row.windowId, row.rowsHash, row.pins, row.nativeTabs]);
+  assert.deepEqual(
+    identities(after),
+    identities(settled),
+    'Sidebar content changed during idle measurement',
+  );
+  enabled.verifiedAfterMeasurement = true;
   await verify();
   emit('stage', { name: 'disable-idle-folders' });
   await browser.toggle(false);

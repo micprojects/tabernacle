@@ -2,10 +2,11 @@ import { resolve } from 'node:path';
 import { compareSamples } from './summary.js';
 
 export const iterationFixture = {
-  version: 3,
+  version: 4,
   seed: 17,
   native: { tabs: 1000, windows: 2, livePages: 1, cycles: 3, idleMs: 1500, quietIdleMs: 5000 },
   idle: {
+    reporterTiming: 'after-both-endpoints',
     sizes: [{ tabs: 1000, folders: 100 }],
     windows: 2,
     depth: 3,
