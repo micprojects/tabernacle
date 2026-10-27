@@ -43,74 +43,111 @@ export async function fingerprintNativeHarness() {
 // Actual Firefox process reports, collected in the disposable browser's chrome.
 // Reported process memory and OS RSS are separate metrics; do not add them.
 export async function nativeMemory(browser, minimize = false) {
-  return browser.chrome(async (minimize) => {
-    const reports = await new Promise((resolve, reject) => {
-      const totals = {};
-      const timeout = setTimeout(
-        () => reject(new Error('Firefox memory reporters did not finish within 30 seconds.')),
-        30000,
-      );
-      const manager = Cc['@mozilla.org/memory-reporter-manager;1'].getService(
-        Ci.nsIMemoryReporterManager,
-      );
-      manager.getReportsExtended(
-        (process, path, _kind, units, amount) => {
-          const key = process || 'Main process';
-          const entry = (totals[key] ??= {
-            explicitBytes: 0,
-            selectedDomStyleBytes: 0,
-            selectedImageBytes: 0,
-            orphanDomBytes: null,
-          });
-          if (units === 0 && amount >= 0) {
-            if (path.startsWith('explicit/')) entry.explicitBytes += amount;
-            if (path.startsWith('explicit/') && /\/(dom|style)\//.test(path))
-              entry.selectedDomStyleBytes += amount;
-            if (path.startsWith('explicit/') && /\/(images|image)\//.test(path))
-              entry.selectedImageBytes += amount;
-            if (path.startsWith('explicit/') && path.endsWith('/dom/orphan-nodes'))
-              entry.orphanDomBytes = (entry.orphanDomBytes ?? 0) + amount;
+  const sidebarUrl = browser.sidebarUrl ? new URL(browser.sidebarUrl) : null;
+  if (sidebarUrl && sidebarUrl.protocol !== 'moz-extension:')
+    throw new Error('Memory attribution requires the installed extension origin.');
+  return browser.chrome(
+    async (minimize, origin) => {
+      // Firefox escapes URL separators in memory paths; match the URL origin,
+      // not an occurrence of the UUID in an unrelated URL's path or hostname.
+      const originPath = origin
+        ? new RegExp(
+            String.raw`moz-extension:[/\\]+${origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/\\),])`,
+          )
+        : null;
+      const reports = await new Promise((resolve, reject) => {
+        const totals = {};
+        const timeout = setTimeout(
+          () => reject(new Error('Firefox memory reporters did not finish within 30 seconds.')),
+          30000,
+        );
+        const manager = Cc['@mozilla.org/memory-reporter-manager;1'].getService(
+          Ci.nsIMemoryReporterManager,
+        );
+        manager.getReportsExtended(
+          (process, path, _kind, units, amount) => {
+            const key = process || 'Main process';
+            const entry = (totals[key] ??= {
+              explicitBytes: 0,
+              selectedDomStyleBytes: 0,
+              selectedImageBytes: 0,
+              orphanDomBytes: null,
+              ...(origin ? { attributedExplicitBytes: 0, attributedExplicitReports: 0 } : {}),
+            });
+            // Reporter paths are leaves. Include every context for this origin,
+            // including detached documents and packaged images, without adding
+            // cross-cutting GC-buffer/capacity counters to the explicit tree.
             if (
-              [
-                'resident',
-                'resident-unique',
-                'resident-phys-footprint',
-                'heap-allocated',
-                'js-main-runtime-gc-heap',
-              ].includes(path)
-            )
-              entry[path] = amount;
-          }
-          if (path === 'ghost-windows') entry.ghostWindows = amount;
-        },
-        null,
-        () => {
-          clearTimeout(timeout);
-          resolve(totals);
-        },
-        null,
-        true,
-        minimize,
-        '',
-      );
-    });
-    if (!Object.values(reports).some((report) => Number.isFinite(report.resident)))
-      throw new Error('Firefox memory reporters returned no resident-memory sample.');
-    const info = await ChromeUtils.requestProcInfo();
-    const processes = [info, ...(info.children || [])].map(({ pid, type, memory }) => ({
-      pid,
-      type,
-      reportedBytes: memory,
-    }));
-    return {
-      minimized: minimize,
-      processes,
-      reports,
-      processMetric: 'ChromeUtils.requestProcInfo.memory, sampled after memory reporters finish',
-      categoryNote:
-        'Selected DOM/style and image reporters are partial diagnostic categories, not complete ownership totals. Orphan DOM bytes sum explicit orphan-node reporters only. Absent optional reporters are unavailable, not zero.',
-    };
-  }, minimize);
+              originPath &&
+              units === 0 &&
+              path.startsWith('explicit/') &&
+              originPath.test(path)
+            ) {
+              entry.attributedExplicitReports++;
+              if (!Number.isSafeInteger(amount) || amount < 0) entry.attributedExplicitBytes = null;
+              else if (entry.attributedExplicitBytes !== null)
+                entry.attributedExplicitBytes += amount;
+            }
+            if (units === 0 && amount >= 0) {
+              if (path.startsWith('explicit/')) entry.explicitBytes += amount;
+              if (path.startsWith('explicit/') && /\/(dom|style)\//.test(path))
+                entry.selectedDomStyleBytes += amount;
+              if (path.startsWith('explicit/') && /\/(images|image)\//.test(path))
+                entry.selectedImageBytes += amount;
+              if (path.startsWith('explicit/') && path.endsWith('/dom/orphan-nodes'))
+                entry.orphanDomBytes = (entry.orphanDomBytes ?? 0) + amount;
+              if (
+                [
+                  'resident',
+                  'resident-unique',
+                  'resident-phys-footprint',
+                  'heap-allocated',
+                  'js-main-runtime-gc-heap',
+                ].includes(path)
+              )
+                entry[path] = amount;
+            }
+            if (path === 'ghost-windows') entry.ghostWindows = amount;
+          },
+          null,
+          () => {
+            clearTimeout(timeout);
+            resolve(totals);
+          },
+          null,
+          !origin,
+          minimize,
+          '',
+        );
+      });
+      if (!Object.values(reports).some((report) => Number.isFinite(report.resident)))
+        throw new Error('Firefox memory reporters returned no resident-memory sample.');
+      const info = await ChromeUtils.requestProcInfo();
+      const processes = [info, ...(info.children || [])].map(({ pid, type, memory }) => ({
+        pid,
+        type,
+        reportedBytes: memory,
+      }));
+      return {
+        minimized: minimize,
+        attribution: origin
+          ? {
+              origin,
+              anonymized: false,
+              definition:
+                'Explicit byte leaves containing the installed extension origin, across all reported contexts. Partial attribution, not total addon or system RAM; shared runtime, allocator capacity and external image sources may be unattributed. Full paths are not retained.',
+            }
+          : null,
+        processes,
+        reports,
+        processMetric: 'ChromeUtils.requestProcInfo.memory, sampled after memory reporters finish',
+        categoryNote:
+          'Selected DOM/style and image reporters are partial diagnostic categories, not complete ownership totals. Orphan DOM bytes sum explicit orphan-node reporters only. Absent optional reporters are unavailable, not zero.',
+      };
+    },
+    minimize,
+    sidebarUrl?.hostname ?? null,
+  );
 }
 
 async function attachCommands(browser) {

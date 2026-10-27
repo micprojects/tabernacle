@@ -32,7 +32,8 @@ Every run writes report.md alongside report.json and report.html.
 --confirm: five comparison pairs, first calibrating if no matching cache exists.
 --pilot: one candidate sample; diagnostics only.
 --synthetic-only: no Firefox evidence. Useful for fast controller experiments; uses a separate calibration.
-Idle headline: a separate 1,000-tab / 100-folder, three-level fixture in two sidebars, with natural memory settlement before enabled/disabled samples.
+Ordinary primary memory: Firefox allocations attributed to the extension origin after collection and three view cycles; partial attribution, not total addon/system RAM. Unavailable in idle-only modes.
+RAM regression check: a separate 1,000-tab / 100-folder, three-level fixture in two sidebars, with natural memory settlement before enabled/disabled samples.
 --idle-scaling: dedicated 5,000-tab / 500-folder idle stress comparison, with the same resource ceilings. Omits the active and synthetic workloads; compare this with the ordinary 1,000-tab headline to track scaling.
 --folder-scaling: dedicated 1,000-tab / 500-folder idle comparison, with the same guards; isolates folder growth from tab growth.
 Other exceptional high-capacity tests use benchmark:memory:stress or benchmark:memory:firefox:stress.`);

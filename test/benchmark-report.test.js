@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { exec, repositoryRoot } from '../scripts/memory/common.js';
 import { iterationOptions } from '../scripts/memory/iteration-policy.js';
 import { freezeSource, resolveBenchmarkRef } from '../scripts/memory/iteration-source.js';
-import { comparisons } from '../scripts/memory/iteration-report.js';
+import { comparisons, iterationHtml } from '../scripts/memory/iteration-report.js';
 import { iterationMarkdown } from '../scripts/memory/iteration-markdown.js';
 
 test('posting defaults are committed HEAD against the latest release without changing optimisation defaults', async () => {
@@ -120,6 +120,7 @@ test('missing stable tags and invalid revisions never fall back to HEAD', async 
 
 function pairedReport() {
   const keys = {
+    'Firefox/view-cycles/collected/attributed-explicit.bytes': [10e6, 5e6, 0.01e6],
     'Firefox/enabled-idle/unforced/resident.bytes': [80e6, 60e6, 1e6],
     'Firefox/idle-1000/enabled-idle/settled-added-resident.bytes': [40e6, 20e6, 0.1e6],
     'Firefox/warm-snapshots/reply-p95.ms': [20, 15, 0.1],
@@ -250,7 +251,7 @@ test('whole-number percentages do not change noise verdicts or imply unchanged w
   );
 });
 
-test('headlines keep five relevant measures, compact units and adverse or uncertain results', () => {
+test('headlines keep allocation and RAM measures, compact units and adverse or uncertain results', () => {
   const report = pairedReport();
   const headline = (markdown) =>
     markdown.split('## Headline results\n')[1].split('## CPU and memory overview\n')[0];
@@ -260,7 +261,7 @@ test('headlines keep five relevant measures, compact units and adverse or uncert
       .filter((line) => line.startsWith('|'))
       .slice(2);
   const originalLabels = rows(iterationMarkdown(report)).map((line) => line.split('|')[1]);
-  assert.equal(originalLabels.length, 5);
+  assert.equal(originalLabels.length, 6);
   const metric = (name, old, next, verdict) => ({
     name,
     baseline: { median: old },
@@ -304,6 +305,43 @@ test('headlines keep five relevant measures, compact units and adverse or uncert
   assert.match(summary, /not a complete click-to-screen response/);
   assert.match(summary, /not a battery-life measurement/);
   assert.deepEqual(report, before);
+});
+
+test('allocation headlines preserve RAM checks and expose adverse or unavailable allocation results', () => {
+  const report = pairedReport();
+  const name = 'Firefox/view-cycles/collected/attributed-explicit.bytes';
+  const initial = iterationMarkdown(report);
+  assert.match(
+    initial,
+    /Attributed retained allocations \(after view cycles\) \| 10 MB \| 5 MB \| Improved 50%/,
+  );
+  assert.match(initial, /not complete addon or system RAM/);
+  assert(
+    initial.indexOf('| Attributed retained allocations') < initial.indexOf('| Idle RAM added'),
+  );
+  const html = iterationHtml(report);
+  assert(html.includes(name));
+  assert(html.includes('primary memory measure'));
+  const item = report.comparison.find((entry) => entry.name === name);
+  Object.assign(item, {
+    candidate: { median: 13e6 },
+    delta: 3e6,
+    relativeDelta: 0.3,
+    verdict: 'Investigate regression',
+  });
+  const adverse = iterationMarkdown(report);
+  assert.match(
+    adverse,
+    /Attributed retained allocations \(after view cycles\).*30% more memory; Investigate regression/,
+  );
+  assert.match(adverse, /Idle RAM added/);
+  report.comparison = report.comparison.filter((entry) => entry.name !== name);
+  assert.match(
+    iterationMarkdown(report),
+    /Attributed retained allocations \(after view cycles\) \| N\/A \| N\/A/,
+  );
+  report.status = 'inconclusive';
+  assert(!iterationMarkdown(report).includes('## Headline results'));
 });
 
 test('resource overview follows fixed headlines and keeps scoped CPU and memory assessments', () => {

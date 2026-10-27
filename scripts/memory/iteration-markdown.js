@@ -1,8 +1,17 @@
-import { attributionNote, idleAttribution, idleReporterNote } from './attribution.js';
+import {
+  attributionNote,
+  idleAttribution,
+  idleReporterNote,
+  retainedAllocationNote,
+} from './attribution.js';
 
 // Keep the posting table stable across releases; raw samples and the full metric
 // catalogue remain in report.json/report.html beside this summary.
 // Select headlines by user relevance, never by the largest favourable delta.
+const allocationRow = [
+  'Attributed retained allocations (after view cycles)',
+  'Firefox/view-cycles/collected/attributed-explicit.bytes',
+];
 const headlineRows = [
   ['Peak memory (sampled extension process)', 'Firefox/sampled-extension-RSS-peak.bytes'],
   ['Tab data reply time (p95)', 'Firefox/warm-snapshots/reply-p95.ms'],
@@ -16,6 +25,15 @@ const resourceRows = [
   ['Total elapsed time (fixed active workload)', 'Firefox/active-workload/elapsed.ms'],
 ];
 const nativeRows = [
+  ['Attributed idle allocations (collected)', 'enabled-idle/collected/attributed-explicit.bytes'],
+  [
+    'Attributed allocations with sidebars closed (collected)',
+    'sidebars-closed/collected/attributed-explicit.bytes',
+  ],
+  [
+    'Attributed allocations after view cycles (collected)',
+    'view-cycles/collected/attributed-explicit.bytes',
+  ],
   ['Idle extension-process resident memory', 'enabled-idle/unforced/resident.bytes'],
   ['Idle resident memory added versus disabled', 'enabled-idle/unforced/added-resident.bytes'],
   ['Idle extension-process heap after collection', 'enabled-idle/collected/heap-allocated.bytes'],
@@ -211,6 +229,7 @@ export function iterationMarkdown(report) {
       '',
       table(
         [
+          ...(idleOnly ? [] : [allocationRow]),
           ...(report.fixture?.idle?.sizes || [{ tabs: 1000, folders: 100 }]).map(
             ({ tabs, folders }) => [
               `Idle RAM added (${number(tabs)} tabs / ${number(folders)} folders)`,
@@ -228,7 +247,7 @@ export function iterationMarkdown(report) {
       'Idle RAM is the added resident memory after natural settlement with all folders expanded, compared with Tabernacle disabled in the same profile. Setup and verification finish before a 30–60 second quiet period, with no forced GC/CC. It is not total browser RAM.' +
         (idleOnly
           ? ''
-          : ' Peak memory includes Firefox runtime and the control extension. The p95 reply time describes the slower end of warm tab-data requests, not a complete click-to-screen response. Folder timings include test settlement overhead; processor time is not a battery-life measurement.'),
+          : ` ${retainedAllocationNote} Peak memory includes Firefox runtime and the control extension. The p95 reply time describes the slower end of warm tab-data requests, not a complete click-to-screen response. Folder timings include test settlement overhead; processor time is not a battery-life measurement.`),
       '',
       `Regression review flags across the full comparison: **${nativeFlags} Firefox metrics; ${syntheticFlags} synthetic controller metrics**. See the detailed tables for every flag. Synthetic heap is not Firefox RAM; multiple flags can describe related effects.`,
     );

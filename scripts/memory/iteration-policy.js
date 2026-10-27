@@ -2,9 +2,18 @@ import { resolve } from 'node:path';
 import { compareSamples } from './summary.js';
 
 export const iterationFixture = {
-  version: 4,
+  version: 5,
   seed: 17,
-  native: { tabs: 1000, windows: 2, livePages: 1, cycles: 3, idleMs: 1500, quietIdleMs: 5000 },
+  native: {
+    tabs: 1000,
+    windows: 2,
+    livePages: 1,
+    cycles: 3,
+    idleMs: 1500,
+    quietIdleMs: 5000,
+    allocationMetric: 'Firefox/view-cycles/collected/attributed-explicit.bytes',
+    allocationScope: 'Explicit leaves for the installed extension origin in its owned process',
+  },
   idle: {
     reporterTiming: 'after-both-endpoints',
     sizes: [{ tabs: 1000, folders: 100 }],

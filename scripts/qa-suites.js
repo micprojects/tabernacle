@@ -47,6 +47,7 @@ export const firefoxSuites = [
   'test-firefox',
   'test-upgrade-firefox',
   'test-memory-benchmark-firefox',
+  'test-memory-attribution-firefox',
   'test-domain-filter-firefox',
   'test-tab-collection-firefox',
   'test-move-dialog-firefox',

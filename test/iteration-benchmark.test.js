@@ -239,6 +239,78 @@ test('native attribution uses a stable shared extension PID and never conflates 
   assert.throws(() => nativeMetrics(result, { peakRssBytes: 2000 }), /process restarted/);
 });
 
+test('direct allocation metrics use the owned PID and reject missing, ambiguous or changing attribution', () => {
+  const sample = memory(10, 150, 30);
+  sample.attribution = { origin: 'owned-origin', anonymized: false };
+  const ext = sample.reports['WebExtensions (pid 10)'];
+  ext.attributedExplicitBytes = 17;
+  ext.attributedExplicitReports = 2;
+  sample.reports['extension (pid 110)'] = { attributedExplicitBytes: 9999 };
+  const result = {
+    phases: [
+      {
+        name: 'disabled-before',
+        elapsedMs: 0,
+        cpu: { extensionMs: 0, totalMs: 0 },
+        afterCollection: memory(10, 100, 20),
+      },
+      {
+        name: 'view-cycles',
+        elapsedMs: 1,
+        cpu: { extensionMs: 1, totalMs: 1 },
+        afterCollection: sample,
+        sidebars: [{ elements: 1, rows: 1 }],
+      },
+    ],
+  };
+  const metrics = nativeMetrics(result, { peakRssBytes: 2000 });
+  assert.equal(metrics['Firefox/view-cycles/collected/attributed-explicit.bytes'], 17);
+  assert.equal(metrics['Firefox/view-cycles/collected/added-resident.bytes'], 50);
+  assert.equal(metrics['Firefox/disabled-before/collected/attributed-explicit.bytes'], undefined);
+  for (const alter of [
+    (r) => {
+      r.phases[1].afterCollection.attribution.anonymized = true;
+    },
+    (r) => {
+      r.phases[1].afterCollection.reports['WebExtensions (pid 10)'].attributedExplicitBytes = null;
+    },
+    (r) => {
+      r.phases[1].afterCollection.reports['WebExtensions (pid 10)'].attributedExplicitReports = 0;
+    },
+    (r) => {
+      r.phases[1].afterCollection.reports['extension (pid 10, duplicate)'] = ext;
+    },
+  ]) {
+    const changed = structuredClone(result);
+    alter(changed);
+    assert.throws(() => nativeMetrics(changed, { peakRssBytes: 2000 }));
+  }
+  const closed = structuredClone(result);
+  closed.phases[1].sidebars = [];
+  closed.phases[1].afterCollection.reports['WebExtensions (pid 10)'].attributedExplicitBytes = 0;
+  closed.phases[1].afterCollection.reports['WebExtensions (pid 10)'].attributedExplicitReports = 0;
+  assert.equal(
+    nativeMetrics(closed, { peakRssBytes: 2000 })[
+      'Firefox/view-cycles/collected/attributed-explicit.bytes'
+    ],
+    0,
+  );
+  const renamed = structuredClone(result);
+  renamed.phases[1].afterCollection.reports['extension (pid 10, diagnostic)'] = ext;
+  delete renamed.phases[1].afterCollection.reports['WebExtensions (pid 10)'];
+  assert.equal(
+    nativeMetrics(renamed, { peakRssBytes: 2000 })[
+      'Firefox/view-cycles/collected/attributed-explicit.bytes'
+    ],
+    17,
+  );
+  result.phases.push({
+    ...result.phases[1],
+    afterCollection: { ...sample, attribution: { origin: 'different', anonymized: false } },
+  });
+  assert.throws(() => nativeMetrics(result, { peakRssBytes: 2000 }), /origin changed/);
+});
+
 test('search frame observations stay separate from complete traversal and accept older results', () => {
   const result = {
     phases: [

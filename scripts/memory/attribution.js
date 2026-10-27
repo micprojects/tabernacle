@@ -6,6 +6,9 @@ export const attributionNote =
 export const reporterNote =
   '“Unforced” means no explicit GC/CC request, not an observation without side effects. On macOS, Firefox’s resident memory reporter can purge freed allocator pages even with minimisation disabled. A short stable RSS window also does not prove completed reclamation. Do not mix OS RSS, reporter RSS, physical footprint and collected heap.';
 
+export const retainedAllocationNote =
+  'Attributed retained allocations are the primary memory measure: explicit reporter leaves for the installed extension origin in its owned process, after collection and three view cycles. All reported contexts, detached documents and packaged image sources are included. Shared runtime, allocator capacity and external image sources may be unattributed; this is not complete addon or system RAM. Historical and idle-only reports without this measurement leave it unavailable. RAM, CPU, responsiveness and correctness remain required regression checks.';
+
 export function idleReporterNote(report) {
   return `${reporterNote} ${
     report.fixture?.idle?.reporterTiming === 'after-both-endpoints'
