@@ -198,6 +198,50 @@ test('background validates messages and forwards container and session lifecycle
     );
     assert.equal(failedAction.ok, false);
     assert.equal(typeof failedAction.error, 'string');
+    const sidebarUrl = 'moz-extension://background-test/sidebar.html';
+    api.runtime.getURL = (path) => `moz-extension://background-test/${path}`;
+    const owner = { closed: false, location: { href: sidebarUrl } };
+    let views = [owner];
+    let lookups = 0;
+    api.extension = {
+      getViews: (options) => {
+        assert.deepEqual(options, { type: 'sidebar', windowId: 1 });
+        lookups++;
+        return views;
+      },
+    };
+    const sidebarSender = { ...sender, url: sidebarUrl };
+    const readSidebar = (token, from = sidebarSender) =>
+      receive(
+        { type: 'tabernacle:snapshot', windowId: 1, incremental: 3, snapshotToken: token },
+        from,
+      );
+    const owned = await readSidebar();
+    const continued = await readSidebar(owned.data.token);
+    assert.equal(continued.data.baseToken, owned.data.token);
+    assert.equal(lookups, 1);
+    owner.closed = true;
+    views = [{ closed: false, location: { href: sidebarUrl } }];
+    const reopened = await readSidebar(continued.data.token);
+    assert.equal(reopened.data.baseToken, undefined);
+    assert.deepEqual(reopened.data.state.tabs, owned.data.state.tabs);
+    assert.equal(lookups, 2);
+    const tabSender = { ...sidebarSender, tab: { id: 123 } };
+    const tabBase = await readSidebar(undefined, tabSender);
+    views[0].closed = true;
+    assert.equal(
+      (await readSidebar(tabBase.data.token, tabSender)).data.baseToken,
+      tabBase.data.token,
+    );
+    assert.equal(
+      lookups,
+      2,
+      'Packaged sidebar pages opened as tabs have separate reader lifetimes',
+    );
+    api.extension.getViews = () => {
+      throw new Error('View unavailable');
+    };
+    assert.equal((await readSidebar()).ok, true, 'Owner discovery cannot fail a snapshot');
     await new Promise((resolve) => setTimeout(resolve, 30));
   } finally {
     if (previous === undefined) delete globalThis.browser;

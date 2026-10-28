@@ -94,6 +94,74 @@ test('idle bases expire lazily while refreshed bases retain their full timeout',
   assert.deepEqual(encoder.stats(), { bases: 0, tabReferences: 0 });
 });
 
+test('closed reader owners release only their bases and live owners retain incremental reads', () => {
+  const encoder = createSnapshotEncoder();
+  const state = snapshot();
+  const owned = (windowId, token, getOwner) =>
+    encoder.encode(windowId, state, token, 3, encoder.captureOwner(windowId, token, getOwner));
+  const closed = { closed: false };
+  const live = { closed: false };
+  let lookups = 0;
+  const first = owned(1, undefined, () => closed);
+  const second = owned(2, undefined, () => {
+    lookups++;
+    return live;
+  });
+  const fallback = encoder.encode(1, state, undefined, 3);
+  closed.closed = true;
+  const refreshed = owned(2, second.token, () => {
+    throw new Error('A live base already owns its reader');
+  });
+  assert.equal(refreshed.baseToken, second.token);
+  assert.equal(lookups, 1);
+  assert.deepEqual(encoder.stats(), { bases: 2, tabReferences: 8 });
+  assert.equal(encoder.encode(1, state, fallback.token, 3).baseToken, fallback.token);
+  const expired = owned(1, first.token, () => live);
+  assert.equal(expired.baseToken, undefined);
+  assert.deepEqual(expired.state, state);
+  assert.equal(encoder.encode(2, state, refreshed.token, 3).baseToken, refreshed.token);
+});
+
+test('unreadable window owners expire while ordinary readers and global limits remain intact', () => {
+  const encoder = createSnapshotEncoder({ maxBases: 3, maxTabReferences: 10 });
+  const state = snapshot();
+  const owned = (windowId, token, getOwner) =>
+    encoder.encode(windowId, state, token, 3, encoder.captureOwner(windowId, token, getOwner));
+  let destroyed = false;
+  const owner = {
+    get closed() {
+      if (destroyed) throw new Error('Dead window wrapper');
+      return false;
+    },
+  };
+  const first = owned(1, undefined, () => owner);
+  const second = encoder.encode(2, state, undefined, 3);
+  destroyed = true;
+  assert.equal(encoder.encode(2, state, second.token, 3).baseToken, second.token);
+  assert.deepEqual(encoder.stats(), { bases: 1, tabReferences: 4 });
+  assert.equal(encoder.encode(1, state, first.token, 3).baseToken, undefined);
+  owned(3, undefined, () => ({ closed: false }));
+  assert.deepEqual(encoder.stats(), { bases: 2, tabReferences: 8 });
+  encoder.forget(1);
+  assert.deepEqual(encoder.stats(), { bases: 1, tabReferences: 4 });
+});
+
+test('a queued response retains its sending owner when a replacement sidebar opens', () => {
+  const encoder = createSnapshotEncoder();
+  const state = snapshot();
+  const oldView = { closed: false };
+  const pendingOwner = encoder.captureOwner(1, undefined, () => oldView);
+  oldView.closed = true;
+  const newView = { closed: false };
+  const currentOwner = encoder.captureOwner(1, undefined, () => newView);
+  const current = encoder.encode(1, state, undefined, 3, currentOwner);
+  const late = encoder.encode(1, state, undefined, 3, pendingOwner);
+  assert.deepEqual(late.state, state, 'A successful operation still returns its complete result');
+  assert.deepEqual(encoder.stats(), { bases: 1, tabReferences: 4 });
+  assert.equal(encoder.encode(1, state, current.token, 3).baseToken, current.token);
+  assert.equal(encoder.encode(1, state, late.token, 3).baseToken, undefined);
+});
+
 test('retention validates limits and preserves generation/window fallback behavior', () => {
   for (const options of [-1, { maxBases: 1.5 }, { maxTabReferences: NaN }, { idleMs: -1 }])
     assert.throws(() => createSnapshotEncoder(options), RangeError);

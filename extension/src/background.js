@@ -37,6 +37,20 @@ createNewTabRouting(browser);
 const snapshots = createSnapshotEncoder();
 browser.windows.onRemoved.addListener(snapshots.forget);
 
+function sidebarSnapshotOwner(message, sender) {
+  // Tabs, frames and other extension pages keep the ordinary bounded cache.
+  // Only the unique native sidebar for this window has a proven document owner.
+  if (sender.tab || !sender.url || !Number.isSafeInteger(message.windowId)) return;
+  try {
+    const url = browser.runtime.getURL('sidebar.html');
+    if (sender.url !== url) return;
+    const views = browser.extension.getViews({ type: 'sidebar', windowId: message.windowId });
+    if (views.length === 1 && !views[0].closed && views[0].location.href === url) return views[0];
+  } catch {
+    // An unavailable/closing view must not fail an already committed action.
+  }
+}
+
 // Register listeners synchronously so Manifest V3 can wake this event page.
 browser.runtime.onMessage.addListener((message, sender) => {
   if (
@@ -61,6 +75,11 @@ browser.runtime.onMessage.addListener((message, sender) => {
       (error) => ({ ok: false, error: error.message }),
     );
   }
+  // Capture the sending document before entering the controller queue. A slow
+  // response must not acquire the owner of a sidebar reopened in the meantime.
+  const snapshotOwner = snapshots.captureOwner(message.windowId, message.snapshotToken, () =>
+    sidebarSnapshotOwner(message, sender),
+  );
   return controller
     .requestForTransport({ ...message, type: message.type.slice('tabernacle:'.length) })
     .then(
@@ -79,6 +98,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
                 data,
                 message.snapshotToken,
                 [2, 3].includes(message.incremental) ? message.incremental : 1,
+                snapshotOwner,
               )
             : data,
       }),

@@ -59,12 +59,33 @@ export function createSnapshotEncoder(options = {}) {
     previous.delete(token);
   };
 
+  const ownerClosed = (reference) => {
+    if (!reference) return false;
+    const owner = reference.deref();
+    if (!owner) return true;
+    try {
+      return owner.closed === true;
+    } catch {
+      // A destroyed Firefox window wrapper can no longer be inspected.
+      return true;
+    }
+  };
+
   const expire = (time) => {
-    for (const [token, entry] of previous) if (time - entry.lastUsed >= idleMs) remove(token);
+    for (const [token, entry] of previous)
+      if (time - entry.lastUsed >= idleMs || ownerClosed(entry.owner)) remove(token);
   };
 
   return {
-    encode(windowId, state, baseToken, version = 1) {
+    captureOwner(windowId, baseToken, getOwner) {
+      const before = previous.get(baseToken);
+      if (before?.windowId === windowId && before.owner && !ownerClosed(before.owner))
+        return before.owner;
+      const view = getOwner();
+      return view ? new WeakRef(view) : undefined;
+    },
+
+    encode(windowId, state, baseToken, version = 1, owner) {
       const time = now();
       expire(time);
       const before = previous.get(baseToken);
@@ -103,7 +124,17 @@ export function createSnapshotEncoder(options = {}) {
         }
       }
       if (before?.windowId === windowId) remove(baseToken);
-      if (retainable && maxBases && idleMs && state.tabs.length <= maxTabReferences) {
+      owner ??= before?.windowId === windowId ? before.owner : undefined;
+      if (
+        retainable &&
+        maxBases &&
+        idleMs &&
+        state.tabs.length <= maxTabReferences &&
+        !ownerClosed(owner)
+      ) {
+        // A live reader keeps its comparison base. A closed sidebar cannot use
+        // its old token again; a weak owner lets its abandoned records expire
+        // without retaining the document or adding unload messages/timers.
         while (previous.size >= maxBases || tabReferences + state.tabs.length > maxTabReferences)
           remove(previous.keys().next().value);
         // The transport receives immutable presentation rows from its controller.
@@ -113,6 +144,7 @@ export function createSnapshotEncoder(options = {}) {
           generation: state.generation,
           tabs: state.tabs,
           ...(groupsToken ? { groupsToken } : {}),
+          ...(owner ? { owner } : {}),
           lastUsed: time,
         });
         tabReferences += state.tabs.length;
