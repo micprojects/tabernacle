@@ -43,6 +43,8 @@ export function createSettingsBackup({ request }) {
     preview = null;
     mappings.clear();
     $('backup-preview').hidden = true;
+    $('backup-preview-tree').replaceChildren();
+    $('backup-container-mappings').replaceChildren();
     $('backup-status').textContent = '';
     error();
   }

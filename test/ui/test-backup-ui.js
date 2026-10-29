@@ -65,9 +65,23 @@ try {
   await expect(page.locator('#backup-import')).toBeEnabled();
   await page.screenshot({ path: 'test-results/backup-preview-light.png', fullPage: true });
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('#backup-preview')).toBeHidden();
+  await expect(page.locator('#backup-preview-tree')).toBeEmpty();
+  await expect(page.locator('#backup-container-mappings')).toBeEmpty();
   expect((await send('getFolderBackupState')).groups).toEqual(before.groups);
   await expect(page.locator('#backup-preview-button')).toBeFocused();
   await preview();
+  await expect(page.locator('#backup-preview-tree li')).toHaveCount(3);
+  await expect(page.getByLabel('Archive', { exact: true })).toHaveValue('');
+  await expect(page.locator('#backup-import')).toBeDisabled();
+  // Replacing a preview's source must also release the old derived controls.
+  await chooseFile('{bad');
+  await expect(page.locator('#backup-error')).toContainText('invalid');
+  await expect(page.locator('#backup-preview-tree')).toBeEmpty();
+  await expect(page.locator('#backup-container-mappings')).toBeEmpty();
+  await chooseFile(value);
+  await preview();
+  await expect(page.locator('#backup-preview-tree li')).toHaveCount(3);
   await page.getByLabel('Archive', { exact: true }).selectOption('create');
   await commit();
   await expect(page.locator('#backup-status')).toContainText('Imported 2 folders · Reused 1');

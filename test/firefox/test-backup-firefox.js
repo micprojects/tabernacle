@@ -91,6 +91,23 @@ try {
     await driver.findElement(By.id('backup-preview-counts')).getText(),
     '0 folders to create · 2 folders to reuse',
   );
+  await driver.findElement(By.id('backup-cancel')).click();
+  assert.deepEqual(
+    await call(`return {
+      hidden: document.getElementById('backup-preview').hidden,
+      rows: document.getElementById('backup-preview-tree').childElementCount,
+      mappings: document.getElementById('backup-container-mappings').childElementCount,
+      focus: document.activeElement.id,
+    };`),
+    { hidden: true, rows: 0, mappings: 0, focus: 'backup-preview-button' },
+  );
+  assert.deepEqual(await membershipSnapshot(), beforeTabs);
+  await driver.findElement(By.id('backup-preview-button')).click();
+  await driver.wait(
+    until.elementIsVisible(await driver.findElement(By.id('backup-preview'))),
+    5000,
+  );
+  assert.equal((await driver.findElements(By.css('#backup-preview-tree li'))).length, 2);
   await driver.executeScript(
     'const select=document.getElementById("backup-destination");select.value="new";select.dispatchEvent(new Event("change"));',
   );
