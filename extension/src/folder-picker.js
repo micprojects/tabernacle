@@ -75,6 +75,8 @@ export function createFolderPicker({
 
   function close(restoreFocus = false) {
     popup.hidden = true;
+    rows = [];
+    tree.replaceChildren();
     trigger.setAttribute('aria-expanded', 'false');
     if (restoreFocus) trigger.focus();
   }

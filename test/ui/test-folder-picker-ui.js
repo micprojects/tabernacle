@@ -40,6 +40,7 @@ try {
   await expect(destination).toHaveText('Home / Work / Design');
   await expect(destination).toBeFocused();
   await expect(tree).toBeHidden();
+  await expect(tree.locator('[role=treeitem]')).toHaveCount(0);
   await expect(name).toHaveValue('Reading');
   await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   expect(
@@ -79,11 +80,13 @@ try {
   await destination.click();
   await search.press('Escape');
   await expect(tree).toBeHidden();
+  await expect(tree.locator('[role=treeitem]')).toHaveCount(0);
   await expect(destination).toBeFocused();
   await expect(page.locator('#dialog')).toBeVisible();
   await destination.click();
   await page.locator('#dialog').click({ position: { x: 5, y: 5 } });
   await expect(tree).toBeHidden();
+  await expect(tree.locator('[role=treeitem]')).toHaveCount(0);
   await expect(name).toHaveValue('Keyboard group');
   await destination.click();
   await search.fill('Home');
@@ -180,9 +183,63 @@ try {
   await expect(name).toHaveValue('Design');
   await page.keyboard.press('Escape');
   await expect(page.locator('#dialog')).toBeHidden();
+  await page.locator('#new-group').click();
+  await page.evaluate(async () => {
+    const { createFolderPicker } = await import('/extension/src/folder-picker.js');
+    const state = {
+      groups: Array.from({ length: 1000 }, (_, i) => ({
+        id: `large-${i}`,
+        name: `Folder ${String(i).padStart(4, '0')}`,
+        parentId: i === 1 ? 'large-0' : i === 2 ? 'large-1' : null,
+      })),
+      containers: [],
+      look: {},
+    };
+    window.largePicker = createFolderPicker({
+      getState: () => state,
+      parentId: 'large-2',
+      dialog: document.getElementById('dialog'),
+    });
+    document.getElementById('dialog-content').replaceChildren(window.largePicker.element);
+  });
+  const labels = Array.from({ length: 1000 }, (_, i) => `Folder ${String(i).padStart(4, '0')}`);
+  for (const layout of [
+    { width: 360, height: 720, colorScheme: 'light', forcedColors: 'none' },
+    { width: 220, height: 360, colorScheme: 'dark', forcedColors: 'none' },
+    { width: 320, height: 660, colorScheme: 'dark', forcedColors: 'active' },
+  ]) {
+    await page.setViewportSize({ width: layout.width, height: layout.height });
+    await page.emulateMedia({ colorScheme: layout.colorScheme, forcedColors: layout.forcedColors });
+    await destination.click();
+    await expect(folder('Folder 0002')).toHaveAttribute('aria-level', '4');
+    await search.fill('Folder');
+    expect(
+      await tree
+        .locator('[role=treeitem]')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label'))),
+    ).toEqual(labels);
+    await search.press('ArrowDown');
+    await page.keyboard.press('End');
+    await expect(folder('Folder 0999')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(destination).toBeFocused();
+    await expect(destination).toHaveText('Home / Folder 0999');
+    await expect(tree.locator('[role=treeitem]')).toHaveCount(0);
+    await destination.click();
+    await expect(folder('Folder 0999')).toHaveAttribute('aria-selected', 'true');
+    await expect(tree.locator('[role=treeitem]')).toHaveCount(1001);
+    await search.fill('Folder 0002');
+    await search.press('Enter');
+    await expect(destination).toHaveText('Home / Folder 0000 / Folder 0001 / Folder 0002');
+    await expect(tree.locator('[role=treeitem]')).toHaveCount(0);
+  }
+  await destination.click();
+  await page.evaluate(() => window.largePicker.destroy());
+  await expect(tree.locator('[role=treeitem]')).toHaveCount(0);
+  await page.locator('#dialog-cancel').click();
   expect(errors).toEqual([]);
   console.log(
-    '✓ Duplicate names, deleted destinations, dark/narrow layouts and dialog cleanup work',
+    '✓ Duplicate names, deleted destinations, layouts and 1,000-folder close/reopen ownership work',
   );
 } finally {
   await close();
