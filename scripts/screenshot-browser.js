@@ -14,7 +14,9 @@ export class ScreenshotBrowser {
     this.root = await mkdtemp(join(tmpdir(), 'tabernacle-screenshots-'));
     const appData = join(this.root, 'app-data');
     await mkdir(appData);
-    const options = new firefox.Options().addArguments('-no-remote').enableBidi();
+    // Match ordinary test sessions: a fresh profile must not apply a pending
+    // application update before WebDriver can claim its owned browser process.
+    const options = new firefox.Options().addArguments('-no-remote', '-first-startup').enableBidi();
     if (!fixture.headed) options.addArguments('-headless');
     if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
     else if (process.platform === 'darwin')
@@ -23,6 +25,7 @@ export class ScreenshotBrowser {
     options.setPreference('browser.nova.enabled', true);
     options.setPreference('browser.startup.page', 0);
     options.setPreference('browser.tabs.warnOnClose', false);
+    options.setPreference('app.update.disabledForTesting', true);
     options.setPreference('ui.prefersReducedMotion', 1);
     options.setPreference('ui.systemUsesDarkTheme', 0);
     options.setPreference('layout.css.prefers-color-scheme.content-override', 1);
