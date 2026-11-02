@@ -180,7 +180,7 @@ export class ScreenshotBrowser {
         // arguments in that realm without attaching DevTools or relaxing CSP.
         const script = `(async()=>{try{
           const compiled=await ChromeUtils.compileScript(
-            ${JSON.stringify('data:text/javascript,' + encodeURIComponent(expression))},
+            ${JSON.stringify('data:text/javascript;charset=utf-8,' + encodeURIComponent(expression))},
             {hasReturnValue:true,filename:'tabernacle-sidebar-test'});
           if(content.document.documentURI!==${JSON.stringify(url)} ||
              content.windowGlobalChild.innerWindowId!==${JSON.stringify(innerWindowId)})
@@ -220,7 +220,7 @@ export class ScreenshotBrowser {
           try {
             manager.addMessageListener(name, listener);
             manager.loadFrameScript(
-              'data:application/javascript,' + encodeURIComponent(script),
+              'data:application/javascript;charset=utf-8,' + encodeURIComponent(script),
               false,
               false,
             );

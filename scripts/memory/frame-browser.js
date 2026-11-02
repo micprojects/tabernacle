@@ -169,7 +169,7 @@ export class FrameBrowser {
 
           manager.addMessageListener(name, listener);
           manager.loadFrameScript(
-            'data:application/javascript,' + encodeURIComponent(script),
+            'data:application/javascript;charset=utf-8,' + encodeURIComponent(script),
             false,
             false,
           );

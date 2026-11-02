@@ -40,6 +40,7 @@ function fixture(options = {}) {
 
       loadFrameScript(source, delayed, globalScope) {
         stats.loads++;
+        assert(source.startsWith('data:application/javascript;charset=utf-8,'));
         assert.equal(delayed, false);
         assert.equal(globalScope, false);
         if (options.loadError) throw new Error('Frame script load failed');
@@ -48,6 +49,7 @@ function fixture(options = {}) {
           content: page,
           ChromeUtils: {
             async compileScript(source, configuration) {
+              assert(source.startsWith('data:text/javascript;charset=utf-8,'));
               assert.equal(configuration.hasReturnValue, true);
               options.beforeCompile?.({ page, panel });
               return {
@@ -113,6 +115,36 @@ test('sidebar evaluation uses the page realm and preserves globals and JSON argu
   );
   assert.equal(await f.session.evaluate(() => counter), 1);
   assert.equal(await f.session.evaluate(() => undefined), null);
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.timers.size, 0);
+});
+
+test('sidebar evaluation preserves Unicode literals, arguments, keys and errors', async () => {
+  const f = fixture();
+  const text = 'Close\u2026 caf\u00e9 \u65e5\u672c \u{1f98a} e\u0301 "quote" \\ / % #\nnext';
+  const key = 'cl\u00e9\u2026\u65e5\u672c\u{1f98a}';
+  const argument = { [key]: { text } };
+  assert.deepEqual(
+    await f.session.evaluate(
+      (argument) => ({
+        literal: 'Close… café 日本 🦊 é "quote" \\ / % #\nnext',
+        argument,
+        key: Object.keys(argument)[0],
+        lookup: argument['clé…日本🦊'].text,
+      }),
+      argument,
+    ),
+    { literal: text, argument, key, lookup: text },
+  );
+  await assert.rejects(
+    f.session.evaluate(() => {
+      throw new Error('Échec… 日本 🦊');
+    }),
+    (error) => {
+      assert.equal(error.message.split('\n')[0], 'Error: \u00c9chec\u2026 \u65e5\u672c \u{1f98a}');
+      return true;
+    },
+  );
   assert.equal(f.listeners.size, 0);
   assert.equal(f.timers.size, 0);
 });

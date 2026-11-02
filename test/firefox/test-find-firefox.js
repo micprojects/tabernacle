@@ -42,7 +42,7 @@ async function evaluateTarget(target, fn, ...args) {
       const name = `TabernacleFindTest:${id}`;
       const script = `(async()=>{try{
         const compiled=await ChromeUtils.compileScript(
-          ${JSON.stringify('data:text/javascript,' + encodeURIComponent(expression))},
+          ${JSON.stringify('data:text/javascript;charset=utf-8,' + encodeURIComponent(expression))},
           {hasReturnValue:true,filename:'tabernacle-find-test'});
         if(content.document.documentURI!==${JSON.stringify(url)} ||
            content.windowGlobalChild.innerWindowId!==${JSON.stringify(innerWindowId)})
@@ -79,7 +79,7 @@ async function evaluateTarget(target, fn, ...args) {
         try {
           manager.addMessageListener(name, listener);
           manager.loadFrameScript(
-            'data:application/javascript,' + encodeURIComponent(script),
+            'data:application/javascript;charset=utf-8,' + encodeURIComponent(script),
             false,
             false,
           );
@@ -95,6 +95,35 @@ async function evaluateTarget(target, fn, ...args) {
   const result = JSON.parse(json);
   if (!result.ok) throw new Error(result.error);
   return result.value;
+}
+
+async function unicodeRoundTrip(target) {
+  // Keep the expectation outside the serialized callback: two equally corrupted
+  // values compared inside Firefox would otherwise produce a false pass.
+  const text = 'Close\u2026 caf\u00e9 \u65e5\u672c \u{1f98a} e\u0301 "quote" \\ / % #\nnext';
+  const key = 'cl\u00e9\u2026\u65e5\u672c\u{1f98a}';
+  const argument = { [key]: { text } };
+  const value = await evaluateTarget(
+    target,
+    (argument) => ({
+      literal: 'Close… café 日本 🦊 é "quote" \\ / % #\nnext',
+      argument,
+      key: Object.keys(argument)[0],
+      lookup: argument['clé…日本🦊'].text,
+    }),
+    argument,
+  );
+  assert.deepEqual(value, { literal: text, argument, key, lookup: text });
+  await assert.rejects(
+    evaluateTarget(target, () => {
+      throw new Error('Échec… 日本 🦊');
+    }),
+    (error) => {
+      assert.equal(error.message.split('\n')[0], 'Error: \u00c9chec\u2026 \u65e5\u672c \u{1f98a}');
+      return true;
+    },
+  );
+  return { literal: value.literal, argumentAndKey: true, errorMessage: true };
 }
 
 const selectPage = (url) =>
@@ -335,6 +364,7 @@ try {
     },
     output + '.firefox.log',
   );
+  await check('actual-sidebar-unicode-bridge', () => unicodeRoundTrip('sidebar'));
   await browser.chrome(() => Services.prefs.setBoolPref('findbar.highlightAll', true));
   const fixture = await browser.evaluate(async (port) => {
     const { id: windowId } = await browser.windows.getCurrent();
@@ -406,6 +436,14 @@ try {
     ['activity', fixture.activity, '.item-button'],
     ['new-tab', fixture.newTab, '.folder'],
   ]) {
+    await check(name + '-unicode-bridge', async () => {
+      await selectPage(target);
+      await wait(
+        () => evaluateTarget(target, () => document.readyState === 'complete' && !document.hidden),
+        'Visible ' + name + ' Unicode fixture',
+      );
+      return unicodeRoundTrip(target);
+    });
     await check(name + '-normal-find-resume', async () => {
       await selectPage(target);
       await wait(

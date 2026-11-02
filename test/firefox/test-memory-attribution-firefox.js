@@ -67,6 +67,22 @@ try {
     () => browser.frame(panel.browserId, () => !document.getElementById('new-tab').disabled),
     { matches: Boolean, stableSamples: 1, label: 'ready allocation-test sidebar' },
   );
+  const unicode = 'Close… café 日本 🦊 é';
+  const payload = { 'clé…': { text: `${unicode} "quotes" \\ % #\nnext` } };
+  assert.deepEqual(
+    await browser.frame(panel.browserId, (value) => ({
+      literal: 'Close… café 日本 🦊 é',
+      argument: value,
+      nested: value['clé…'],
+    }), payload),
+    { literal: unicode, argument: payload, nested: payload['clé…'] },
+  );
+  await assert.rejects(
+    browser.frame(panel.browserId, () => {
+      throw new Error('Close… café 日本 🦊 é');
+    }),
+    (error) => error.message.split('\n')[0] === `Error: ${unicode}`,
+  );
   const processes = (await browser.cpu()).filter((process) => process.type === 'extension');
   assert.equal(processes.length, 1);
   const pid = processes[0].pid;
