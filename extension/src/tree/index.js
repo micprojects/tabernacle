@@ -2,11 +2,6 @@ import { createFolderIndex } from '../folder-index.js';
 import { matchesText } from '../tab-source.js';
 import { sortTabs, unpinnedTabTree } from '../model.js';
 
-function indexTabs(tabs) {
-  const byId = new Map(tabs.map((tab) => [tab.id, tab]));
-  return { byId, children: indexChildren(sortTabs(tabs), byId) };
-}
-
 function indexChildren(tabs, byId) {
   const children = new Map();
   for (const tab of tabs) {
@@ -36,8 +31,8 @@ function descendantsFirst(roots, children) {
 // constant-time lookups instead of repeatedly walking whole subtrees.
 export function createTreeIndex(state, query = '') {
   const tabs = unpinnedTabTree(state.tabs);
-  const visible = indexTabs(tabs);
   const all = new Map(state.tabs.map((tab) => [tab.id, tab]));
+  const children = indexChildren(sortTabs(tabs), all);
   const tabStats = new Map(
     tabs.map((tab) => [
       tab.id,
@@ -49,7 +44,7 @@ export function createTreeIndex(state, query = '') {
       },
     ]),
   );
-  for (const tab of descendantsFirst(visible.children.get(null) || [], visible.children)) {
+  for (const tab of descendantsFirst(children.get(null) || [], children)) {
     const parent = tabStats.get(tab.parentTabId);
     if (!parent) continue;
     const stats = tabStats.get(tab.id);
@@ -88,7 +83,7 @@ export function createTreeIndex(state, query = '') {
       stats.match ||= tabStats.get(tab.id).match;
     }
   }
-  for (const tab of visible.children.get(null) || []) {
+  for (const tab of children.get(null) || []) {
     if (!roots.has(tab.groupId)) roots.set(tab.groupId, []);
     roots.get(tab.groupId).push(tab);
   }
@@ -107,7 +102,7 @@ export function createTreeIndex(state, query = '') {
   return {
     tabs,
     byId: all,
-    children: visible.children,
+    children,
     roots,
     groups,
     folders,
