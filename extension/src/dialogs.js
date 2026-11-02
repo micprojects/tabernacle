@@ -147,7 +147,8 @@ export function createDialogs({
   });
 
   function editAppearance({ group, container, onSubmit, onSave, onCancel }) {
-    const state = getState();
+    // Keep the opening inheritance without retaining its tab snapshot.
+    const state = { groups: getState().groups };
     const picker = createAppearancePicker({ group, container, state });
     showDialog({
       title: 'Folder appearance',

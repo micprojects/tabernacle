@@ -129,6 +129,39 @@ try {
   await expect(glyph(inherited.id)).toHaveCSS('color', await folderColor('#4c8de0'));
   console.log('✓ Destination picker and new-folder previews inherit without saving an override');
 
+  await button('New folder').click();
+  await page.getByLabel('Folder name', { exact: true }).fill('Refreshing appearance draft');
+  await destination('Design', await folderColor('#4c8de0'));
+  await button('Change folder appearance').click();
+  await send('setGroupAppearance', {
+    id: 'work',
+    appearance: { icon: 'plane', color: 'purple' },
+  });
+  await expect(glyph('research')).toHaveCSS('color', await folderColor('#a16bd4'));
+  await choice('Book').click();
+  await button('Reset icon and colour').click();
+  await expect(choice('Inherited colour')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.appearance-sample .folder-glyph')).toHaveCSS(
+    'color',
+    await folderColor('#4c8de0'),
+  );
+  await button('Save').click();
+  await expect(button('Change folder appearance')).toBeFocused();
+  await expect(page.getByLabel('Folder name', { exact: true })).toHaveValue(
+    'Refreshing appearance draft',
+  );
+  await expect(page.locator('#create-in')).toContainText('Design');
+  await expect(page.locator('#change-group-appearance .folder-glyph')).toHaveCSS(
+    'color',
+    await folderColor('#a16bd4'),
+  );
+  await button('Cancel').click();
+  expect(
+    (await send('snapshot')).groups.some((group) => group.name === 'Refreshing appearance draft'),
+  ).toBe(false);
+  await send('setGroupAppearance', { id: 'work', appearance: { icon: 'plane', color: 'blue' } });
+  console.log('✓ Open appearance draft survives a refresh and keeps its opening inheritance');
+
   await row('work').click();
   await expect(row('work')).toHaveAttribute('aria-expanded', 'false');
   await expect(glyph('work')).toHaveAttribute('data-icon', 'plane-16');
