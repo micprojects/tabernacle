@@ -17,6 +17,9 @@ const element = (tag, className, text) => {
   return node;
 };
 
+// An inactive refresh must not retain a closed review's scope.
+const inactiveRefresh = () => {};
+
 export function batchSummary(result, verb) {
   const parts = [
     `${verb} ${result.completed.length} ${result.completed.length === 1 ? 'tab' : 'tabs'}.`,
@@ -28,7 +31,7 @@ export function batchSummary(result, verb) {
 }
 
 export function createCollectionDialogs({ showDialog, getState, request, onChange, onNotice }) {
-  let refresh = () => {};
+  let refresh = inactiveRefresh;
 
   const submitButton = () => document.getElementById('dialog-submit');
 
@@ -167,7 +170,7 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
       submit: 'Close tabs',
 
       cleanup: () => {
-        refresh = () => {};
+        refresh = inactiveRefresh;
       },
 
       onSubmit: async () => {
