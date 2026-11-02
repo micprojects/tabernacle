@@ -294,10 +294,218 @@ try {
     reopenings.push({ closingId, tabs });
   }
 
+  console.log('Tab close: checking reviewed branch IDs across live native changes');
+  const confirmedBranch = await browser.evaluate(async (url) => {
+    const groupId = (await window.closeCheckSend('createGroup', { name: 'Reviewed branch' }))
+      .createdGroupId;
+
+    const create = async (title) => {
+      const tab = await browser.tabs.create({ url, title, active: false, discarded: true });
+      await window.closeCheckSend('moveTab', { id: tab.id, groupId });
+      return tab.id;
+    };
+
+    const root = await create('Reviewed root');
+    const child = await create('Reviewed child');
+    const deep = await create('Reviewed grandchild');
+    const detached = await create('Later detached child');
+    const unrelated = await create('Unrelated branch control');
+    await window.closeCheckSend('nestTab', { id: child, parentTabId: root });
+    await window.closeCheckSend('nestTab', { id: deep, parentTabId: child });
+    await window.closeCheckSend('nestTab', { id: detached, parentTabId: root });
+    await window.closeCheckSend('toggleTab', { id: root });
+    await window.closeCheckSend('activateTab', { id: unrelated });
+    await window.closeCheckSend('enterGroup', { id: groupId });
+    return { groupId, root, child, deep, detached, unrelated };
+  }, `http://127.0.0.1:${server.address().port}/preview/index.html?reviewed-branch`);
+  await visible(confirmedBranch.root, true);
+  await visible(confirmedBranch.unrelated, true);
+  await visible(confirmedBranch.child, false);
+  await visible(confirmedBranch.deep, false);
+  await visible(confirmedBranch.detached, false);
+  await browser.driver.wait(
+    () =>
+      browser.evaluate(async (id) => {
+        const tab = await browser.tabs.get(id);
+        return tab.active && tab.status === 'complete';
+      }, confirmedBranch.unrelated),
+    7000,
+  );
+
+  const clickBranchControl = async (selector, text = null, button = Button.LEFT) => {
+    const rect = await browser.evaluate(
+      (selector, text) => {
+        const node = [...document.querySelectorAll(selector)].find(
+          (node) => text === null || node.textContent.trim() === text,
+        );
+        if (!node) throw new Error(`Missing branch confirmation control: ${selector} ${text}`);
+        node.scrollIntoView({ block: 'nearest' });
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      },
+      selector,
+      text,
+    );
+    await browser.driver
+      .actions()
+      .move({ x: Math.round(offset.x + rect.x), y: Math.round(offset.y + rect.y) })
+      .press(button)
+      .release(button)
+      .perform();
+  };
+
+  await clickBranchControl(`[data-key="tab:${confirmedBranch.root}"] .label`, null, Button.RIGHT);
+  await browser.driver.wait(
+    () => browser.evaluate(() => !document.getElementById('menu').hidden),
+    7000,
+  );
+  await clickBranchControl('#menu [role="menuitem"]', 'Close tab and nested tabs…');
+  await browser.driver.wait(
+    () => browser.evaluate(() => document.getElementById('dialog').open),
+    7000,
+  );
+  const branchDialog = () =>
+    browser.evaluate(() => ({
+      open: document.getElementById('dialog').open,
+      title: document.getElementById('dialog-title').textContent,
+      description: document.getElementById('dialog-description').textContent,
+      submit: document.getElementById('dialog-submit').textContent,
+      cancelFocused: document.activeElement === document.getElementById('dialog-cancel'),
+      menuHidden: document.getElementById('menu').hidden,
+    }));
+  const openingBranchDialog = await branchDialog();
+  assert.deepEqual(openingBranchDialog, {
+    open: true,
+    title: 'Close tab and nested tabs?',
+    description: '“Reviewed root” and its 3 nested tabs will close.',
+    submit: 'Close 4 tabs',
+    cancelFocused: true,
+    menuHidden: true,
+  });
+
+  // Change the actual native/controller state while leaving the original modal
+  // open. The new child was not reviewed; the detached child is no longer in it.
+  const newBranchChild = await browser.evaluate(
+    async ({ root, detached, url }) => {
+      const tab = await browser.tabs.create({
+        url,
+        title: 'New unreviewed child',
+        active: false,
+        discarded: true,
+      });
+      const nested = await window.closeCheckSend('nestTab', { id: tab.id, parentTabId: root });
+      if (nested.tabs.find((tab) => tab.id === root).collapsed)
+        throw new Error('Nesting a new child must expand its parent');
+      await window.closeCheckSend('toggleTab', { id: root });
+      await window.closeCheckSend('detachTab', { id: detached });
+      return tab.id;
+    },
+    {
+      ...confirmedBranch,
+      url: `http://127.0.0.1:${server.address().port}/preview/index.html?unreviewed-child`,
+    },
+  );
+  await visible(confirmedBranch.detached, true);
+  await visible(newBranchChild, false);
+  assert.deepEqual(await branchDialog(), openingBranchDialog);
+  const branchRecords = () =>
+    browser.evaluate(async () => {
+      const state = await window.closeCheckSend('snapshot');
+      return {
+        state,
+        native: (await browser.tabs.query({})).map(
+          ({ id, windowId, url, active, pinned, discarded, cookieStoreId }) => ({
+            id,
+            windowId,
+            url,
+            active,
+            pinned,
+            discarded,
+            cookieStoreId,
+          }),
+        ),
+        memberships: await Promise.all(
+          state.tabs
+            .map(({ id }) => id)
+            .sort((a, b) => a - b)
+            .map(async (id) => [
+              id,
+              await browser.sessions.getTabValue(id, 'tabernacle.membership.v1'),
+            ]),
+        ),
+      };
+    });
+  const beforeBranchClose = await branchRecords();
+  const branchTab = (records, id) => records.state.tabs.find((tab) => tab.id === id);
+  assert.equal(branchTab(beforeBranchClose, confirmedBranch.root).collapsed, true);
+  assert.equal(branchTab(beforeBranchClose, confirmedBranch.detached).parentTabId, null);
+  assert.equal(branchTab(beforeBranchClose, newBranchChild).parentTabId, confirmedBranch.root);
+  const branchClosedIds = [confirmedBranch.root, confirmedBranch.child, confirmedBranch.deep];
+  await clickBranchControl('#dialog-submit', 'Close 4 tabs');
+  await browser.driver.wait(async () => {
+    const current = await read();
+    const nativeIds = await browser.evaluate(async () =>
+      (await browser.tabs.query({})).map((tab) => tab.id),
+    );
+    return (
+      !(await branchDialog()).open &&
+      branchClosedIds.every(
+        (id) => !current.tabs.some((tab) => tab.id === id) && !nativeIds.includes(id),
+      )
+    );
+  }, 7000);
+  const afterBranchClose = await branchRecords();
+  assert.deepEqual(
+    afterBranchClose.native,
+    beforeBranchClose.native.filter((tab) => !branchClosedIds.includes(tab.id)),
+  );
+  assert.deepEqual(afterBranchClose.state.groups, beforeBranchClose.state.groups);
+  assert.deepEqual(afterBranchClose.state.view, beforeBranchClose.state.view);
+  // Missing parents affect the resolved tree, not saved ancestry. Keeping the
+  // original membership lets native undo reconnect the surviving new child.
+  assert.deepEqual(
+    afterBranchClose.memberships,
+    beforeBranchClose.memberships.filter(([id]) => !branchClosedIds.includes(id)),
+  );
+  for (const before of beforeBranchClose.state.tabs.filter(
+    (tab) => !branchClosedIds.includes(tab.id),
+  )) {
+    const after = branchTab(afterBranchClose, before.id);
+    assert(after, `Unreviewed or detached tab ${before.id} must survive`);
+    for (const key of [
+      'treeId',
+      'groupId',
+      'order',
+      'ancestors',
+      'collapsed',
+      'openedAt',
+      'pinned',
+      'cookieStoreId',
+      'windowId',
+      'url',
+    ])
+      assert.deepEqual(after[key], before[key], `Surviving tab ${before.id} changed ${key}`);
+    assert.equal(after.parentTabId, before.id === newBranchChild ? null : before.parentTabId);
+  }
+  await visible(newBranchChild, true);
+  await visible(confirmedBranch.detached, true);
+  await visible(confirmedBranch.unrelated, true);
+  console.log(
+    '✓ Native branch confirmation preserves its opening set across new and detached children',
+  );
+
   const evidence = {
     environment: browser.environment,
     folderAwareSelection: selection,
     reopenings,
+    branchConfirmation: {
+      fixture: confirmedBranch,
+      newChild: newBranchChild,
+      closedIds: branchClosedIds,
+      opening: openingBranchDialog,
+      before: beforeBranchClose,
+      after: afterBranchClose,
+    },
     ...(await browser.evaluate(() => window.closeEvidence)),
   };
   await writeFile('test-results/firefox-tab-close.json', JSON.stringify(evidence, null, 2));

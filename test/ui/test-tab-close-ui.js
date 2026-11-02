@@ -7,16 +7,31 @@ page.on('pageerror', (error) => errors.push(error.message));
 
 try {
   await page.addInitScript(() => {
+    const listeners = new Set();
+    const testing = (window.closeTreeTest = { calls: [], delay: false });
+    testing.notify = (change) => {
+      for (const listener of listeners) listener({ type: 'tabernacle:changed', ...change });
+    };
     let ready;
     window.browser = {
       windows: { getCurrent: async () => ({ id: 1 }) },
       runtime: {
         id: 'tabernacle-close-test',
-        onMessage: { addListener() {} },
+        onMessage: {
+          addListener: (listener) => listeners.add(listener),
+          removeListener: (listener) => listeners.delete(listener),
+        },
 
         sendMessage: async (message) => {
-          if (message.type === 'tabernacle:closeTabTree' && window.failClose)
-            return { ok: false, error: 'Firefox could not close these tabs.' };
+          if (message.type === 'tabernacle:closeTabTree') {
+            testing.calls.push({ id: message.id, tabIds: [...message.tabIds] });
+            if (testing.delay)
+              await new Promise((resolve) => {
+                testing.resume = resolve;
+              });
+            if (window.failClose)
+              return { ok: false, error: 'Firefox could not close these tabs.' };
+          }
           ready ??= import('/preview/demo.js').then(({ createDemo }) => createDemo());
           return {
             ok: true,
@@ -92,6 +107,68 @@ try {
   expect(remaining).toHaveLength(12);
   for (const id of [1, 2, 3, 4]) expect(remaining).not.toContain(id);
   await expect(page.locator('[data-key="group:design"]')).toBeVisible();
+
+  // A live refresh must not change the opening confirmation, including on retry.
+  await load();
+  await closeBranch();
+  const openingDescription = await page.locator('#dialog-description').textContent();
+  await expect(cancel).toBeFocused();
+  const newChildId = await page.evaluate(async () => {
+    const send = (type, args = {}) =>
+      window.browser.runtime.sendMessage({ type: `tabernacle:${type}`, windowId: 1, ...args });
+    const before = (await send('snapshot')).data.tabs.map((tab) => tab.id);
+    await send('closeTab', { id: 4 });
+    const { data } = await send('newChildTab', { id: 1 });
+    window.closeTreeTest.notify({ generation: data.generation, revision: data.revision });
+    return data.tabs.find((tab) => !before.includes(tab.id)).id;
+  });
+  await expect(page.locator('[data-key="tab:4"]')).toHaveCount(0);
+  await expect(page.locator(`[data-key="tab:${newChildId}"]`)).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#dialog-description')).toHaveText(openingDescription);
+  await expect(confirm).toBeEnabled();
+  await expect(cancel).toBeEnabled();
+  const refreshedIds = (await snapshot()).tabs.map((tab) => tab.id);
+  expect(refreshedIds).toContain(8);
+  expect(refreshedIds).not.toContain(4);
+  await page.evaluate(() => {
+    window.failClose = true;
+    window.closeTreeTest.delay = true;
+  });
+  await confirm.click();
+  await expect(confirm).toBeDisabled();
+  await expect(cancel).toBeDisabled();
+  await expect(page.locator('#dialog-error')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  const openingRequest = { id: 1, tabIds: [1, 2, 3, 4] };
+  expect(await page.evaluate(() => window.closeTreeTest.calls)).toEqual([openingRequest]);
+  await page.evaluate(() => {
+    window.closeTreeTest.delay = false;
+    const resume = window.closeTreeTest.resume;
+    delete window.closeTreeTest.resume;
+    resume();
+  });
+  await expect(page.locator('#dialog-error')).toHaveText('Firefox could not close these tabs.');
+  await expect(dialog).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  await expect(cancel).toBeEnabled();
+  await expect(page.locator('#dialog-description')).toHaveText(openingDescription);
+  expect((await snapshot()).tabs.map((tab) => tab.id)).toEqual(refreshedIds);
+  await page.evaluate(() => {
+    window.failClose = false;
+  });
+  await confirm.click();
+  await expect(dialog).toBeHidden();
+  expect(await page.evaluate(() => window.closeTreeTest.calls)).toEqual([
+    openingRequest,
+    openingRequest,
+  ]);
+  const refreshedRemaining = await snapshot();
+  expect(refreshedRemaining.tabs.map((tab) => tab.id)).toEqual(
+    refreshedIds.filter((id) => !openingRequest.tabIds.includes(id)),
+  );
+  expect(refreshedRemaining.tabs.find((tab) => tab.id === newChildId).parentTabId).toBe(null);
 
   // Every single-tab affordance preserves children, even in collapsed branches.
   for (const method of ['middle', 'button', 'menu']) {
