@@ -240,7 +240,8 @@ export function createViewportTreeRenderer({
     const number = (name, fallback) => parseFloat(style.getPropertyValue(name)) || fallback;
     geometry = treeLayout(projection, {
       rowHeight: number('--row-height', 30),
-      tabHeight: tree.classList.contains('show-domains') ? 38 : number('--row-height', 30),
+      tabHeight: number('--tab-height', 28),
+      folderHeight: number('--folder-height', 30),
       gap: number('--branch-gap', 0),
       groupGap: number('--group-gap', 0),
       addHeight: matchMedia('(hover: none)').matches ? 44 : number('--row-height', 30),

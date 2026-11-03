@@ -79,6 +79,11 @@ let motionContext;
 
 function renderAppearance() {
   if (!state) return;
+  const sidebarSize = state.look.sidebarSize || 'default';
+  if (document.documentElement.dataset.sidebarSize !== sidebarSize) {
+    treeMotion.finishAll();
+    document.documentElement.dataset.sidebarSize = sidebarSize;
+  }
   if (document.documentElement.dataset.colorScheme !== state.look.colorScheme)
     document.documentElement.dataset.colorScheme = state.look.colorScheme;
   labelColors.configure(darkMode.matches, forcedColors.matches);

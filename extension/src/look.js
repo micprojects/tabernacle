@@ -1,4 +1,5 @@
 const colorSchemes = ['default', 'light', 'dark'];
+const sidebarSizes = ['default', 'comfortable', 'large'];
 
 export function normalizeLook(value) {
   return {
@@ -8,6 +9,7 @@ export function normalizeLook(value) {
     tintFavicons: value?.tintFavicons === true,
     animations: value?.animations !== false,
     colorScheme: colorSchemes.includes(value?.colorScheme) ? value.colorScheme : 'default',
+    sidebarSize: sidebarSizes.includes(value?.sidebarSize) ? value.sidebarSize : 'default',
   };
 }
 
@@ -22,5 +24,7 @@ export function requireLook(value) {
     throw new Error('Choose whether to tint website icons.');
   if (value.colorScheme !== undefined && !colorSchemes.includes(value.colorScheme))
     throw new Error('Choose Automatic, Light or Dark for the colour mode.');
+  if (value.sidebarSize !== undefined && !sidebarSizes.includes(value.sidebarSize))
+    throw new Error('Choose Compact, Comfortable or Large for the sidebar size.');
   return normalizeLook(value);
 }

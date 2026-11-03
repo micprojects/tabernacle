@@ -245,7 +245,7 @@ try {
           };
         }, expected.id);
         expect(actual).toEqual(expected);
-        expect(actual.height).toBe(domains ? 38 : 30);
+        expect(actual.height).toBe(domains ? 36 : 28);
       }
       expect(await page.locator('#tree').evaluate((node) => node.scrollHeight)).toBe(
         reference.height,
@@ -284,28 +284,40 @@ try {
 
   for (const width of [220, 480]) {
     await page.setViewportSize({ width, height: 820 });
-    for (const domains of [false, true, false]) {
-      const reference = await page.evaluate((domains) => {
-        fixture.look.domains = domains;
-        viewportTest.set(structuredClone(fixture));
-        viewportTest.full();
-        const tree = document.getElementById('tree');
-        const top = tree.getBoundingClientRect().top;
-        const result = {
-          height: tree.scrollHeight,
-          rows: [1, 100, 101, 500, 999, 1000].map((id) => {
-            const rect = document.querySelector(`[data-key="tab:${id}"]`).getBoundingClientRect();
-            return {
-              id,
-              top: rect.top - top + tree.scrollTop,
-              height: rect.height,
-              width: rect.width,
-            };
-          }),
-        };
-        viewportTest.redraw();
-        return result;
-      }, domains);
+    for (const [sidebarSize, domains] of [
+      ['default', false],
+      ['comfortable', false],
+      ['large', false],
+      ['large', true],
+      ['comfortable', true],
+      ['default', true],
+      ['default', false],
+    ]) {
+      const reference = await page.evaluate(
+        ({ sidebarSize, domains }) => {
+          fixture.look.sidebarSize = sidebarSize;
+          fixture.look.domains = domains;
+          viewportTest.set(structuredClone(fixture));
+          viewportTest.full();
+          const tree = document.getElementById('tree');
+          const top = tree.getBoundingClientRect().top;
+          const result = {
+            height: tree.scrollHeight,
+            rows: [1, 100, 101, 500, 999, 1000].map((id) => {
+              const rect = document.querySelector(`[data-key="tab:${id}"]`).getBoundingClientRect();
+              return {
+                id,
+                top: rect.top - top + tree.scrollTop,
+                height: rect.height,
+                width: rect.width,
+              };
+            }),
+          };
+          viewportTest.redraw();
+          return result;
+        },
+        { sidebarSize, domains },
+      );
       for (const expected of reference.rows) {
         const actual = await page.evaluate((id) => {
           viewportTest.reveal(`tab:${id}`);
@@ -326,7 +338,9 @@ try {
       expect(await page.locator('.tab-row').count()).toBeLessThan(100);
     }
   }
-  console.log('✓ Viewport geometry matches full nested rendering at both widths and line modes');
+  console.log(
+    '✓ Viewport geometry matches full nested rendering at both widths, all sizes and line modes',
+  );
 
   await page.setViewportSize({ width: 220, height: 380 });
   const slowScroll = await page.evaluate(async () => {
@@ -1005,7 +1019,7 @@ try {
       );
     } else {
       await expect(poolShapeRow.locator('.row-copy .row-detail')).toHaveText('example.com');
-      await expect(poolShapeRow).toHaveCSS('min-height', '38px');
+      await expect(poolShapeRow).toHaveCSS('min-height', '36px');
     }
     expect(await page.evaluate(() => document.activeElement === viewportPoolShapeControl)).toBe(
       true,

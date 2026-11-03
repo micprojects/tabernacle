@@ -106,7 +106,7 @@ try {
   await expect(counts).not.toBeChecked();
   await expect(folderCount).toBeHidden();
   await expect(group).toHaveAccessibleName(/4 tabs/);
-  await expect(page.locator('[data-key="group:work"]')).toHaveCSS('min-height', '32px');
+  await expect(page.locator('[data-key="group:work"]')).toHaveCSS('min-height', '30px');
   await expect(page.locator('#tree > .group-node').nth(1)).toHaveCSS('border-top-width', '0px');
   await counts.check();
   await settings.locator('#appearance-reset').click();
@@ -310,7 +310,7 @@ try {
   await expect(parent.locator('.row-detail')).toHaveText('figma.com');
   await expect(child.locator('.row-detail')).toHaveText('fonts.google.com');
   await expect(group.locator('.row-detail')).toHaveCount(0);
-  await expect(parent).toHaveCSS('min-height', '38px');
+  await expect(parent).toHaveCSS('min-height', '36px');
   expect(await footer()).toEqual(baselineFooter);
   await page.screenshot({ path: 'test-results/look-domains.png' });
 
@@ -413,8 +413,8 @@ try {
   await page.keyboard.press('Shift+F10');
   await expect(page.getByRole('menuitem', { name: /^(Compact|Comfortable) rows$/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(parent).toHaveCSS('min-height', '38px');
-  await expect(group).toHaveCSS('min-height', '32px');
+  await expect(parent).toHaveCSS('min-height', '36px');
+  await expect(group).toHaveCSS('min-height', '30px');
 
   // Background preference changes refresh the open sidebar and settings page.
   await page.evaluate(() =>
@@ -502,6 +502,38 @@ try {
   await expect(page.getByRole('menuitem')).toHaveText(['New tab', 'New folder…']);
   await page.keyboard.press('Escape');
   await expect(add).toBeFocused();
+
+  // Each size keeps guides, controls and two-line rows aligned at narrow widths.
+  const size = settings.getByRole('combobox', { name: 'Sidebar size', exact: true });
+  for (const [value, font, height, folderHeight, detailHeight] of [
+    ['comfortable', 13, 30, 32, 38],
+    ['large', 14, 34, 36, 42],
+    ['default', 12, 28, 30, 36],
+  ]) {
+    for (const details of [true, false]) {
+      await size.selectOption(value);
+      await saveLook(true, details);
+      await expect(parent.locator('.label')).toHaveCSS('font-size', `${font}px`);
+      await expect(group).toHaveCSS('min-height', `${folderHeight}px`);
+      await expect(parent).toHaveCSS('min-height', `${details ? detailHeight : height}px`);
+      expect((await parent.boundingBox()).height).toBe(details ? detailHeight : height);
+      await expect(parent.locator('.close-tab')).toHaveCSS('height', '24px');
+      for (const width of [240, 320]) {
+        await page.setViewportSize({ width, height: 920 });
+        await page.emulateMedia({ colorScheme: width === 240 ? 'dark' : 'light' });
+        await checkGuide();
+        expect(
+          await page.locator('#tree').evaluate((node) => node.scrollWidth <= node.clientWidth),
+        ).toBe(true);
+      }
+      await page.emulateMedia({ forcedColors: 'active' });
+      await expect(page.locator('.row.active')).toHaveCSS('outline-width', '2px');
+      await page.emulateMedia({ forcedColors: 'none' });
+    }
+  }
+  console.log(
+    '✓ All sidebar sizes preserve guides, controls, subtitles and dark/narrow/forced-colour layouts',
+  );
 
   // Closing the last child turns its parent's icon back into tab activation.
   const formerParent = page.locator('[data-key="tab:3"]');

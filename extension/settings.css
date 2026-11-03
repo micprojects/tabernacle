@@ -106,6 +106,7 @@ h3 {
   align-items: start;
 }
 .setting-row + .setting-row,
+.setting-row + .setting-check,
 .setting-check + .setting-check {
   border-top: 1px solid var(--panel-line);
   padding-top: 20px;

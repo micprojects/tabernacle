@@ -43,14 +43,14 @@ test('retired appearance and density selections preserve Look preferences and ar
     });
     const before = await api.storage.local.get(MODEL_KEY);
     const state = await send('snapshot');
-    assert.deepEqual(state.look, { ...look, colorScheme: 'default' });
+    assert.deepEqual(state.look, { ...look, colorScheme: 'default', sidebarSize: 'default' });
     assert.equal(Object.hasOwn(state, 'appearance'), false);
     assert.equal(Object.hasOwn(state, 'combinedLook'), false);
     assert.equal(Object.hasOwn(state, 'compact'), false);
     assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
     await send('setLook', { value: state.look });
     const saved = api.testing.saved[MODEL_KEY];
-    assert.deepEqual(saved.look, { ...look, colorScheme: 'default' });
+    assert.deepEqual(saved.look, { ...look, colorScheme: 'default', sidebarSize: 'default' });
     assert.deepEqual(saved.groups, before[MODEL_KEY].groups);
     assert.equal(Object.hasOwn(saved, 'appearance'), false);
     assert.equal(Object.hasOwn(saved, 'combinedLook'), false);
@@ -60,6 +60,7 @@ test('retired appearance and density selections preserve Look preferences and ar
     assert.deepEqual((await restarted.request({ type: 'snapshot', windowId: 1 })).look, {
       ...look,
       colorScheme: 'default',
+      sidebarSize: 'default',
     });
     restarted.dispose();
   }
@@ -118,6 +119,7 @@ test('Look defaults missing or malformed preferences independently, with current
       animations: true,
       folderCounts: false,
       tintFavicons: false,
+      sidebarSize: 'default',
       colorScheme: 'default',
       ...expected,
     });
@@ -144,6 +146,7 @@ test('Look preferences persist across windows and restarts without changing grou
     animations: true,
     folderCounts: false,
     tintFavicons: false,
+    sidebarSize: 'default',
     ...value,
   }))) {
     const saved = await send('setLook', { value });
@@ -159,6 +162,7 @@ test('Look preferences persist across windows and restarts without changing grou
     animations: true,
     folderCounts: false,
     tintFavicons: false,
+    sidebarSize: 'default',
     connectingLines: true,
     domains: false,
     colorScheme: 'dark',
@@ -194,6 +198,7 @@ test('invalid and failed Look saves leave preferences intact and retired appeara
     animations: true,
     folderCounts: false,
     tintFavicons: false,
+    sidebarSize: 'default',
     connectingLines: true,
     domains: false,
     colorScheme: 'default',
@@ -212,6 +217,7 @@ test('retired theme sources are ignored and removed on save without losing colou
         tintFavicons: true,
         animations: false,
         colorScheme,
+        sidebarSize: 'default',
       };
       const { api, send, controller } = await fixture({ look: { ...preferences, themeSource } });
       const before = await api.storage.local.get(MODEL_KEY);
@@ -266,6 +272,61 @@ test('settings updates merge only edited fields across windows and reject invali
   );
   assert.deepEqual((await send('getSettings', {}, 2)).look, saved);
   controller.dispose();
+});
+
+test('sidebar size defaults safely and saves atomically across windows, retries and restarts', async () => {
+  for (const sidebarSize of [undefined, null, 'retired', 12]) {
+    const { api, send, controller } = await fixture({ look: { sidebarSize, domains: true } });
+    const before = await api.storage.local.get(MODEL_KEY);
+    assert.equal((await send('getSettings')).look.sidebarSize, 'default');
+    assert.equal((await send('getSettings')).look.domains, true);
+    assert.deepEqual(await api.storage.local.get(MODEL_KEY), before);
+    controller.dispose();
+  }
+  const { api, send, controller } = await fixture({
+    look: { domains: true, colorScheme: 'dark' },
+    unfamiliar: { keep: 'unchanged' },
+  });
+  const before = await send('snapshot');
+  const stored = await api.storage.local.get(MODEL_KEY);
+  for (const sidebarSize of [null, true, 12, 'small'])
+    await assert.rejects(
+      send('setLook', { partial: true, value: { sidebarSize } }),
+      /Choose Compact/,
+    );
+  const set = api.storage.local.set;
+  api.storage.local.set = async () => {
+    throw new Error('Storage unavailable');
+  };
+  await assert.rejects(
+    send('setLook', { partial: true, value: { sidebarSize: 'large' } }),
+    /Storage unavailable/,
+  );
+  assert.deepEqual((await send('getSettings', {}, 2)).look, before.look);
+  assert.deepEqual(await api.storage.local.get(MODEL_KEY), stored);
+  api.storage.local.set = set;
+  for (const sidebarSize of ['large', 'large', 'comfortable', 'default', 'large']) {
+    await Promise.all([
+      send('setLook', { partial: true, value: { sidebarSize } }, 2),
+      send('setLook', { partial: true, value: { folderCounts: true } }),
+    ]);
+    const expected = { ...before.look, sidebarSize, folderCounts: true };
+    const state = await send('snapshot');
+    assert.deepEqual(state.look, expected);
+    assert.deepEqual((await send('getSettings', {}, 2)).look, expected);
+    assert.deepEqual(api.testing.saved[MODEL_KEY].look, expected);
+    assert.deepEqual(state.groups, before.groups);
+    assert.deepEqual(state.tabs, before.tabs);
+    assert.deepEqual(state.view, before.view);
+    assert.deepEqual(api.testing.saved[MODEL_KEY].unfamiliar, { keep: 'unchanged' });
+  }
+  controller.dispose();
+  const restarted = createController(api);
+  assert.equal(
+    (await restarted.request({ type: 'getSettings', windowId: 2 })).look.sidebarSize,
+    'large',
+  );
+  restarted.dispose();
 });
 
 test('folder tab counts default off and persist independently across windows and restarts', async () => {

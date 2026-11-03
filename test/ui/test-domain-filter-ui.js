@@ -592,7 +592,7 @@ try {
       }),
     );
     for (const [index, item] of geometry.entries()) {
-      expect(item.bottom - item.top).toBe(30);
+      expect(item.bottom - item.top).toBe(28);
       expect(item.whiteSpace).toBe('nowrap');
       expect(item.iconCentre).toBe(item.titleHeight / 2);
       expect(item.closeCentre).toBe(item.titleHeight / 2);

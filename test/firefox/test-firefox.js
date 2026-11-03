@@ -92,6 +92,9 @@ try {
     if (document.getElementById('look-theme-source')) throw new Error('Retired Theme selector is still present');
     const mode = document.getElementById('look-color-scheme');
     mode.value = 'dark'; mode.dispatchEvent(new Event('change', {bubbles:true}));
+    const size = document.getElementById('look-sidebar-size');
+    if (size.value !== 'default') throw new Error('Sidebar size must start at Compact (default)');
+    size.value = 'large'; size.dispatchEvent(new Event('change', {bubbles:true}));
     document.querySelector('[name="domains"]').click();
     document.querySelector('[name="folderCounts"]').click();
   `);
@@ -127,6 +130,7 @@ try {
     5000,
   );
   await writeFile('test-results/firefox-settings.png', await driver.takeScreenshot(), 'base64');
+  assert.equal(await driver.findElement(By.id('look-sidebar-size')).getAttribute('value'), 'large');
   await driver.switchTo().window(sidebarHandle);
   await driver.wait(
     async () =>
@@ -136,6 +140,9 @@ try {
     5000,
   );
   const tabCount = (await driver.getAllWindowHandles()).length;
+  await driver.wait(async () => (await driver.executeScript(
+    'return getComputedStyle(document.querySelector(".tab-row .label")).fontSize;'
+  )) === '14px', 5000);
   await browserCall('await browser.runtime.openOptionsPage(); return true;');
   await driver.wait(async () => (await driver.getAllWindowHandles()).length === tabCount, 5000);
   assert.equal((await driver.getAllWindowHandles()).length, tabCount);
@@ -497,7 +504,7 @@ try {
   );
   await send('enterGroup', { id: design });
   await send('setLook', {
-    value: { connectingLines: true, domains: true, colorScheme: 'dark' },
+    value: { connectingLines: true, domains: true, colorScheme: 'dark', sidebarSize: 'comfortable' },
   });
   // Legacy saved records stay opaque, even if a newer/older format is unfamiliar.
   const legacy = await browserCall(
@@ -515,6 +522,7 @@ try {
     animations: true,
     folderCounts: false,
     tintFavicons: false,
+    sidebarSize: 'comfortable',
     connectingLines: true,
     domains: true,
     colorScheme: 'dark',
@@ -538,6 +546,24 @@ try {
   );
   await driver.wait(until.elementLocated(By.css('.tab-row .row-detail')), 5000);
   console.log('✓ Look preferences persist through extension reload');
+  assert.equal(await driver.executeScript('return document.documentElement.dataset.sidebarSize;'), 'comfortable');
+  for (const [sidebarSize, font, height, detailHeight] of [
+    ['large', 14, 34, 42], ['comfortable', 13, 30, 38], ['default', 12, 28, 36],
+  ]) {
+    for (const domains of [false, true]) {
+      await send('setLook', { partial: true, value: { sidebarSize, domains } });
+      await driver.wait(async () => {
+        const rendered = await driver.executeScript(`
+          const row = document.querySelector('.tab-row');
+          return {font: getComputedStyle(row.querySelector('.label')).fontSize,
+            height: row.getBoundingClientRect().height};
+        `);
+        return rendered.font === `${font}px` && rendered.height === (domains ? detailHeight : height);
+      }, 5000);
+    }
+  }
+  state = await send('snapshot');
+  console.log('✓ Native Firefox applies all sidebar sizes and subtitle heights; saved size survives reload');
   for (const colorScheme of ['light', 'default', 'dark']) {
     await send('setLook', { value: { ...state.look, colorScheme } });
     await driver.wait(async () => {

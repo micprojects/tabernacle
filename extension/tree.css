@@ -55,8 +55,9 @@
 .tree {
   --icon-slot: 22px;
   --row-padding: 6px;
-  --row-height: 30px;
-  --tree-indent: 20px;
+  --row-height: var(--list-row-height);
+  --folder-height: var(--list-folder-height);
+  --tree-indent: var(--list-indent);
   --branch-gap: 0px;
   --group-gap: 0px;
   overflow: auto;
@@ -106,7 +107,7 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--list-row-gap);
   min-height: var(--row-height);
   position: relative;
   padding: 0 var(--row-padding);
@@ -156,7 +157,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--list-font-size);
 }
 .group-row {
   min-height: var(--node-height);
@@ -165,7 +166,7 @@
 .group-count {
   display: none;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--list-secondary-size);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -190,9 +191,6 @@
 svg.folder-icon,
 .group-container-icon {
   color: var(--folder-color, var(--folder-icon));
-}
-.group-row > .label {
-  font-size: 13px;
 }
 .icon-slot,
 .disclosure {
@@ -523,8 +521,8 @@ svg.folder-icon,
   --tab-icon-centre: calc(var(--row-height) / 2);
 }
 .tree.show-domains {
-  --tab-height: 38px;
-  --tab-title-height: 16px;
+  --tab-height: var(--list-detail-height);
+  --tab-title-height: var(--list-title-height);
   --tab-padding: 4px;
   --tab-icon-offset: 2px;
   --tab-icon-centre: calc(
@@ -566,8 +564,8 @@ svg.folder-icon,
 }
 .show-domains .row-detail {
   color: color-mix(in srgb, var(--text) 65%, var(--background));
-  font-size: 11px;
-  line-height: 12px;
+  font-size: var(--list-secondary-size);
+  line-height: var(--list-secondary-height);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -592,7 +590,7 @@ svg.folder-icon,
   position: relative;
 }
 .tree .group-node {
-  --node-height: 32px;
+  --node-height: var(--folder-height);
 }
 .tree .tab-node {
   --node-height: var(--tab-height);

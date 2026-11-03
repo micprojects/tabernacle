@@ -70,7 +70,8 @@
 .domains-row {
   display: flex;
   align-items: center;
-  min-height: 40px;
+  min-height: var(--directory-row-height);
+  font-size: var(--list-font-size);
   border-radius: 6px;
 }
 .domains-row:hover {
@@ -82,7 +83,7 @@
   min-width: 0;
   align-items: center;
   gap: 10px;
-  height: 40px;
+  height: var(--directory-row-height);
   padding: 0 8px;
   border-radius: 6px;
   text-align: start;

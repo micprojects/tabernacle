@@ -38,7 +38,8 @@
         <section id="appearance" aria-labelledby="appearance-title">
           <h2 id="appearance-title" tabindex="-1">Appearance</h2>
           <p class="section-description">
-            Choose the colours and details in your sidebar. Saved changes apply to every window.
+            Choose the size, colours and details in your sidebar. Saved changes apply to every
+            window.
           </p>
           <form id="appearance-form">
             <fieldset id="appearance-fields" disabled>
@@ -65,6 +66,23 @@
               </div>
               <div class="settings-card">
                 <h3>Folders and tabs</h3>
+                <div class="setting-row">
+                  <div>
+                    <label for="look-sidebar-size">Sidebar size</label>
+                    <p id="look-sidebar-size-help" class="setting-help">
+                      Adjust text and row spacing. Compact fits more tabs and longer titles.
+                    </p>
+                  </div>
+                  <select
+                    id="look-sidebar-size"
+                    name="sidebarSize"
+                    aria-describedby="look-sidebar-size-help"
+                  >
+                    <option value="default">Compact (default)</option>
+                    <option value="comfortable">Comfortable</option>
+                    <option value="large">Large</option>
+                  </select>
+                </div>
                 <label class="setting-check"
                   ><input
                     name="tintFavicons"

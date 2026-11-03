@@ -82,6 +82,11 @@ try {
     exact: true,
   });
   await expect(lines).toBeChecked();
+  const size = settings.getByRole('combobox', { name: 'Sidebar size', exact: true });
+  await expect(size).toHaveValue('default');
+  await expect(size.locator('option:checked')).toHaveText('Compact (default)');
+  await size.selectOption('large');
+  await expect(page.locator('.tab-row .label').first()).toHaveCSS('font-size', '12px');
   await domains.check();
   await expect(page.locator('.row-detail')).toHaveCount(0);
   await expect(settings.locator('#appearance-status')).toHaveText('Unsaved changes');
@@ -117,6 +122,8 @@ try {
   await expect(settings.locator('#appearance-status')).toHaveText('Unsaved changes');
   await settings.locator('#appearance-reset').click();
   await expect(domains).not.toBeChecked();
+  await expect(size).toHaveValue('default');
+  await size.selectOption('large');
   await domains.check();
   await page.evaluate(() => {
     window.failSave = true;
@@ -125,11 +132,19 @@ try {
   await expect(settings.getByRole('alert')).toHaveText('Storage unavailable');
   await expect(domains).toBeChecked();
   await expect(domains).toBeEnabled();
+  await expect(size).toHaveValue('large');
+  await expect(page.locator('.tab-row .label').first()).toHaveCSS('font-size', '12px');
   await page.evaluate(() => {
     window.failSave = false;
   });
   await settings.locator('#appearance-save').click();
   await expect(page.locator('.row-detail').first()).toBeVisible();
+  await expect(page.locator('.tab-row .label').first()).toHaveCSS('font-size', '14px');
+  await settings.reload();
+  await expect(size).toHaveValue('large');
+  await size.selectOption('default');
+  await settings.locator('#appearance-save').click();
+  await expect(page.locator('.tab-row .label').first()).toHaveCSS('font-size', '12px');
   await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   console.log('✓ Settings opens in a tab; save, discard, failure and retry update the sidebar');
 
@@ -165,6 +180,7 @@ try {
     folderCounts: false,
     tintFavicons: false,
     colorScheme: 'dark',
+    sidebarSize: 'default',
   });
   await settings.reload();
   await expect(lines).not.toBeChecked();

@@ -161,7 +161,7 @@ try {
     [...document.querySelectorAll('#tree .tab-row .label')].every((label) => {
       return (
         getComputedStyle(label).whiteSpace === 'nowrap' &&
-        label.closest('.tab-row').getBoundingClientRect().height === 30 &&
+        label.closest('.tab-row').getBoundingClientRect().height === 28 &&
         label.scrollWidth > label.clientWidth
       );
     }),

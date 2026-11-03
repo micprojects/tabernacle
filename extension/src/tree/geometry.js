@@ -2,7 +2,14 @@
 // range lookup, nested spacers and reveals; there is no second measurement cache.
 export function treeLayout(
   projection,
-  { rowHeight = 30, tabHeight = 30, gap = 0, groupGap = 0, addHeight = rowHeight } = {},
+  {
+    rowHeight = 30,
+    tabHeight = 30,
+    folderHeight = 32,
+    gap = 0,
+    groupGap = 0,
+    addHeight = rowHeight,
+  } = {},
 ) {
   const entries = [];
   const byKey = new Map();
@@ -19,7 +26,8 @@ export function treeLayout(
         margin = row.depth === 0 && previous.kind === 'group' ? groupGap : gap;
       }
     }
-    const height = row.kind === 'group' ? 32 : row.kind === 'new-tab' ? addHeight : tabHeight;
+    const height =
+      row.kind === 'group' ? folderHeight : row.kind === 'new-tab' ? addHeight : tabHeight;
     const entry = {
       row,
       parentKey: parent,
