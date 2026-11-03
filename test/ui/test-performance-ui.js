@@ -225,6 +225,25 @@ try {
     getSelection().removeAllRanges();
     document.getElementById('tree').scrollTop = 0;
   });
+  // A folder revision can arrive in an action reply that was never rendered.
+  // The following tab-only delta must still refresh the folder's visible name.
+  await page.evaluate(async () => {
+    perfTest.suppressNotify = true;
+    try {
+      await sidebarReleaseProbe.request('renameGroup', { id: 'g0', name: 'Renamed offscreen' });
+    } finally {
+      perfTest.suppressNotify = false;
+    }
+    await perfTest.api.tabs.update(5, { title: 'After skipped folder reply' });
+  });
+  await expect(page.locator('[data-key="group:g0"] .label')).toHaveText('Renamed offscreen');
+  await expect(page.locator('[data-key="tab:5"] .label')).toHaveText('After skipped folder reply');
+  await page.evaluate(async () => {
+    await sidebarReleaseProbe.action('renameGroup', { id: 'g0', name: 'Group 0' });
+    await perfTest.api.tabs.update(5, { title: 'Tab 4' });
+  });
+  await expect(page.locator('[data-key="group:g0"] .label')).toHaveText('Group 0');
+  await expect(page.locator('[data-key="tab:5"] .label')).toHaveText('Tab 4');
   expect(await page.evaluate(() => rowListenerCount())).toBe(0);
   const initialRootListeners = await page.evaluate(() => treeListenerAdds);
   await page.waitForTimeout(60);
@@ -870,6 +889,12 @@ try {
       view: { scopeId: null, collapsed: [] },
     };
     const markup = () => ['tree', 'pinned-tabs'].map((id) => document.getElementById(id).innerHTML);
+    measureSidebarUpdate(state);
+    state.groups[0].name = 'Renamed mutable folder';
+    measureSidebarUpdate(state);
+    if (document.querySelector('[data-key="group:g"] .label')?.textContent !== state.groups[0].name)
+      throw new Error('Mutable legacy folder change did not refresh');
+    state.groups[0].name = 'Group';
     measureSidebarUpdate(state);
     for (const collapsed of [false, true, false]) {
       state.tabs[0].collapsed = collapsed;
