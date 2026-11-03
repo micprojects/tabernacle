@@ -444,6 +444,66 @@ test('a duplicate in another window gets a new identity without displacing its l
     assert.equal(f.controller.cacheStats()[key], 21, key);
 });
 
+test('cold window reads repair and register identities in other windows before returning', async (t) => {
+  const f = fixture(20);
+  t.after(() => f.controller.dispose());
+  const owner = structuredClone(f.memberships.get(1));
+  f.memberships.set(20, {
+    ...f.memberships.get(20),
+    treeId: owner.treeId,
+    collapsed: true,
+    futureSaved: { retained: ['other window'] },
+  });
+  const first = await f.send();
+  assert.deepEqual(
+    first.tabs.map((tab) => tab.id),
+    [1, 2, 3, 4],
+  );
+  assert.equal(first.tabs[0].treeId, owner.treeId);
+  const repaired = structuredClone(f.memberships.get(20));
+  assert.notEqual(repaired.treeId, owner.treeId);
+  assert.equal(repaired.collapsed, false);
+  assert.deepEqual(repaired.futureSaved, { retained: ['other window'] });
+  assert.deepEqual(f.memberships.get(1), owner);
+  for (const key of ['treeOwners', 'tabTreeKeys', 'tabWindows'])
+    assert.equal(f.controller.cacheStats()[key], 20, key);
+  f.resetStats();
+  const other = await f.send('snapshot', {}, 2);
+  assert.equal(other.tabs.find((tab) => tab.id === 20).treeId, repaired.treeId);
+  assert.equal(f.stats().writes, 0);
+  assert.equal(new Set([...first.tabs, ...other.tabs].map((tab) => tab.treeId)).size, 20);
+});
+
+test('failed cold repairs outside the requested window preserve completed repairs for retry', async (t) => {
+  const f = fixture(20);
+  t.after(() => f.controller.dispose());
+  for (const id of [19, 20]) {
+    const value = f.memberships.get(id);
+    delete value.treeId;
+    value.futureSaved = { id, retained: true };
+  }
+  const set = f.api.sessions.setTabValue;
+  f.api.sessions.setTabValue = async (...args) => {
+    if (args[0] === 20) throw new Error('Other-window repair unavailable');
+    return set(...args);
+  };
+  await assert.rejects(f.send(), /Other-window repair unavailable/);
+  const partial = structuredClone(f.memberships.get(19));
+  assert.equal(typeof partial.treeId, 'string');
+  assert.equal(f.memberships.get(20).treeId, undefined);
+  for (const key of ['treeOwners', 'tabTreeKeys', 'tabWindows'])
+    assert.equal(f.controller.cacheStats()[key], 0, key);
+  f.api.sessions.setTabValue = set;
+  await f.send();
+  assert.deepEqual(f.memberships.get(19), partial);
+  const other = await f.send('snapshot', {}, 2);
+  assert.equal(other.tabs.find((tab) => tab.id === 19).treeId, partial.treeId);
+  for (const id of [19, 20])
+    assert.deepEqual(f.memberships.get(id).futureSaved, { id, retained: true });
+  for (const key of ['treeOwners', 'tabTreeKeys', 'tabWindows'])
+    assert.equal(f.controller.cacheStats()[key], 20, key);
+});
+
 test('container replacement transfers identity indexes and disposal releases every owned map', async () => {
   const f = fixture(20);
   try {
