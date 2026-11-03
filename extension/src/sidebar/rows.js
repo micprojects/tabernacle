@@ -59,9 +59,13 @@ export function createSidebarRows({
   const pooledViewLimit = 64;
 
   const virtualDormantLimit = 96;
+  let recycleFullScope = false;
+  const reuseControls = () =>
+    getTreeRenderer().virtual ||
+    (recycleFullScope && !getDomainFilter() && !getProjection()?.query);
 
   const rowCache = createRowCache({
-    retain: () => (getTreeRenderer().virtual ? virtualDormantLimit - pooledCount() : 2048),
+    retain: () => (getTreeRenderer().virtual ? virtualDormantLimit : 2048) - pooledCount(),
     owned: (node) => treeMotion.owns(node),
   });
 
@@ -107,6 +111,17 @@ export function createSidebarRows({
   // Release departing, unowned views before assigning entering rows.
   // Overlapping keys retain their existing controls and loaded favicon.
   function prepareViewportRows(rows, pins, owners) {
+    const virtual = getTreeRenderer().virtual;
+    recycleFullScope =
+      !virtual &&
+      rows.every(
+        ({ row }) =>
+          row.kind === 'new-tab' || (row.kind === 'tab' && plainLeaf(row.tab, row.stats)),
+      );
+    // Complex small scopes keep their identity cache, including two-line labels,
+    // audio controls and parent rows. Their reconstruction cost is not traded
+    // for a smaller dormant budget.
+    if (!reuseControls()) return;
     const keep = new Set([
       ...rows.map(({ row }) => row.key),
       ...pins.map((row) => (row.kind === 'pin-tab' ? `pin:${row.id}` : row.key)),
@@ -114,8 +129,10 @@ export function createSidebarRows({
       // but never assign those outstanding controls to another logical tab.
       ...owners,
     ]);
+    const departing = [];
+    const creations = [];
     wrappers.forEach((wrapper, key) => {
-      if (pooledCount() >= pooledViewLimit || keep.has(key)) return;
+      if (pooledCount() + departing.length >= pooledViewLimit || keep.has(key)) return;
       const folder = key.startsWith('group:');
       if (!folder && wrapper.branch) return;
       const row = wrapper.node.firstElementChild;
@@ -130,16 +147,16 @@ export function createSidebarRows({
         return;
       const entry = rowCache.take(key);
       if (!entry) return;
-      wrapper.node.remove();
       wrappers.delete(key);
-      // Recycled branches must not retain their previous descendants. Each child
-      // keeps its own cache/interaction ownership and can be reused independently.
-      if (folder) wrapper.branch.replaceChildren();
-      (folder ? groupPool : leafPool).push({ wrapper, entry });
+      if (virtual) {
+        wrapper.node.remove();
+        if (folder) wrapper.branch.replaceChildren();
+        (folder ? groupPool : leafPool).push({ wrapper, entry });
+      } else departing.push({ wrapper, entry, folder });
     });
     creationViews.forEach((node, key) => {
       if (
-        pooledCount() >= pooledViewLimit ||
+        pooledCount() + departing.length + creations.length >= pooledViewLimit ||
         keep.has(key) ||
         node.contains(document.activeElement)
       )
@@ -149,10 +166,35 @@ export function createSidebarRows({
       if (treeMotion.owns(node) || node.matches(owned) || node.querySelector(owned)) return;
       const entry = rowCache.take(key);
       if (!entry) return;
-      node.remove();
       creationViews.delete(key);
-      creationPool.push(entry);
+      if (virtual) {
+        node.remove();
+        creationPool.push(entry);
+      } else creations.push(entry);
     });
+    if (virtual) return;
+    const children = [...tree.childNodes];
+    const reusable = new Map(departing.map((item) => [item.wrapper.node, item]));
+    const creationNodes = new Set(creations.map(({ row }) => row));
+    const inPlace =
+      children.every((node) => reusable.has(node) || creationNodes.has(node)) &&
+      departing.every(({ folder, wrapper }) => !folder && !wrapper.branch) &&
+      rows.filter(({ row }) => row.kind === 'new-tab').length === creations.length &&
+      rows.every(({ row }) => !rowCache.has(row.key));
+    // The full renderer builds children from last to first. Pool in DOM order
+    // so a flat scope can reassign safe controls in place.
+    const released = inPlace
+      ? children.map((node) => reusable.get(node)).filter(Boolean)
+      : departing;
+    for (const { wrapper, entry, folder } of released) {
+      if (!inPlace) wrapper.node.remove();
+      if (folder) wrapper.branch.replaceChildren();
+      (folder ? groupPool : leafPool).push({ wrapper, entry });
+    }
+    for (const entry of creations) {
+      if (!inPlace) entry.row.remove();
+      creationPool.push(entry);
+    }
   }
 
   function reconcileTreeChildren(parent, children) {
@@ -494,7 +536,7 @@ export function createSidebarRows({
   }
 
   function groupNode({ group, expanded }, children) {
-    const { node, branch } = wrapperFor('group', group.id, true, getTreeRenderer().virtual);
+    const { node, branch } = wrapperFor('group', group.id, true, reuseControls());
     const { appearance } = getIndex().folders.details.get(group.id);
     const color = folderIconColor(appearance.color) || 'var(--folder-icon)';
     node.style.setProperty('--item-colour', color);
@@ -754,16 +796,18 @@ export function createSidebarRows({
     return row;
   }
 
-  function canPoolLeaf(tab, stats) {
+  function plainLeaf(tab, stats) {
     return Boolean(
-      getTreeRenderer().virtual &&
-      !getDomainFilter() &&
       !getState().look.domains &&
       !stats.descendants &&
       !tab.audible &&
       !tab.mutedInfo?.muted &&
       !childAudioCount(tab),
     );
+  }
+
+  function canPoolLeaf(tab, stats) {
+    return reuseControls() && !getDomainFilter() && plainLeaf(tab, stats);
   }
 
   function updatePooledLeaf(row, tab, expanded, stats) {
@@ -991,7 +1035,7 @@ export function createSidebarRows({
         ? `New tab in ${group.name}`
         : 'New tab';
     const key = parentTab ? `new-child-tab:${parentTabId}` : `new-tab:${groupId}`;
-    if (getTreeRenderer().virtual && !rowCache.has(key) && creationPool.length)
+    if (reuseControls() && !rowCache.has(key) && creationPool.length)
       rowCache.adopt(key, creationPool.pop());
 
     const update = (item) => {
@@ -1033,9 +1077,8 @@ export function createSidebarRows({
   }
 
   function finishRows() {
-    if (!getTreeRenderer().virtual || getDomainFilter() || getState().look.domains)
-      leafPool.length = 0;
-    if (!getTreeRenderer().virtual || getDomainFilter()) groupPool.length = creationPool.length = 0;
+    if (!reuseControls() || getDomainFilter() || getState().look.domains) leafPool.length = 0;
+    if (!reuseControls() || getDomainFilter()) groupPool.length = creationPool.length = 0;
     rowCache.finish((key) => {
       if (key.startsWith('pin:group:'))
         return getIndex().groups.has(key.slice('pin:group:'.length));
@@ -1076,6 +1119,7 @@ export function createSidebarRows({
   });
 
   function clearRows() {
+    recycleFullScope = false;
     rowCache.clear();
     leafPool.length = 0;
     groupPool.length = creationPool.length = 0;

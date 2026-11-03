@@ -330,6 +330,12 @@ export function createViewportTreeRenderer({
         mounted.clear();
         rendered.clear();
         spacers.clear();
+        if (!next.query && !next.domain)
+          prepare(
+            next.visibleRows.map((row) => ({ row })),
+            next.pins,
+            owners(),
+          );
         return full.update(next);
       }
       measure();

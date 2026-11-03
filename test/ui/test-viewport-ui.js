@@ -1699,6 +1699,203 @@ try {
   console.log(
     '✓ Recycled creation controls switch between folders and child tabs with the current action target',
   );
+  const smallFolders = await page.evaluate(() => {
+    document.getElementById('home').focus();
+    const next = structuredClone(fixture);
+    next.groups = Array.from({ length: 20 }, (_, i) => ({
+      id: `small-${i}`,
+      name: `Small folder ${i}`,
+      parentId: null,
+    }));
+    next.tabs = next.tabs.map((tab, i) => ({
+      ...tab,
+      groupId: `small-${Math.floor(i / 50)}`,
+      parentTabId: null,
+      audible: false,
+      mutedInfo: { muted: false },
+    }));
+    next.look.domains = false;
+    next.view.scopeId = 'small-0';
+    viewportTest.set(next);
+    viewportTest.resetRows();
+    const keys = next.tabs.map((tab) => `tab:${tab.id}`);
+    let maximumCached = 0;
+    for (let pass = 0; pass < 2; pass++)
+      for (let i = 0; i < 20; i++) {
+        viewportTest.set({ ...next, view: { ...next.view, scopeId: `small-${i}` } });
+        const expected = next.tabs.filter((tab) => tab.groupId === `small-${i}`);
+        const rows = [...document.querySelectorAll('#tree .tab-row')];
+        if (
+          document.getElementById('tree').classList.contains('viewport-tree') ||
+          rows.length !== expected.length ||
+          rows.some(
+            (row, n) =>
+              Number(row.dataset.id) !== expected[n].id ||
+              row.querySelector('.label').textContent !== expected[n].title ||
+              row.querySelector('.close-tab').getAttribute('aria-label') !==
+                `Close ${expected[n].title}`,
+          ) ||
+          JSON.stringify(viewportTest.targets()) !== JSON.stringify(expected.map((tab) => tab.id))
+        )
+          throw new Error('Small-folder reuse changed complete rows or action labels');
+        maximumCached = Math.max(maximumCached, viewportTest.cached(keys).keys.length);
+      }
+    return { maximumCached, built: viewportTabBuilds, lastId: next.tabs.at(-1).id };
+  });
+  expect(smallFolders.maximumCached).toBeLessThanOrEqual(146);
+  expect(smallFolders.built).toBeLessThan(150);
+  await page.locator(`#tree .tab-row[data-id="${smallFolders.lastId}"] .close-tab`).click();
+  expect(await page.evaluate(() => viewportTest.calls.at(-1))).toMatchObject({
+    type: 'closeTab',
+    id: smallFolders.lastId,
+  });
+  console.log(
+    '✓ Small-folder visits bound dormant controls and preserve all rows and action targets',
+  );
+  const flatTransitions = await page.evaluate(() => {
+    document.getElementById('home').focus();
+    const next = structuredClone(fixture);
+    const sizes = [0, 1, 7, 35, 50, 63, 64, 90, 690];
+    next.groups = sizes.map((_, i) => ({ id: `vary-${i}`, name: `Vary ${i}`, parentId: null }));
+    let offset = 0;
+    next.tabs = sizes.flatMap((size, i) => {
+      const tabs = fixture.tabs
+        .slice(offset, offset + size)
+        .map((tab) => ({ ...tab, groupId: `vary-${i}` }));
+      offset += size;
+      return tabs;
+    });
+    for (const i of [2, 4, 3, 6, 7, 1, 0, 4, 2, 8, 4]) {
+      viewportTest.set({ ...next, view: { ...next.view, scopeId: `vary-${i}` } });
+      const expected = next.tabs.filter((tab) => tab.groupId === `vary-${i}`);
+      if (expected.length <= 100) {
+        const rows = [...document.querySelectorAll('#tree .tab-row')];
+        if (
+          rows.length !== expected.length ||
+          rows.some(
+            (row, n) =>
+              Number(row.dataset.id) !== expected[n].id ||
+              row.querySelector('.label').textContent !== expected[n].title ||
+              row.querySelector('.close-tab').getAttribute('aria-label') !==
+                `Close ${expected[n].title}`,
+          )
+        )
+          throw Error('Variable-size folder recycling changed rows or targets');
+      }
+    }
+    const owned = document.querySelector('#tree .tab-row .close-tab');
+    owned.focus();
+    const key = owned.closest('[data-key]').dataset.key;
+    viewportTest.set({ ...next, view: { ...next.view, scopeId: 'vary-3' } });
+    const ownerPreserved = owned.closest('[data-key]').dataset.key === key;
+    document.getElementById('home').focus();
+    return { ownerPreserved };
+  });
+  expect(flatTransitions.ownerPreserved).toBe(true);
+  console.log(
+    '✓ Variable-size, empty and virtual folder transitions preserve rows and focused ownership',
+  );
+  for (const owner of ['pressed', 'menu']) {
+    await page.evaluate((owner) => {
+      document.getElementById('home').focus();
+      const next = structuredClone(fixture);
+      next.groups = Array.from({ length: 20 }, (_, i) => ({
+        id: `owned-${i}`,
+        name: `Owned ${i}`,
+        parentId: null,
+      }));
+      next.tabs = next.tabs.map((tab, i) => ({
+        ...tab,
+        groupId: `owned-${Math.floor(i / 50)}`,
+        parentTabId: null,
+        audible: false,
+        mutedInfo: { muted: false },
+      }));
+      next.look.domains = false;
+      next.view.scopeId = 'owned-0';
+      viewportTest.set(next);
+      window.fullOwnerFixture = next;
+      window.fullOwner = document.querySelector('#tree .tab-row');
+      window.fullOwnerClose = fullOwner.querySelector('.close-tab');
+      if (owner === 'pressed')
+        fullOwnerClose.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            pointerId: 42,
+            button: 0,
+            isPrimary: true,
+          }),
+        );
+      else fullOwner.focus();
+    }, owner);
+    if (owner === 'menu') {
+      await page.keyboard.press('Shift+F10');
+      await expect(page.locator('#menu')).toBeVisible();
+    }
+    const ownership = await page.evaluate((owner) => {
+      const before = viewportTest.calls.length;
+      if (owner === 'pressed')
+        document.dispatchEvent(
+          new PointerEvent('pointerup', { bubbles: true, pointerId: 42, button: 0 }),
+        );
+      viewportTest.set({
+        ...fullOwnerFixture,
+        view: { ...fullOwnerFixture.view, scopeId: 'owned-1' },
+      });
+      fullOwnerClose.click();
+      return {
+        oldKey: fullOwner.dataset.key,
+        firstVisibleId: Number(document.querySelector('#tree .tab-row').dataset.id),
+        closes: viewportTest.calls.slice(before).filter((call) => call.type === 'closeTab'),
+      };
+    }, owner);
+    expect(ownership).toEqual({ oldKey: 'tab:1', firstVisibleId: 51, closes: [] });
+    if (owner === 'menu') await page.keyboard.press('Escape');
+    await page.evaluate(async () => {
+      document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 42 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      delete window.fullOwner;
+      delete window.fullOwnerClose;
+      delete window.fullOwnerFixture;
+    });
+  }
+  console.log('✓ Small-folder navigation cannot reassign a pressed or menu-owned close control');
+  const complexRevisits = await page.evaluate(() => {
+    document.getElementById('home').focus();
+    return ['domains', 'parents', 'audio'].map((mode) => {
+      const next = structuredClone(fixture);
+      next.groups = Array.from({ length: 20 }, (_, i) => ({
+        id: `complex-${i}`,
+        name: `Complex ${i}`,
+        parentId: null,
+      }));
+      next.look.domains = mode === 'domains';
+      next.tabs = next.tabs.map((tab, i) => ({
+        ...tab,
+        groupId: `complex-${Math.floor(i / 50)}`,
+        parentTabId: mode === 'parents' && i % 50 === 1 ? next.tabs[i - 1].id : null,
+        audible: mode === 'audio' && i % 50 === 0,
+      }));
+      let first;
+      for (let i = 0; i < 20; i++) {
+        viewportTest.set({ ...next, view: { ...next.view, scopeId: `complex-${i}` } });
+        if (!i) first = document.querySelector('#tree .tab-row');
+      }
+      const before = viewportTabBuilds;
+      viewportTest.set({ ...next, view: { ...next.view, scopeId: 'complex-0' } });
+      return {
+        mode,
+        sameControl: first === document.querySelector('#tree .tab-row'),
+        rebuilt: viewportTabBuilds - before,
+      };
+    });
+  });
+  expect(complexRevisits).toEqual(
+    ['domains', 'parents', 'audio'].map((mode) => ({ mode, sameControl: true, rebuilt: 0 })),
+  );
+  console.log(
+    '✓ Two-line, parent and audio rows retain their cached controls across 20 small scopes',
+  );
   await page.evaluate(() => viewportTest.set(structuredClone(fixture)));
   expect(errors).toEqual([]);
 } finally {
