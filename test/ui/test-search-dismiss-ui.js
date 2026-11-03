@@ -97,9 +97,14 @@ try {
   const result = row('tab:9');
   const target = await result.boundingBox();
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
+  // Hover extends the background towards the guide rail. Capture that state
+  // before pressing so this checks dismissal movement, not the hover styling.
+  const hovered = await result.boundingBox();
+  const label = await result.locator('.label').boundingBox();
   await page.mouse.down();
   await closed();
-  expect(await result.boundingBox()).toEqual(target);
+  expect(await result.boundingBox()).toEqual(hovered);
+  expect(await result.locator('.label').boundingBox()).toEqual(label);
   await expect(row('tab:1')).toHaveCount(0);
   await page.mouse.up();
   await expect(result).toHaveAttribute('aria-selected', 'true');
