@@ -307,15 +307,53 @@ header {
 .domain-mode {
   padding: 0;
 }
+.pane-heading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--background);
+}
+.pane-heading h1 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--line);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.pane-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: var(--subtle);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.pane-back svg {
+  width: 16px;
+  height: 16px;
+}
 .domain-header {
   position: relative;
   isolation: isolate;
   overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 76px;
-  padding: 0 12px 0 18px;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 12px;
 }
 .domain-wash {
   position: absolute;
@@ -331,14 +369,14 @@ header {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 36px;
-  width: 36px;
-  height: 36px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   color: var(--muted);
 }
 .domain-icon :is(img, svg) {
-  width: 36px;
-  height: 36px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 .domain-heading {
@@ -347,34 +385,21 @@ header {
 }
 #domain-name {
   margin: 0;
-  font-size: clamp(17px, 6vw, 22px);
-  font-weight: 650;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 #domain-address {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-#domain-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 36px;
-  width: 36px;
-  height: 40px;
-  border-radius: 6px;
-}
-#domain-close svg {
-  width: 26px;
-  height: 26px;
 }
 :root[data-color-scheme='dark'] .domain-wash {
   opacity: 0.18;
@@ -385,18 +410,13 @@ header {
   }
 }
 @media (max-width: 260px) {
+  .pane-heading,
   .domain-header {
     gap: 8px;
-    padding: 0 6px 0 12px;
+    padding-inline: 8px;
   }
-  .domain-icon,
-  #domain-close {
-    flex-basis: 32px;
-    width: 32px;
-  }
-  .domain-icon :is(img, svg) {
-    width: 32px;
-    height: 32px;
+  .pane-heading h1 {
+    padding-inline-start: 8px;
   }
 }
 @media (forced-colors: active) {
@@ -571,39 +591,6 @@ footer {
   background: var(--panel);
   color: var(--panel-text);
 }
-.recently-closed-heading {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 12px;
-  height: 76px;
-  padding: 0 12px 0 18px;
-  border-bottom: 1px solid var(--line);
-  background: var(--subtle);
-}
-.recently-closed-heading > svg {
-  width: 36px;
-  height: 36px;
-}
-.recently-closed-heading h1 {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  font-size: 22px;
-  font-weight: 650;
-}
-.recent-close {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 36px;
-  height: 40px;
-  border-radius: 6px;
-}
-.recent-close svg {
-  width: 26px;
-  height: 26px;
-}
 .recent-filters {
   display: grid;
   grid-template-columns: auto repeat(3, minmax(0, 1fr));
@@ -681,17 +668,6 @@ footer {
   color: var(--panel-hover-text);
 }
 @media (max-width: 300px) {
-  .recently-closed-heading {
-    gap: 8px;
-    padding-inline: 12px 8px;
-  }
-  .recently-closed-heading > svg {
-    width: 28px;
-    height: 28px;
-  }
-  .recently-closed-heading h1 {
-    font-size: 18px;
-  }
   .recent-filters {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }

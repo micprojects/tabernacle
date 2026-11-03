@@ -58,17 +58,20 @@
         </div>
         <div id="domain-header" class="domain-header" hidden>
           <canvas class="domain-wash" width="1" height="1" aria-hidden="true"></canvas>
+          <button
+            type="button"
+            id="domain-close"
+            class="pane-back"
+            aria-label="Back to tabs"
+            title="Back to tabs (Esc)"
+          >
+            Tabs
+          </button>
           <span id="domain-icon" class="domain-icon" aria-hidden="true"></span>
           <div class="domain-heading">
             <h1 id="domain-name"></h1>
             <p id="domain-address" hidden></p>
           </div>
-          <button
-            type="button"
-            id="domain-close"
-            aria-label="Close domain view"
-            title="Return to folders (Esc)"
-          ></button>
         </div>
         <p id="domain-status" class="sr-only" role="status"></p>
         <div

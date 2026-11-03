@@ -37,7 +37,7 @@ await page.route('**/preview/demo.js', (route) =>
 );
 const row = (id) => page.locator(`#tree [data-key="tab:${id}"]`);
 const header = page.locator('#domain-header');
-const exit = page.getByRole('button', { name: 'Close domain view', exact: true });
+const exit = page.getByRole('button', { name: 'Back to tabs', exact: true });
 const search = page.locator('#search');
 const results = page.locator('#tree .tab-row');
 const sort = page.getByRole('combobox', { name: 'Sort filtered tabs' });
@@ -408,7 +408,8 @@ try {
     const bounds = await header.boundingBox();
     expect(address.y).toBeGreaterThanOrEqual(name.y + name.height);
     expect(address.x).toBe(name.x);
-    expect(address.x + address.width).toBeLessThan(clear.x);
+    expect(clear.x + clear.width).toBeLessThan(name.x);
+    expect(address.x + address.width).toBeLessThanOrEqual(bounds.x + bounds.width);
     expect(address.y + address.height).toBeLessThan(bounds.y + bounds.height);
     expect(await header.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: `test-results/domain-site-name-${width}.png` });
@@ -563,10 +564,12 @@ try {
     const favicon = await page.locator('#domain-icon').boundingBox();
     const name = await page.locator('#domain-name').boundingBox();
     const clear = await exit.boundingBox();
-    expect(favicon.width).toBeGreaterThanOrEqual(32);
+    expect(favicon.width).toBe(24);
+    expect(clear.width).toBeGreaterThanOrEqual(28);
+    expect(clear.height).toBeGreaterThanOrEqual(28);
+    expect(clear.x + clear.width).toBeLessThan(favicon.x);
     expect(favicon.x + favicon.width).toBeLessThan(name.x);
-    expect(name.x + name.width).toBeLessThan(clear.x);
-    expect(clear.x + clear.width).toBeLessThanOrEqual(box.width);
+    expect(name.x + name.width).toBeLessThanOrEqual(box.width);
     await expect(exit).toBeVisible();
     const count = await page.locator('#domain-count').boundingBox();
     const sorter = await sort.boundingBox();
@@ -659,7 +662,7 @@ try {
   await page.screenshot({ path: 'test-results/domain-header-forced-colours.png' });
   expect(errors).toEqual([]);
   console.log(
-    '✓ Domain header and close button remain usable at 220–480px and in dark/forced colours',
+    '✓ Compact domain header and back button remain usable at 220–480px and in dark/forced colours',
   );
 } finally {
   await close();

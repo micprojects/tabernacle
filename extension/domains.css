@@ -8,37 +8,6 @@
   min-height: 0;
   flex-direction: column;
 }
-.domains-heading {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 12px;
-  height: 76px;
-  padding: 0 12px 0 18px;
-  border-bottom: 1px solid var(--line);
-  background: var(--subtle);
-}
-.domains-heading > svg {
-  width: 36px;
-  height: 36px;
-}
-.domains-heading h1 {
-  flex: 1;
-  margin: 0;
-  font-size: 22px;
-  font-weight: 650;
-}
-.domains-close {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 40px;
-  border-radius: 6px;
-}
-.domains-close svg {
-  width: 26px;
-  height: 26px;
-}
 .domains-tools {
   display: flex;
   flex-shrink: 0;

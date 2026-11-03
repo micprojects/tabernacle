@@ -1245,7 +1245,7 @@ $('home').append(icon('home'));
 $('search-toggle').append(icon('search'));
 $('settings').append(icon('settings'));
 $('search-close').append(icon('close'));
-$('domain-close').append(icon('close'));
+$('domain-close').prepend(icon('back'));
 $('reveal').querySelector('span').append(icon('enter'));
 $('dialog-icon').append(icon('groupPlus'));
 $('new-tab').append(icon('plus'));

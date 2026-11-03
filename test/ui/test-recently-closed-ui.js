@@ -159,7 +159,7 @@ try {
   await trigger.click();
   await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await expect(rows).toHaveCount(2);
-  await popup.getByRole('button', { name: 'Close recent activity' }).click();
+  await popup.getByRole('button', { name: 'Back to tabs', exact: true }).click();
   await page.evaluate(() => {
     window.closedTabsTest.failRestore = false;
     window.closedTabsTest.failHistory = true;
