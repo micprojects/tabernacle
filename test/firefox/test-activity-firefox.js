@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { By, until } from 'selenium-webdriver';
+import { By, Key, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { startFirefox } from "../../scripts/firefox-session.js";
+import { startFirefox } from '../../scripts/firefox-session.js';
 import { resolve } from 'node:path';
-import { previewServer } from "../../scripts/preview.js";
+import { previewServer } from '../../scripts/preview.js';
 
 let driver, session;
 const server = await previewServer(0);
@@ -115,6 +115,73 @@ try {
   await driver.switchTo().window(sidebar);
   await driver.findElement(By.id('recently-closed-toggle')).click();
   await driver.wait(until.elementLocated(By.css('#recently-closed:not([hidden])')), 5000);
+  const layout = await driver.executeScript(`
+    const pane = document.querySelector('#recently-closed');
+    const rect = pane.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      footerTop: document.querySelector('footer').getBoundingClientRect().top,
+      hiddenTree: getComputedStyle(document.querySelector('#tree')).display === 'none',
+      treeRows: document.querySelectorAll('#tree .row').length,
+      backdrop: Boolean(document.querySelector('.recent-backdrop')),
+      day: pane.querySelector('.recent-day-heading').textContent,
+      time: pane.querySelector('time').textContent,
+    };
+  `);
+  assert.equal(layout.top, 0);
+  assert.equal(layout.bottom, layout.footerTop);
+  assert.equal(layout.hiddenTree, true);
+  assert.equal(layout.treeRows, 0);
+  assert.equal(layout.backdrop, false);
+  assert.equal(layout.day, 'Today');
+  assert.match(layout.time, /^\d{2}:\d{2}$/);
+  const activitySearch = await driver.findElement(By.id('recent-search'));
+  await activitySearch.sendKeys('Activity test folder');
+  await driver.wait(
+    async () => (await driver.findElements(By.css('.recently-closed-row'))).length === 1,
+    5000,
+  );
+  await clickRow(`[data-recent-key="folder:${groupId}"]`);
+  assert.equal((await send('snapshot')).view.scopeId, groupId);
+  await driver.findElement(By.id('recently-closed-toggle')).click();
+  await driver.findElement(By.id('recent-search')).sendKeys('no matching activity');
+  await driver.wait(until.elementLocated(By.css('.recently-closed-empty:not([hidden])')), 5000);
+  await driver.findElement(By.id('recent-search')).sendKeys(Key.ESCAPE);
+  assert.equal(await driver.findElement(By.id('recent-search')).getAttribute('value'), '');
+  assert.equal(await driver.findElement(By.id('recently-closed')).isDisplayed(), true);
+  await clickRow(`[data-recent-key="viewed:${viewed.id}"]`);
+  assert.equal((await call('return browser.tabs.get(arguments[0]);', viewed.id)).active, true);
+  await driver.switchTo().window(sidebar);
+  const sidebarClosed = await call(
+    'return browser.tabs.create({url:arguments[0],active:false});',
+    `${fixtureUrl}?sidebar-restore`,
+  );
+  await driver.wait(
+    async () =>
+      (await call('return browser.tabs.get(arguments[0]);', sidebarClosed.id)).status ===
+      'complete',
+    5000,
+  );
+  await send('closeTab', { id: sidebarClosed.id });
+  const sidebarSession = await driver.wait(
+    async () =>
+      (await send('snapshot')).recentlyClosed.find(
+        (tab) => tab.url === `${fixtureUrl}?sidebar-restore`,
+      ),
+    5000,
+  );
+  await driver.findElement(By.id('recently-closed-toggle')).click();
+  await clickRow(`[data-recent-key="closed:${sidebarSession.sessionId}"]`);
+  await driver.wait(
+    async () =>
+      !(await send('snapshot')).recentlyClosed.some(
+        (tab) => tab.sessionId === sidebarSession.sessionId,
+      ),
+    5000,
+  );
+  await driver.switchTo().window(sidebar);
+  await driver.findElement(By.id('recently-closed-toggle')).click();
   await driver.findElement(By.css('.recent-more')).click();
   const activityHandle = await driver.wait(
     async () => {
@@ -181,7 +248,7 @@ try {
   assert.equal((await driver.findElements(By.id('activity-layout'))).length, 0);
   await driver.wait(until.elementLocated(By.css('.activity-timeline')), 5000);
   console.log(
-    '✓ Native Firefox: extension page, reuse, self exclusion, folder entry, restore, switch and timeline',
+    '✓ Native Firefox: full-height activity, search, folder entry, restore, switch, full page reuse and timeline',
   );
 } finally {
   try {

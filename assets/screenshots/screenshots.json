@@ -516,9 +516,9 @@
         { "kind": "viewed", "key": "nyhavn" }
       ],
       "activityMinutesAgo": {
-        "viewed": { "nyhavn": 0, "mdn": 4, "flexbox": 12, "nasa": 18, "openlibrary": 37 },
-        "closed": { "seriouseats": 2, "sourdough-science": 9 },
-        "folder": { "trip": 6, "website": 25, "reading": 48 }
+        "viewed": { "nyhavn": 0, "mdn": 6, "flexbox": 13, "nasa": 98, "openlibrary": 240 },
+        "closed": { "seriouseats": 4, "sourdough-science": 115 },
+        "folder": { "trip": 10, "website": 105, "reading": 258 }
       },
       "composition": {
         "title": ["Pick up where", "you left off"],

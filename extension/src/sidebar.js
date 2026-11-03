@@ -491,6 +491,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function enter(id, collapsed) {
+  recentlyClosed?.close();
   domainsView.close({ restoreFocus: false });
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
@@ -500,6 +501,7 @@ function enter(id, collapsed) {
 }
 
 async function revealFolder(id) {
+  recentlyClosed?.close();
   domainsView.close({ restoreFocus: false });
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
@@ -820,6 +822,7 @@ window.addEventListener(
     releaseTree();
     treeRenderer.dispose();
     domainsView.dispose();
+    recentlyClosed?.dispose();
     state = confirmedState = suspendedTree = undefined;
   },
   { once: true },
@@ -845,9 +848,9 @@ function render(motionKey = null) {
   }
   renderPending = false;
   state = pointerMoves?.project(state) || state;
-  recentlyClosed?.render();
+  const recentOpen = recentlyClosed?.render();
   const domainsOpen = domainsView.update(state, currentSnapshotDetails());
-  if (domainsOpen) {
+  if (domainsOpen || recentOpen) {
     previousRender = null;
     return;
   }
@@ -1243,6 +1246,7 @@ $('dialog-icon').append(icon('groupPlus'));
 $('new-tab').append(icon('plus'));
 $('new-group').append(icon('groupPlus'));
 recentlyClosed = createRecentActivity({
+  root: document.querySelector('.sidebar'),
   trigger: $('recently-closed-toggle'),
   getState: () => state,
   favicon: tabFavicon,
@@ -1256,10 +1260,18 @@ recentlyClosed = createRecentActivity({
   }),
 
   beforeOpen() {
+    cancelGroupClick();
     closeMenu();
+    domainsView.close({ restoreFocus: false });
+    treeMotion.finishAll();
+    if (domainFilter) leaveDomain({ restoreFocus: false });
+    if (searchOpen) showSearch(false, { restoreFocus: false });
+    suspendTree();
     renderPending = true;
     scheduleRefresh();
   },
+
+  afterClose: () => render(),
 });
 $('home').addEventListener('click', () => enter(null));
 $('search-toggle').addEventListener('click', () => showSearch());
@@ -1403,6 +1415,7 @@ document.addEventListener('keydown', (event) => {
   if (menuKey(event)) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
+    if (recentlyClosed?.focusSearch()) return;
     if (domainFilter) {
       $('domain-search').focus();
       $('domain-search').select();

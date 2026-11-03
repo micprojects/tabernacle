@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { normalizeView } from '../extension/src/model.js';
-import { recentItems, recentPreviewItems, recentTime } from '../extension/src/recent-history.js';
+import {
+  recentItems,
+  recentPreviewItems,
+  recentTime,
+  recentActivityDays,
+} from '../extension/src/recent-history.js';
 import { memoryBrowser } from '../preview/browser.js';
 
 function fixture() {
@@ -290,4 +295,51 @@ test('bounded previews copy only selected tabs and leave full history available'
   assert.equal(copied, 0);
   assert.equal(recentItems(state).length, 1000);
   assert.equal(copied, 1000);
+});
+
+test('time breaks split at 30 minutes and local midnight, preserving ties and unknown times', () => {
+  const time = (day, hour, minute) => new Date(2026, 10, day, hour, minute).getTime();
+  const items = [
+    { key: 'a', timestamp: time(3, 14, 42) },
+    { key: 'b', timestamp: time(3, 14, 42) },
+    { key: 'c', timestamp: time(3, 14, 13) },
+    { key: 'd', timestamp: time(3, 13, 43) },
+    { key: 'e', timestamp: time(3, 0, 5) },
+    { key: 'f', timestamp: time(2, 23, 55) },
+    { key: 'g', timestamp: time(2, 23, 50) },
+    { key: 'h', timestamp: 0 },
+    { key: 'i', timestamp: 0 },
+  ];
+  const saved = structuredClone(items);
+  const days = recentActivityDays(items);
+  assert.deepEqual(
+    days.map(({ sessions }) => sessions.map(({ items }) => items.map(({ key }) => key))),
+    [[['a', 'b', 'c'], ['d'], ['e']], [['f', 'g']], [['h', 'i']]],
+  );
+  assert.equal(days[0].sessions[0].start, time(3, 14, 13));
+  assert.equal(days[0].sessions[0].end, time(3, 14, 42));
+  assert.equal(days[2].timestamp, 0);
+  assert.deepEqual(items, saved);
+  assert.deepEqual(recentActivityDays([]), []);
+});
+
+test('sidebar search finds older matches before limiting results within a category', () => {
+  const state = {
+    groups: [],
+    tabs: Array.from({ length: 80 }, (_, id) => ({
+      id,
+      title: id < 10 ? 'Older matching notes' : 'Recent notes',
+      url: `https://example.com/${id}`,
+      lastAccessed: 1000 + id,
+    })),
+    recentlyClosed: [{ sessionId: 'closed', title: 'Older matching notes', closedAt: 500 }],
+  };
+  assert.equal(recentPreviewItems(state, 'all', 50).length, 50);
+  const matches = recentPreviewItems(state, 'viewed', 50, ' older MATCHING ');
+  assert.equal(matches.length, 10);
+  assert.equal(matches[0].id, 9);
+  assert.deepEqual(matches, recentItems(state, 'viewed', ' older MATCHING '));
+  assert.equal(recentPreviewItems(state, 'closed', 50, 'matching').length, 1);
+  assert.equal(recentPreviewItems(state, 'all', 3, 'matching').length, 3);
+  assert.equal(recentPreviewItems(state, 'all', 50, 'missing').length, 0);
 });

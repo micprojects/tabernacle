@@ -4,6 +4,7 @@ import { startUiTest } from '../helpers/ui-test.js';
 const { page, base, close } = await startUiTest({
   viewport: { width: 360, height: 660 },
   colorScheme: 'light',
+  timezoneId: 'Europe/London',
 });
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
@@ -78,13 +79,18 @@ try {
   });
   await page.goto(`${base}/extension/sidebar.html`);
   await trigger.click();
-  await expect(popup.getByRole('heading', { level: 2 })).toHaveText('Recent activity');
+  await expect(popup.getByRole('heading', { level: 1 })).toHaveText('Recent activity');
+  await expect(popup).not.toHaveAttribute('role', 'dialog');
+  await expect(page.locator('#tree')).toBeHidden();
+  await expect(page.locator('#tree .row')).toHaveCount(0);
+  await expect(page.locator('#tree-toggle')).toBeDisabled();
+  await expect(page.locator('.recent-backdrop')).toHaveCount(0);
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(popup.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
-  await expect(popup.getByRole('searchbox')).toHaveCount(0);
+  await expect(popup.getByRole('searchbox')).toBeVisible();
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Switch to Keep open');
   await popup.getByRole('button', { name: 'Closed', exact: true }).click();
@@ -128,13 +134,17 @@ try {
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Reopen Restaurant Barr — Copenhagen');
 
-  // External closes update the open popover without losing the selected row.
+  // External closes update the open view without losing the selected row.
   await page.evaluate(() => window.closedTabsTest.api.tabs.remove(3));
   await expect(rows).toHaveCount(2);
   await expect(rows.last()).toBeFocused();
-  await page.locator('#home').click();
+  await page.getByRole('button', { name: 'Domains', exact: true }).click();
   await expect(popup).toBeHidden();
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator('#domains-view')).toBeVisible();
   await trigger.click();
+  await expect(page.locator('#domains-view')).toBeHidden();
+  await expect(popup).toBeVisible();
   await trigger.click();
   await expect(popup).toBeHidden();
 
@@ -222,11 +232,14 @@ try {
   await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await page.keyboard.press('Escape');
 
-  // Each filter contains up to 50 matching items in the original ten-row viewport.
+  // Each filter contains up to 50 matching items in the available sidebar height.
   await page.evaluate(async () => {
     for (let i = 0; i < 60; i++) {
       const tab = await window.closedTabsTest.api.tabs.create({
-        title: `Long recently closed tab title ${i} — detailed page name`,
+        title:
+          i === 0
+            ? 'Older unique match'
+            : `Long recently closed tab title ${i} — detailed page name`,
         favIconUrl: 'data:image/png;base64,broken',
       });
       await window.closedTabsTest.api.tabs.remove(tab.id);
@@ -240,7 +253,7 @@ try {
   const list = popup.locator('.recently-closed-list');
   const headingBounds = await popup.locator('.recently-closed-heading').boundingBox();
   const moreBounds = await popup.locator('.recent-more').boundingBox();
-  expect(await list.evaluate((node) => node.clientHeight)).toBe(320);
+  expect(await list.evaluate((node) => node.clientHeight)).toBeGreaterThan(320);
   await list.hover();
   await page.mouse.wheel(0, 500);
   await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
@@ -269,12 +282,26 @@ try {
       .map((tab) => tab.title),
   );
   await expect(rows.locator('.recently-closed-label')).toHaveText(latestClosed);
+  await page.keyboard.press('ControlOrMeta+k');
+  const search = popup.getByRole('searchbox', { name: 'Search recent activity' });
+  await expect(search).toBeFocused();
+  await search.fill('Older unique match');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Older unique match');
+  await search.press('Home');
+  await expect(search).toBeFocused();
+  await search.fill('Nothing matches this query');
+  await expect(popup.getByRole('status')).toHaveText('No matching activity.');
+  await search.press('Escape');
+  await expect(popup).toBeVisible();
+  await expect(search).toHaveValue('');
+  await expect(rows).toHaveCount(50);
   const fullHeight = await popup.evaluate((node) => node.getBoundingClientRect().height);
   expect(fullHeight).toBeGreaterThan(350);
-  expect(fullHeight).toBeLessThanOrEqual(500);
+  expect(fullHeight).toBeGreaterThan(600);
   await page.screenshot({ path: 'test-results/recent-timeline-full-height.png' });
   await page.setViewportSize({ width: 520, height: 800 });
-  await expect(popup).toHaveCSS('width', '504px');
+  await expect(popup).toHaveCSS('width', '520px');
   await page.screenshot({ path: 'test-results/recent-popup-wide.png' });
   await page.setViewportSize({ width: 220, height: 320 });
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -301,20 +328,23 @@ try {
       bottom: rect.bottom,
       height: rect.height,
       triggerTop: trigger.top,
+      footerTop: document.querySelector('footer').getBoundingClientRect().top,
       overflow: node.scrollWidth > node.clientWidth,
       scrolls: list.scrollHeight > list.clientHeight,
       scrolled: list.scrollTop > 0,
     };
   });
-  expect(bounds.left).toBeGreaterThanOrEqual(8);
-  expect(bounds.right).toBeLessThanOrEqual(212);
-  expect(bounds.top).toBeGreaterThanOrEqual(8);
+  expect(bounds.left).toBe(0);
+  expect(bounds.right).toBe(220);
+  expect(bounds.top).toBe(0);
   expect(bounds.bottom).toBeLessThan(bounds.triggerTop);
-  expect(bounds.height).toBeLessThanOrEqual(280);
+  expect(bounds.height).toBe(bounds.footerTop);
   expect(bounds.overflow).toBe(false);
   expect(bounds.scrolls).toBe(true);
   expect(bounds.scrolled).toBe(true);
-  await expect(popup.getByRole('button', { name: 'More', exact: true })).toBeInViewport();
+  await expect(
+    popup.getByRole('button', { name: 'Open full activity page', exact: true }),
+  ).toBeInViewport();
   await expect(popup.getByRole('button', { name: 'Folders', exact: true })).toBeInViewport();
   await page.screenshot({ path: 'test-results/recently-closed-narrow-dark.png' });
   await page.keyboard.press('Escape');
@@ -323,16 +353,86 @@ try {
   expect(await popup.locator('.recently-closed-list').evaluate((node) => node.scrollTop)).toBe(0);
   await page.keyboard.press('End');
   await page.keyboard.press('Tab');
-  await expect(popup.getByRole('button', { name: 'More', exact: true })).toBeFocused();
+  await expect(
+    popup.getByRole('button', { name: 'Open full activity page', exact: true }),
+  ).toBeFocused();
   await page.keyboard.press('Tab');
+  await expect(popup).toBeVisible();
+  await expect(page.locator('#new-tab')).toBeFocused();
+  await page.keyboard.press('Escape');
   await expect(popup).toBeHidden();
   await trigger.focus();
   await page.keyboard.press('ArrowUp');
   await expect(rows.first()).toBeFocused();
   expect(await list.evaluate((node) => node.scrollTop)).toBe(0);
+
+  // Controlled timestamps show separate bursts and local-day boundaries.
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.clock.setFixedTime(new Date('2026-11-03T14:45:00Z'));
+  await page.evaluate(async () => {
+    const samples = [
+      ['Debugging – this-firefox', '2026-11-03T14:42:00Z'],
+      ['emlowz – video mashups', '2026-11-03T14:18:00Z'],
+      ['Patrick Stewart as Captain Picard', '2026-11-03T13:02:00Z'],
+      ['LCARS Website HTML Template', '2026-11-03T12:40:00Z'],
+      ['Monte-Carlo simulations', '2026-11-03T09:32:00Z'],
+      ['Limmy’s Shop', '2026-11-02T20:26:00Z'],
+    ];
+    for (const [title, timestamp] of samples)
+      await window.closedTabsTest.api.tabs.create({
+        title,
+        url: 'https://activity-sample.test/',
+        lastAccessed: Date.parse(timestamp),
+        active: false,
+      });
+  });
+  await trigger.click();
+  await search.fill('activity-sample.test');
+  await expect(rows).toHaveCount(6);
+  await expect(popup.locator('.recent-day-heading')).toHaveText(['Today', 'Yesterday']);
+  await expect(popup.locator('.recent-session-heading')).toHaveText([
+    '14:18–14:42',
+    '12:40–13:02',
+    '09:32',
+    '20:26',
+  ]);
+  await expect(rows.locator('time')).toHaveText([
+    '14:42',
+    '14:18',
+    '13:02',
+    '12:40',
+    '09:32',
+    '20:26',
+  ]);
+  const sessions = popup.locator('.recent-session');
+  const firstEnd = await sessions.nth(0).boundingBox();
+  const secondStart = await sessions.nth(1).boundingBox();
+  expect(secondStart.y - firstEnd.y - firstEnd.height).toBe(24);
+  await page.screenshot({ path: 'test-results/recent-time-breaks-light.png' });
+  await rows.nth(3).focus();
+  const selectedKey = await rows.nth(3).getAttribute('data-recent-key');
+  await page.evaluate(async (key) => {
+    await window.closedTabsTest.api.tabs.update(Number(key.split(':')[1]), {
+      title: 'Updated LCARS reference',
+    });
+  }, selectedKey);
+  await expect(popup.locator(`[data-recent-key="${selectedKey}"]`)).toBeFocused();
+  await expect(popup.locator(`[data-recent-key="${selectedKey}"]`)).toContainText(
+    'Updated LCARS reference',
+  );
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.screenshot({ path: 'test-results/recent-time-breaks-dark.png' });
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.screenshot({ path: 'test-results/recent-time-breaks-forced-colours.png' });
+  await page.keyboard.press('Escape');
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator('#tree')).toBeVisible();
+  await expect(trigger).toBeFocused();
   expect(errors).toEqual([]);
   console.log(
-    '✓ Recent popup scrolls through up to 50 items, keeps its compact size, resets on reopening and filtering, and preserves actions and focus',
+    '✓ Full-height recent activity groups time breaks, searches, scrolls, resets on reopening and filtering, and preserves actions and focus',
   );
 } finally {
   await close();

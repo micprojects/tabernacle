@@ -226,7 +226,7 @@ try {
     .locator('.recently-closed-row')
     .evaluateAll((nodes) => nodes.map((node) => node.dataset.recentKey));
   const opened = page.waitForEvent('popup');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Open full activity page', exact: true }).click();
   const activity = await opened;
   await expect(activity.locator('.activity-row')).toHaveCount(18);
   expect(
@@ -241,7 +241,7 @@ try {
   expect(times.every((time, i) => i === 0 || time <= times[i - 1])).toBe(true);
   await expect(page.locator('#recently-closed')).toBeHidden();
   await page.getByRole('button', { name: 'Recent activity', exact: true }).click();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Open full activity page', exact: true }).click();
   expect(await page.evaluate(() => window.activityTest.tabs.length)).toBe(1);
   await expect
     .poll(() =>
@@ -254,7 +254,7 @@ try {
     window.activityTest.fail = 'tabernacle:openPage';
   });
   await page.getByRole('button', { name: 'Recent activity', exact: true }).click();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Open full activity page', exact: true }).click();
   await expect(page.locator('#toast')).toContainText('Could not open recent activity');
   await expect(page.locator('#recently-closed-toggle')).toBeFocused();
   await page.evaluate(() => {

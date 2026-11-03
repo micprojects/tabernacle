@@ -172,13 +172,6 @@ dialog .appearance-results {
   }
 }
 @media (forced-colors: active) {
-  .recent-backdrop {
-    display: none;
-  }
-  .recently-closed {
-    outline: 1px solid CanvasText;
-    outline-offset: 1px;
-  }
   .recent-filter[aria-pressed='true'],
   .recent-filter[aria-pressed='true']:hover {
     color: ButtonText;

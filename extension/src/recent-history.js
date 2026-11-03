@@ -94,7 +94,9 @@ export function recentItems(state, filter = 'all', query = '') {
 
 // Each category contributes at most the displayed count to the merged preview.
 // Sort native references first so older tabs need no copied record or URL parsing.
-export function recentPreviewItems(state, filter = 'all', limit = 50) {
+export function recentPreviewItems(state, filter = 'all', limit = 50, query = '') {
+  // Search the complete history before applying the displayed-item limit.
+  if (query.trim()) return recentItems(state, filter, query).slice(0, limit);
   const newest = (items, field, requireTime) =>
     (items ?? [])
       .filter((item) => !item.incognito && (!requireTime || validTime(item[field])))
@@ -111,6 +113,29 @@ export function recentPreviewItems(state, filter = 'all', limit = 50) {
     },
     filter,
   ).slice(0, limit);
+}
+
+// Items already have a stable newest-first order. Group by local calendar day,
+// then by gaps of at least 30 minutes; never infer missing event times.
+export function recentActivityDays(items) {
+  const days = [];
+  let day, session;
+  for (const item of items) {
+    const timestamp = validTime(item.timestamp);
+    const date = timestamp ? new Date(timestamp).toDateString() : '';
+    if (!day || day.date !== date) {
+      day = { date, timestamp, sessions: [] };
+      days.push(day);
+      session = null;
+    }
+    if (!session || session.start - timestamp >= 30 * 60_000) {
+      session = { start: timestamp, end: timestamp, items: [] };
+      day.sessions.push(session);
+    }
+    session.start = timestamp;
+    session.items.push(item);
+  }
+  return days;
 }
 
 export function recentTime(timestamp, now = Date.now()) {
