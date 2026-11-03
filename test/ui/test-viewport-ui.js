@@ -1073,6 +1073,9 @@ try {
         );
     document.getElementById('home').focus();
     viewportTest.set(next);
+    // Start with this fixture's controls: dormant rows from the preceding shape
+    // transitions can otherwise leave the watched row unused throughout these jumps.
+    viewportTest.resetRows();
     viewportTest.reveal('tab:10');
     const before = [...document.querySelectorAll('#tree .tab-row')].map((row) => ({
       row,
@@ -1744,11 +1747,11 @@ try {
   });
   expect(smallFolders.maximumCached).toBeLessThanOrEqual(146);
   expect(smallFolders.built).toBeLessThan(150);
+  const callsBeforeClose = await page.evaluate(() => viewportTest.calls.length);
   await page.locator(`#tree .tab-row[data-id="${smallFolders.lastId}"] .close-tab`).click();
-  expect(await page.evaluate(() => viewportTest.calls.at(-1))).toMatchObject({
-    type: 'closeTab',
-    id: smallFolders.lastId,
-  });
+  expect(
+    await page.evaluate((before) => viewportTest.calls.slice(before), callsBeforeClose),
+  ).toEqual([{ type: 'closeTab', id: smallFolders.lastId, promoteFirstChild: true }]);
   console.log(
     '✓ Small-folder visits bound dormant controls and preserve all rows and action targets',
   );
