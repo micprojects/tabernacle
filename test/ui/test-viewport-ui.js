@@ -1702,6 +1702,199 @@ try {
   console.log(
     '✓ Recycled creation controls switch between folders and child tabs with the current action target',
   );
+  const collapsedFolders = await page.evaluate(() => {
+    document.getElementById('home').focus();
+    const parents = Array.from({ length: 20 }, (_, i) => ({
+      id: `parent-${i}`,
+      name: `Parent ${i}`,
+      parentId: null,
+      appearance: { color: i % 2 ? '#a466ff' : '#37a7ff' },
+    }));
+    const children = parents.flatMap((parent, p) =>
+      Array.from({ length: 49 }, (_, i) => ({
+        id: `child-${p}-${i}`,
+        name: `Child ${p}/${i}`,
+        parentId: parent.id,
+        ...(i % 7 === 0 ? { defaultCookieStoreId: 'firefox-container-pool' } : {}),
+        ...(i % 11 === 0 ? { appearance: { color: '#e37b40', icon: 'folder' } } : {}),
+      })),
+    );
+    const next = structuredClone(fixture);
+    next.groups = [...parents, ...children];
+    next.containers = [
+      {
+        cookieStoreId: 'firefox-container-pool',
+        name: 'Work',
+        colorCode: '#37a7ff',
+        icon: 'briefcase',
+      },
+    ];
+    next.tabs = next.tabs.map((tab, i) => ({
+      ...tab,
+      groupId: `child-${Math.floor(i / 50)}-${(i % 50) % 49}`,
+      parentTabId: null,
+      audible: i % 17 === 0,
+      mutedInfo: { muted: false },
+    }));
+    next.view = { scopeId: 'parent-0', collapsed: children.map((group) => group.id) };
+    next.look.animations = false;
+    viewportTest.set(next);
+    viewportGroupBuilds = 0;
+    viewportCreationBuilds = 0;
+    viewportTest.resetRows();
+    const keys = children.map((group) => `group:${group.id}`);
+    let maxCached = 0;
+    for (let pass = 0; pass < 2; pass++)
+      for (let p = 0; p < 20; p++) {
+        next.view.scopeId = `parent-${p}`;
+        next.look.domains = Boolean(pass);
+        viewportTest.set(structuredClone(next));
+        const expected = children.filter((group) => group.parentId === `parent-${p}`);
+        const rows = [...document.querySelectorAll('#tree .group-row')];
+        if (
+          rows.length !== 49 ||
+          document.querySelector('#tree .tab-row') ||
+          rows.some((row, i) => {
+            const group = expected[i];
+            const tabs = next.tabs.filter((tab) => tab.groupId === group.id);
+            const playing = tabs.filter((tab) => tab.audible).length;
+            return (
+              row.dataset.id !== group.id ||
+              row.dataset.dropId !== group.id ||
+              row.querySelector('.label').textContent !== group.name ||
+              row.querySelector('.group-count').textContent !== String(tabs.length) ||
+              row.getAttribute('aria-expanded') !== 'false' ||
+              row.querySelector('.disclosure').getAttribute('aria-label') !==
+                `Expand ${group.name}` ||
+              Boolean(row.querySelector('.audio-indicator')) !== Boolean(playing)
+            );
+          }) ||
+          JSON.stringify(viewportTest.targets()) !==
+            JSON.stringify(
+              expected.flatMap((group) =>
+                next.tabs.filter((tab) => tab.groupId === group.id).map((tab) => tab.id),
+              ),
+            )
+        )
+          throw Error('Collapsed scope changed complete rows or logical targets');
+        maxCached = Math.max(maxCached, viewportTest.cached(keys).keys.length);
+      }
+    const builds = { groups: viewportGroupBuilds, creation: viewportCreationBuilds };
+    const describe = () =>
+      [...document.querySelectorAll('#tree .group-row')].map((row) => ({
+        key: row.dataset.key,
+        title: row.title,
+        accessible: row.getAttribute('aria-label'),
+        style: row.getAttribute('style'),
+        wrapperStyle: row.parentElement.getAttribute('style'),
+        icon: row.querySelector('.disclosure').innerHTML,
+        audio: row.querySelector('.audio-indicator')?.getAttribute('aria-label') || null,
+      }));
+    const reused = describe();
+    viewportTest.resetRows();
+    const fresh = describe();
+    window.folderScopeFixture = structuredClone(next);
+    return { maxCached, builds, reused, fresh };
+  });
+  expect(collapsedFolders.maxCached).toBeLessThanOrEqual(145);
+  expect(collapsedFolders.builds.groups).toBeLessThan(150);
+  expect(collapsedFolders.builds.creation).toBeLessThan(10);
+  expect(collapsedFolders.reused).toEqual(collapsedFolders.fresh);
+  const beforeFolderToggle = await page.evaluate(() => viewportTest.calls.length);
+  await page.locator('#tree .group-row[data-id="child-19-48"] .disclosure').click();
+  await page.waitForFunction((before) => viewportTest.calls.length > before, beforeFolderToggle);
+  expect(
+    await page.evaluate((before) => viewportTest.calls.slice(before), beforeFolderToggle),
+  ).toEqual([{ type: 'toggleGroup', id: 'child-19-48' }]);
+  console.log(
+    '✓ Collapsed folder scopes bound retained controls and preserve counts, audio, inherited appearance and current actions',
+  );
+
+  for (const owner of ['focus', 'pressed', 'menu']) {
+    await page.evaluate((owner) => {
+      document.getElementById('home').focus();
+      const next = structuredClone(folderScopeFixture);
+      next.view.scopeId = 'parent-0';
+      viewportTest.set(next);
+      viewportTest.resetRows();
+      window.heldFolder = document.querySelector('#tree .group-row');
+      window.heldFolderDisclosure = heldFolder.querySelector('.disclosure');
+      if (owner === 'pressed')
+        heldFolderDisclosure.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            pointerId: 42,
+            button: 0,
+            isPrimary: true,
+          }),
+        );
+      else (owner === 'focus' ? heldFolderDisclosure : heldFolder).focus();
+    }, owner);
+    if (owner === 'menu') {
+      await page.keyboard.press('Shift+F10');
+      await expect(page.locator('#menu')).toBeVisible();
+    }
+    const held = await page.evaluate(async (owner) => {
+      const before = viewportTest.calls.length;
+      if (owner === 'pressed')
+        document.dispatchEvent(
+          new PointerEvent('pointerup', { bubbles: true, pointerId: 42, button: 0 }),
+        );
+      const next = structuredClone(folderScopeFixture);
+      next.view.scopeId = 'parent-1';
+      viewportTest.set(next);
+      heldFolderDisclosure.click();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return {
+        key: heldFolder.dataset.key,
+        first: document.querySelector('#tree .group-row').dataset.id,
+        calls: viewportTest.calls.slice(before),
+      };
+    }, owner);
+    expect(held).toEqual({ key: 'group:child-0-0', first: 'child-1-0', calls: [] });
+    if (owner === 'menu') await page.keyboard.press('Escape');
+    await page.evaluate(async () => {
+      document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 42 }));
+      document.getElementById('home').focus();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      delete window.heldFolder;
+      delete window.heldFolderDisclosure;
+    });
+  }
+  const expandedFolder = await page.evaluate(() => {
+    const next = structuredClone(folderScopeFixture);
+    next.view.scopeId = 'parent-0';
+    next.view.collapsed = next.view.collapsed.filter((id) => id !== 'child-0-0');
+    viewportTest.set(next);
+    const expanded = document.querySelector('#tree .group-row[data-id="child-0-0"]');
+    const tabs = () =>
+      [...document.querySelectorAll('#tree .tab-row')].map((row) => Number(row.dataset.id));
+    const before = tabs();
+    const away = structuredClone(folderScopeFixture);
+    away.view.scopeId = 'parent-1';
+    viewportTest.set(away);
+    const keyWhileAway = expanded.dataset.key;
+    viewportTest.set(next);
+    return {
+      before,
+      after: tabs(),
+      keyWhileAway,
+      same: expanded === document.querySelector('#tree .group-row[data-id="child-0-0"]'),
+    };
+  });
+  expect(expandedFolder).toEqual({
+    before: [1, 50],
+    after: [1, 50],
+    keyWhileAway: 'group:child-0-0',
+    same: true,
+  });
+  await page.evaluate(() => {
+    delete window.folderScopeFixture;
+  });
+  console.log(
+    '✓ Full folder scopes preserve focused, pressed and menu owners and cached expanded branches',
+  );
+
   const smallFolders = await page.evaluate(() => {
     document.getElementById('home').focus();
     const next = structuredClone(fixture);

@@ -114,13 +114,14 @@ export function createSidebarRows({
     const virtual = getTreeRenderer().virtual;
     recycleFullScope =
       !virtual &&
-      rows.every(
+      (rows.every(
         ({ row }) =>
           row.kind === 'new-tab' || (row.kind === 'tab' && plainLeaf(row.tab, row.stats)),
-      );
+      ) ||
+        rows.every(({ row }) => row.kind === 'new-tab' || (row.kind === 'group' && !row.expanded)));
     // Complex small scopes keep their identity cache, including two-line labels,
-    // audio controls and parent rows. Their reconstruction cost is not traded
-    // for a smaller dormant budget.
+    // audio controls, parent rows and expanded folders. Their reconstruction cost
+    // is not traded for a smaller dormant budget.
     if (!reuseControls()) return;
     const keep = new Set([
       ...rows.map(({ row }) => row.key),
@@ -136,6 +137,7 @@ export function createSidebarRows({
       const folder = key.startsWith('group:');
       if (!folder && wrapper.branch) return;
       const row = wrapper.node.firstElementChild;
+      if (!virtual && folder && row.getAttribute('aria-expanded') !== 'false') return;
       if ((!folder && !pooledLeafParts.has(row)) || wrapper.node.contains(document.activeElement))
         return;
       if (
@@ -178,7 +180,9 @@ export function createSidebarRows({
     const creationNodes = new Set(creations.map(({ row }) => row));
     const inPlace =
       children.every((node) => reusable.has(node) || creationNodes.has(node)) &&
-      departing.every(({ folder, wrapper }) => !folder && !wrapper.branch) &&
+      departing.every(({ folder, wrapper }) =>
+        folder ? !wrapper.branch.isConnected && !wrapper.branch.childNodes.length : !wrapper.branch,
+      ) &&
       rows.filter(({ row }) => row.kind === 'new-tab').length === creations.length &&
       rows.every(({ row }) => !rowCache.has(row.key));
     // The full renderer builds children from last to first. Pool in DOM order
