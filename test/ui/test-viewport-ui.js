@@ -1948,6 +1948,227 @@ try {
   console.log(
     '✓ Small-folder visits bound dormant controls and preserve all rows and action targets',
   );
+  const mixedFolders = await page.evaluate(() => {
+    document.getElementById('home').focus();
+    const next = structuredClone(fixture);
+    const parents = Array.from({ length: 20 }, (_, i) => ({
+      id: `mixed-${i}`,
+      name: `Mixed ${i}`,
+      parentId: null,
+      appearance: { color: i % 2 ? '#a466ff' : '#37a7ff' },
+    }));
+    const children = parents.flatMap((parent, p) =>
+      Array.from({ length: 4 }, (_, i) => ({
+        id: `mixed-child-${p}-${i}`,
+        name: `Mixed child ${p}/${i}`,
+        parentId: parent.id,
+      })),
+    );
+    next.groups = [...parents, ...children];
+    next.tabs = next.tabs.map((tab, i) => ({
+      ...tab,
+      groupId: `mixed-${Math.floor(i / 50)}`,
+      parentTabId: null,
+      audible: false,
+      mutedInfo: { muted: false },
+    }));
+    next.look.domains = false;
+    next.look.animations = false;
+    next.view = { scopeId: 'mixed-0', collapsed: children.map((group) => group.id) };
+    window.checkMixedScope = (next) => {
+      const groups = next.groups.filter((group) => group.parentId === next.view.scopeId);
+      const tabs = next.tabs.filter((tab) => tab.groupId === next.view.scopeId);
+      const rows = [...document.querySelectorAll('#tree .group-row, #tree .tab-row')];
+      const expected = [
+        ...groups.map((group) => `group:${group.id}`),
+        ...tabs.map((tab) => `tab:${tab.id}`),
+      ];
+      if (
+        JSON.stringify(rows.map((row) => row.dataset.key)) !== JSON.stringify(expected) ||
+        JSON.stringify(viewportTest.targets()) !== JSON.stringify(tabs.map((tab) => tab.id))
+      )
+        throw Error('Mixed scope changed complete order or action targets');
+      for (const row of rows) {
+        if (row.classList.contains('group-row')) {
+          const group = groups.find((group) => group.id === row.dataset.id);
+          if (
+            row.dataset.dropId !== group.id ||
+            row.querySelector('.label').textContent !== group.name ||
+            row.querySelector('.group-count').textContent !== '0' ||
+            row.getAttribute('aria-expanded') !== 'false' ||
+            row.querySelector('.disclosure').getAttribute('aria-label') !== `Expand ${group.name}`
+          )
+            throw Error('Stale mixed folder control');
+        } else {
+          const tab = tabs.find((tab) => tab.id === Number(row.dataset.id));
+          if (
+            row.querySelector('.label').textContent !== tab.title ||
+            row.querySelector('.close-tab').getAttribute('aria-label') !== `Close ${tab.title}`
+          )
+            throw Error('Stale mixed tab control');
+        }
+      }
+      return rows.map((row) => ({
+        key: row.dataset.key,
+        label: row.getAttribute('aria-label'),
+        title: row.title,
+        style: row.getAttribute('style'),
+        wrapperStyle: row.parentElement.getAttribute('style'),
+        icon: row.querySelector('.disclosure, .tab-icon')?.innerHTML,
+      }));
+    };
+    viewportTest.set(structuredClone(next));
+    viewportGroupBuilds = viewportCreationBuilds = 0;
+    viewportTest.resetRows();
+    const keys = [
+      ...children.map((group) => `group:${group.id}`),
+      ...next.tabs.map((tab) => `tab:${tab.id}`),
+    ];
+    let maximumCached = 0;
+    for (let pass = 0; pass < 2; pass++)
+      for (let i = 0; i < 20; i++) {
+        next.view.scopeId = `mixed-${i}`;
+        viewportTest.set(structuredClone(next));
+        checkMixedScope(next);
+        maximumCached = Math.max(maximumCached, viewportTest.cached(keys).keys.length);
+      }
+    const builds = {
+      tabs: viewportTabBuilds,
+      groups: viewportGroupBuilds,
+      creations: viewportCreationBuilds,
+    };
+    const reused = checkMixedScope(next);
+    viewportTest.resetRows();
+    const fresh = checkMixedScope(next);
+    window.mixedScopeFixture = structuredClone(next);
+    return { maximumCached, builds, reused, fresh };
+  });
+  expect(mixedFolders.maximumCached).toBeLessThanOrEqual(150);
+  expect(mixedFolders.builds.tabs).toBeLessThan(150);
+  expect(mixedFolders.builds.groups).toBeLessThan(20);
+  expect(mixedFolders.builds.creations).toBeLessThan(10);
+  expect(mixedFolders.reused).toEqual(mixedFolders.fresh);
+  const beforeMixedActions = await page.evaluate(() => viewportTest.calls.length);
+  await page.locator('#tree .tab-row[data-id="1000"] .close-tab').click();
+  await page.locator('#tree .group-row[data-id="mixed-child-19-3"] .disclosure').click();
+  await expect
+    .poll(() => page.evaluate((before) => viewportTest.calls.slice(before), beforeMixedActions))
+    .toEqual([
+      { type: 'closeTab', id: 1000, promoteFirstChild: true },
+      { type: 'toggleGroup', id: 'mixed-child-19-3' },
+    ]);
+  for (const kind of ['tab', 'group'])
+    for (const owner of ['focus', 'pressed', 'menu']) {
+      await page.evaluate(
+        ({ kind, owner }) => {
+          document.getElementById('home').focus();
+          const next = structuredClone(mixedScopeFixture);
+          next.view.scopeId = 'mixed-0';
+          viewportTest.set(next);
+          viewportTest.resetRows();
+          window.heldMixedRow = document.querySelector(`#tree .${kind}-row`);
+          window.heldMixedControl = heldMixedRow.querySelector(
+            kind === 'tab' ? '.close-tab' : '.disclosure',
+          );
+          if (owner === 'pressed')
+            heldMixedControl.dispatchEvent(
+              new PointerEvent('pointerdown', {
+                bubbles: true,
+                pointerId: 42,
+                button: 0,
+                isPrimary: true,
+              }),
+            );
+          else (owner === 'focus' ? heldMixedControl : heldMixedRow).focus();
+        },
+        { kind, owner },
+      );
+      if (owner === 'menu') {
+        await page.keyboard.press('Shift+F10');
+        await expect(page.locator('#menu')).toBeVisible();
+      }
+      const held = await page.evaluate(async (owner) => {
+        const before = viewportTest.calls.length;
+        if (owner === 'pressed')
+          document.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerId: 42, button: 0 }),
+          );
+        const next = structuredClone(mixedScopeFixture);
+        next.view.scopeId = 'mixed-1';
+        viewportTest.set(next);
+        checkMixedScope(next);
+        heldMixedControl.click();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return { key: heldMixedRow.dataset.key, calls: viewportTest.calls.slice(before) };
+      }, owner);
+      expect(held).toEqual({ key: kind === 'tab' ? 'tab:1' : 'group:mixed-child-0-0', calls: [] });
+      if (owner === 'menu') await page.keyboard.press('Escape');
+      await page.evaluate(async () => {
+        document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 42 }));
+        document.getElementById('home').focus();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        delete window.heldMixedRow;
+        delete window.heldMixedControl;
+      });
+    }
+  await page.evaluate(() => {
+    for (const [scope, tabCount, groupCount] of [
+      [2, 7, 1],
+      [3, 50, 4],
+      [4, 0, 0],
+      [5, 1, 4],
+      [6, 50, 0],
+      [7, 0, 4],
+      [19, 50, 4],
+    ]) {
+      const next = structuredClone(mixedScopeFixture);
+      const id = `mixed-${scope}`;
+      const keptTabs = new Set(
+        next.tabs
+          .filter((tab) => tab.groupId === id)
+          .slice(0, tabCount)
+          .map((tab) => tab.id),
+      );
+      const keptGroups = new Set(
+        next.groups
+          .filter((group) => group.parentId === id)
+          .slice(0, groupCount)
+          .map((group) => group.id),
+      );
+      next.tabs = next.tabs.filter((tab) => tab.groupId !== id || keptTabs.has(tab.id));
+      next.groups = next.groups.filter(
+        (group) => group.parentId !== id || keptGroups.has(group.id),
+      );
+      next.view.scopeId = id;
+      viewportTest.set(next);
+      checkMixedScope(next);
+    }
+    for (const mode of ['expanded', 'domains', 'parents', 'audio']) {
+      const next = structuredClone(mixedScopeFixture);
+      next.view.scopeId = 'mixed-0';
+      if (mode === 'expanded')
+        next.view.collapsed = next.view.collapsed.filter((id) => id !== 'mixed-child-0-0');
+      if (mode === 'domains') next.look.domains = true;
+      if (mode === 'parents') next.tabs[1].parentTabId = next.tabs[0].id;
+      if (mode === 'audio') next.tabs[0].audible = true;
+      viewportTest.set(next);
+      const selector =
+        mode === 'expanded' ? '[data-key="group:mixed-child-0-0"]' : '[data-key="tab:1"]';
+      const held = document.querySelector(selector);
+      const key = held.dataset.key;
+      viewportTest.set({ ...next, view: { ...next.view, scopeId: 'mixed-1' } });
+      if (held.dataset.key !== key) throw Error('Mixed navigation reassigned a complex control');
+      viewportTest.set(next);
+      if (document.querySelector(selector) !== held)
+        throw Error('Mixed navigation discarded a cached complex control');
+    }
+    delete window.mixedScopeFixture;
+    delete window.checkMixedScope;
+  });
+  console.log(
+    '✓ Mixed tab/folder scopes preserve full results, appearance, actions, protected owners and varying shapes',
+  );
+
   const flatTransitions = await page.evaluate(() => {
     document.getElementById('home').focus();
     const next = structuredClone(fixture);

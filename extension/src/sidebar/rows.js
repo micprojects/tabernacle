@@ -114,11 +114,12 @@ export function createSidebarRows({
     const virtual = getTreeRenderer().virtual;
     recycleFullScope =
       !virtual &&
-      (rows.every(
+      rows.every(
         ({ row }) =>
-          row.kind === 'new-tab' || (row.kind === 'tab' && plainLeaf(row.tab, row.stats)),
-      ) ||
-        rows.every(({ row }) => row.kind === 'new-tab' || (row.kind === 'group' && !row.expanded)));
+          row.kind === 'new-tab' ||
+          (row.kind === 'tab' && plainLeaf(row.tab, row.stats)) ||
+          (row.kind === 'group' && !row.expanded),
+      );
     // Complex small scopes keep their identity cache, including two-line labels,
     // audio controls, parent rows and expanded folders. Their reconstruction cost
     // is not traded for a smaller dormant budget.
