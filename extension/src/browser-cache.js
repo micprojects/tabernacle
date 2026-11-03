@@ -199,6 +199,10 @@ export function createBrowserCache(api, changed = () => {}) {
               ([key]) =>
                 !metadataProperties.has(key) &&
                 !selectionProperties.has(key) &&
+                // Loading discarded content can change its pixel dimensions
+                // without changing tab topology. Keep the complete native values.
+                key !== 'width' &&
+                key !== 'height' &&
                 !(navigation && key === 'url') &&
                 !(article && key === 'isArticle') &&
                 !(reader && key === 'isInReaderMode'),

@@ -97,10 +97,57 @@ for (const change of ['move', 'remove', 'metadata', 'activation']) {
   });
 }
 
+for (const dimensions of [{ width: 729, height: 777 }, {}]) {
+  test(`complete selection reads preserve changed or absent content dimensions: ${JSON.stringify(dimensions)}`, async (t) => {
+    const f = fixture(t);
+    Object.assign(f.native.get(3), {
+      discarded: true,
+      width: 0,
+      height: 0,
+      futureNativeField: { retained: true },
+    });
+    const before = await f.cache.tabsState(1);
+    const other = await f.cache.tabsState(2);
+    const saved = structuredClone(before.tabs);
+    f.resetStats();
+    await f.api.tabs.update(3, { active: true, discarded: false });
+    delete f.native.get(3).width;
+    delete f.native.get(3).height;
+    Object.assign(f.native.get(3), dimensions);
+    const after = await f.cache.tabsState(1);
+    assert.equal(f.stats().calls['tabs.query'] || 0, 0);
+    assert.equal(f.stats().calls['tabs.get'], 2);
+    assert.equal(after.structureToken, before.structureToken);
+    assert.equal(after.positions, before.positions);
+    assert.deepEqual(after.tabs, await f.api.tabs.query({ windowId: 1 }));
+    assert.deepEqual(before.tabs, saved);
+    assert.equal((await f.cache.tabsState(2)).tabs, other.tabs);
+  });
+}
+
+test('dimension changes during a native refresh retry complete reads without overlaying stale fields', async (t) => {
+  const f = fixture(t);
+  Object.assign(f.native.get(3), { width: 0, height: 0, discarded: true });
+  const before = await f.cache.tabsState(1);
+  const saved = structuredClone(before.tabs);
+  await f.api.tabs.update(3, { active: true });
+  const held = pauseGet(f.api);
+  const reading = f.cache.tabsState(1);
+  await held.started;
+  Object.assign(f.native.get(3), { width: 729, height: 777 });
+  await f.api.tabs.update(3, { discarded: false, title: 'Loaded dimensions' });
+  held.release();
+  const after = await reading;
+  assert.equal(after.structureToken, before.structureToken);
+  assert.deepEqual(after.tabs, await f.api.tabs.query({ windowId: 1 }));
+  assert.deepEqual(before.tabs, saved);
+});
+
 for (const changes of [
   { windowId: 2 },
   { pinned: false },
   { url: 'https://example.test/navigated' },
+  { url: 'about:blank' },
   { cookieStoreId: 'firefox-default' },
   { openerTabId: 9 },
   { futureNativeField: { keep: ['unknown'] } },
@@ -109,7 +156,7 @@ for (const changes of [
     const f = fixture(t);
     const before = await f.cache.tabsState(1);
     await f.api.tabs.update(3, { active: true });
-    Object.assign(f.native.get(3), changes);
+    Object.assign(f.native.get(3), { width: 729, height: 777 }, changes);
     const after = await f.cache.tabsState(1);
     assert.notEqual(after.structureToken, before.structureToken);
     assert.deepEqual(after.tabs, await f.api.tabs.query({ windowId: 1 }));
@@ -206,6 +253,7 @@ test('activation while a cold query is pending cannot seed stale window state', 
 
 test('controller activation preserves durable data and recovers after a rejected native update', async (t) => {
   const f = performanceBrowser(performanceFixture({ tabs: 100, windows: 2 }));
+  Object.assign(f.native.get(3), { width: 0, height: 0, discarded: true });
   const controller = createController(f.api);
   t.after(() => controller.dispose());
   const send = (type, args = {}) => controller.request({ type, windowId: 1, ...args });
@@ -223,10 +271,19 @@ test('controller activation preserves durable data and recovers after a rejected
   );
   assert.deepEqual(persisted(), saved);
   assert.deepEqual((await send('snapshot')).tabs, before.tabs);
-  f.api.tabs.update = update;
+  f.api.tabs.update = async (...args) => {
+    const result = await update(...args);
+    Object.assign(f.native.get(args[0]), { width: 729, height: 777, discarded: false });
+    return result;
+  };
   f.resetStats();
   const after = await send('activateTab', { id: 3, expandAncestors: false });
-  assert.equal(after.tabs.find((tab) => tab.id === 3).active, true);
+  const activated = after.tabs.find((tab) => tab.id === 3);
+  assert.equal(activated.active, true);
+  assert.equal(activated.width, 729);
+  assert.equal(activated.height, 777);
+  assert.equal(activated.discarded, false);
+  assert.equal(before.tabs.find((tab) => tab.id === 3).width, 0);
   assert.deepEqual(persisted(), saved);
   assert.equal(f.stats().writes, 0);
   assert.equal(f.stats().calls['tabs.query'] || 0, 0);
