@@ -181,9 +181,9 @@ try {
   await expect(labels).toHaveCount(0);
   await expect(redLabel).not.toHaveCSS('color', originalLabel);
   await settings.locator('[name="domains"]').check();
-  await settings.locator('#appearance-reset').click();
+  await settings.locator('[data-look-default="domains"]').click();
   await settings.locator('[name="domains"]').check();
-  await settings.locator('#appearance-save').click();
+  await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   // Domain changes rebuild label nodes; wait for the sidebar to accept the save.
   await expect(page.locator('#tree')).toHaveClass(/show-domains/);
   await expect(redLabel).not.toHaveCSS('color', originalLabel);
@@ -253,19 +253,19 @@ try {
   const tint = settings.getByRole('checkbox', { name: 'Tint website icons', exact: true });
   await expect(tint).not.toBeChecked();
   await tint.check();
-  await settings.locator('#appearance-reset').click();
+  await settings.locator('[data-look-default="tintFavicons"]').click();
   await expect(tint).not.toBeChecked();
-  await tint.check();
+  await expect(red.locator('img')).toHaveCSS('filter', 'none');
   await page.evaluate(() => {
     window.failTintSave = true;
   });
-  await settings.locator('#appearance-save').click();
+  await tint.check();
   await expect(settings.locator('#appearance-error')).toHaveText('Storage unavailable');
   await expect(red.locator('img')).toHaveCSS('filter', 'none');
   await page.evaluate(() => {
     window.failTintSave = false;
   });
-  await settings.locator('#appearance-save').click();
+  await settings.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(red.locator('img')).not.toHaveCSS('filter', 'none');
   await expect(blue.locator('img')).not.toHaveCSS('filter', 'none');
   await expect(pinned.locator('img')).not.toHaveCSS('filter', 'none');
@@ -339,7 +339,7 @@ try {
   await checkCaptionContrast(red);
   await page.emulateMedia({ forcedColors: 'none' });
   await tint.uncheck();
-  await settings.locator('#appearance-save').click();
+  await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   await expect(blue.locator('img')).toHaveCSS('filter', 'none');
   await expect(pinned.locator('img')).toHaveCSS('filter', 'none');
   expect((await pixels(blue)).colour).toEqual(original.colour);

@@ -101,12 +101,17 @@ h3 {
 }
 .setting-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 184px;
+  grid-template-columns: minmax(0, 1fr) var(--setting-controls-width, 184px);
   gap: 28px;
   align-items: start;
 }
+#appearance {
+  --setting-controls-width: 224px;
+}
 .setting-row + .setting-row,
 .setting-row + .setting-check,
+.setting-row + .appearance-option,
+.appearance-option + .appearance-option,
 .setting-check + .setting-check {
   border-top: 1px solid var(--panel-line);
   padding-top: 20px;
@@ -147,6 +152,42 @@ h3 {
   width: 17px;
   height: 17px;
   accent-color: var(--focus);
+}
+.settings-heading,
+.setting-controls,
+.appearance-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.settings-heading {
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.settings-heading h2 {
+  margin-bottom: 0;
+}
+.appearance-option .setting-check {
+  flex: 1;
+  min-width: 0;
+}
+.setting-controls {
+  align-items: center;
+  gap: 8px;
+}
+.setting-default {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--panel-line);
+}
+.appearance-option .setting-default {
+  margin-top: -5px;
+}
+.setting-default:disabled {
+  opacity: 0.3;
 }
 .settings-actions {
   display: flex;
@@ -236,7 +277,8 @@ h3 {
   height: 20px;
   flex-shrink: 0;
 }
-#container-editor {
+#container-editor,
+#appearance-confirm {
   max-width: 460px;
   margin: auto;
   overscroll-behavior: contain;
@@ -250,7 +292,8 @@ h3 {
   font-size: inherit;
   color: var(--panel-text);
 }
-#container-editor p {
+#container-editor p,
+#appearance-confirm p {
   font-size: inherit;
 }
 .container-edit-fields {
@@ -393,6 +436,18 @@ kbd {
   .shortcut-list > div {
     flex-wrap: wrap;
     gap: 8px;
+  }
+}
+@media (max-width: 300px) {
+  .appearance-option {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .appearance-option .setting-check {
+    width: 100%;
+  }
+  .appearance-option .setting-default {
+    margin: 0 0 0 29px;
   }
 }
 @media (forced-colors: active) {

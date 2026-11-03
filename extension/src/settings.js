@@ -9,7 +9,10 @@ import { createNewTabSettings } from './new-tab/settings.js';
 const $ = (id) => document.getElementById(id);
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
 const fields = $('appearance-form').elements;
-const dirty = new Set();
+const lookDefaults = normalizeLook();
+const pendingLook = new Map();
+const retiredLookGenerations = new Set();
+let lookState, lookError;
 let savedLook, request, windowId;
 let savingLook = false,
   savingContainer = false;
@@ -36,7 +39,7 @@ function errorAt(id, error) {
 
 function readLook() {
   return Object.fromEntries(
-    Object.keys(normalizeLook()).map((key) => [
+    Object.keys(lookDefaults).map((key) => [
       key,
       fields[key].type === 'checkbox' ? fields[key].checked : fields[key].value,
     ]),
@@ -44,70 +47,122 @@ function readLook() {
 }
 
 function renderAppearance() {
-  if (!savedLook) return;
+  if (!savedLook || disposed) return;
   document.documentElement.dataset.colorScheme = savedLook.colorScheme;
-}
-
-function updateSaveState(message) {
-  $('appearance-save').disabled = savingLook || !dirty.size || !savedLook;
-  $('appearance-reset').disabled = savingLook || !dirty.size || !savedLook;
-  $('appearance-status').textContent =
-    message ?? (savingLook ? 'Saving…' : dirty.size ? 'Unsaved changes' : 'All changes saved');
-}
-
-function acceptLook(value) {
-  savedLook = normalizeLook(value);
-  for (const [key, value] of Object.entries(savedLook)) {
+  for (const [key, saved] of Object.entries(savedLook)) {
     const control = fields[key];
-    if (!dirty.has(key)) {
-      if (control.type === 'checkbox') control.checked = value;
-      else control.value = value;
-    } else if (readLook()[key] === value) dirty.delete(key);
+    const value = pendingLook.has(key) ? pendingLook.get(key).value : saved;
+    if (control.type === 'checkbox') control.checked = value;
+    else control.value = value;
+    document.querySelector(`[data-look-default="${key}"]`).disabled = value === lookDefaults[key];
   }
-  renderAppearance();
-  updateSaveState();
+  const value = readLook();
+  $('appearance-defaults').disabled = Object.keys(lookDefaults).every(
+    (key) => value[key] === lookDefaults[key],
+  );
+  $('appearance-retry').hidden = !lookError;
+  $('appearance-retry').disabled = savingLook;
+  errorAt('appearance-error', lookError);
+  $('appearance-status').textContent = lookError
+    ? 'Changes not saved'
+    : savingLook || pendingLook.size
+      ? 'Saving…'
+      : 'All changes saved';
 }
 
-$('appearance-form').addEventListener('change', () => {
-  const value = readLook();
-  for (const key of Object.keys(savedLook)) {
-    if (value[key] === savedLook[key]) dirty.delete(key);
-    else dirty.add(key);
+function acceptLook(value, next) {
+  // A read started before a save can arrive after its reply. Never let it
+  // replace newer confirmed preferences, including after a background restart.
+  const stale =
+    next?.generation &&
+    (retiredLookGenerations.has(next.generation) ||
+      (next.generation === lookState?.generation && next.revision < lookState.revision));
+  if (!stale) {
+    if (lookState?.generation && next?.generation && lookState.generation !== next.generation)
+      retiredLookGenerations.add(lookState.generation);
+    lookState = next && { generation: next.generation, revision: next.revision };
+    savedLook = normalizeLook(value);
   }
-  errorAt('appearance-error');
   renderAppearance();
-  updateSaveState();
-});
-$('appearance-reset').addEventListener('click', () => {
-  dirty.clear();
-  errorAt('appearance-error');
-  acceptLook(savedLook);
-});
-$('appearance-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (savingLook || !dirty.size) return;
+}
+
+async function saveLook() {
+  if (savingLook || !savedLook || !pendingLook.size || disposed) return;
   savingLook = true;
-  $('appearance-fields').disabled = true;
-  updateSaveState('Saving…');
-  errorAt('appearance-error');
+  lookError = undefined;
+  renderAppearance();
   try {
-    const value = readLook();
-    // Merge only the edited fields inside the controller's queue, preserving
-    // concurrent changes from another settings tab or window.
-    const next = await request('setLook', {
-      value: Object.fromEntries([...dirty].map((key) => [key, value[key]])),
-      partial: true,
-    });
-    dirty.clear();
-    acceptLook(next.look);
+    while (pendingLook.size && !disposed) {
+      const batch = new Map(pendingLook);
+      const next = await request('setLook', {
+        value: Object.fromEntries([...batch].map(([key, entry]) => [key, entry.value])),
+        partial: true,
+      });
+      if (disposed) return;
+      // A later edit, even back to the original value, must survive this reply.
+      for (const [key, entry] of batch) {
+        if (pendingLook.get(key) === entry) pendingLook.delete(key);
+      }
+      acceptLook(next.look, next);
+    }
   } catch (error) {
-    errorAt('appearance-error', error);
+    if (!disposed) lookError = error;
   } finally {
     savingLook = false;
-    $('appearance-fields').disabled = false;
-    updateSaveState();
+    renderAppearance();
   }
+}
+
+function changeLook(value) {
+  if (!savedLook || disposed) return;
+  for (const [key, next] of Object.entries(value)) pendingLook.set(key, { value: next });
+  lookError = undefined;
+  renderAppearance();
+  saveLook();
+}
+
+$('appearance-form').addEventListener('submit', (event) => event.preventDefault());
+$('appearance-form').addEventListener('change', ({ target }) => {
+  if (!Object.hasOwn(lookDefaults, target.name)) return;
+  changeLook({ [target.name]: target.type === 'checkbox' ? target.checked : target.value });
 });
+for (const button of document.querySelectorAll('[data-look-default]')) {
+  const key = button.dataset.lookDefault;
+  const control = fields[key];
+  const label =
+    control.type === 'checkbox'
+      ? lookDefaults[key]
+        ? 'On'
+        : 'Off'
+      : [...control.options].find((option) => option.value === lookDefaults[key]).textContent;
+  button.title = `Reset to default (${label})`;
+  button.append(icon('undo'));
+  button.addEventListener('click', () => {
+    changeLook({ [key]: lookDefaults[key] });
+    control.focus({ preventScroll: true });
+  });
+}
+$('appearance-defaults').addEventListener('click', () => {
+  $('appearance-confirm').returnValue = '';
+  $('appearance-confirm').showModal();
+});
+$('appearance-confirm')
+  .querySelector('form')
+  .addEventListener('submit', (event) => {
+    if (event.submitter?.value === 'reset') changeLook(lookDefaults);
+  });
+$('appearance-confirm').addEventListener('close', () => {
+  const dialog = $('appearance-confirm');
+  // Native dialogs restore focus themselves. Supply a fallback when the reset
+  // disabled its trigger, without stealing focus from a subsequent action.
+  if (
+    !dialog.open &&
+    !$('appearance').hidden &&
+    (document.activeElement === document.body || dialog.contains(document.activeElement))
+  )
+    ($('appearance-defaults').disabled ? $('appearance-title') : $('appearance-defaults')).focus();
+});
+$('appearance-retry').addEventListener('click', saveLook);
 
 function renderContainers() {
   const query = $('container-search').value.trim().toLocaleLowerCase();
@@ -365,6 +420,8 @@ function navigate(focus = false) {
   const sections = ['appearance', 'new-tab', 'containers', 'backup', 'shortcuts', 'about'];
   const section = sections.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'appearance';
   for (const id of sections) $(id).hidden = id !== section;
+  if (section !== 'appearance' && $('appearance-confirm').open)
+    $('appearance-confirm').close('cancel');
   for (const link of document.querySelectorAll('nav a')) {
     if (link.hash === `#${section}`) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
@@ -386,9 +443,9 @@ const refreshScheduler = createRefreshScheduler({
       const next = await request('getSettings');
       if (disposed) return;
       settingsState = next;
-      acceptLook(next.look);
+      acceptLook(next.look, next);
       newTabSettings.accept(next.newTab);
-      $('appearance-fields').disabled = savingLook;
+      $('appearance-fields').disabled = false;
       errorAt('page-error');
       if (!$('containers').hidden) await loadContainers();
     } catch (error) {
@@ -416,7 +473,13 @@ window.addEventListener('focus', () => {
   if (!$('shortcuts').hidden) refreshShortcuts();
 });
 window.addEventListener('beforeunload', (event) => {
-  if (dirty.size || savingContainer || folderBackup.isBusy() || newTabSettings.isBusy())
+  if (
+    pendingLook.size ||
+    savingLook ||
+    savingContainer ||
+    folderBackup.isBusy() ||
+    newTabSettings.isBusy()
+  )
     event.preventDefault();
 });
 for (const link of document.querySelectorAll('nav a')) link.prepend(icon(link.dataset.icon));
@@ -475,7 +538,7 @@ async function start() {
   }
   $('extension-version').textContent = `Version ${manifest.version}`;
   settingsState = await request('getSettings');
-  acceptLook(settingsState.look);
+  acceptLook(settingsState.look, settingsState);
   newTabSettings.accept(settingsState.newTab);
   $('appearance-fields').disabled = false;
   navigate();

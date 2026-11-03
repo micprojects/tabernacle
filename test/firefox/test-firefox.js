@@ -118,8 +118,8 @@ try {
   );
   await driver.findElement(By.css('#container-editor button[type="button"]')).click();
   await driver.findElement(By.css('a[href="#appearance"]')).click();
-  assert.equal(await driver.findElement(By.id('appearance-status')).getText(), 'Unsaved changes');
-  await driver.findElement(By.id('appearance-save')).click();
+  await driver.wait(async () => (await driver.findElement(By.id('appearance-status')).getText()) === 'All changes saved', 5000);
+  assert.equal((await driver.findElements(By.id('appearance-save'))).length, 0);
   await driver.wait(async () => (await send('getSettings')).look.domains, 5000);
   await driver.navigate().refresh();
   await driver.wait(
@@ -158,13 +158,21 @@ try {
   );
   assert.equal(optionsURL, `moz-extension://${uuid}/settings.html`);
   await driver.setContext(firefox.Context.CONTENT);
-  await send('setLook', {
-    value: {
-      connectingLines: true,
-      domains: false,
-      colorScheme: 'default',
-    },
+  await driver.findElement(By.css('[data-look-default="sidebarSize"]')).click();
+  await driver.wait(async () => (await send('getSettings')).look.sidebarSize === 'default', 5000);
+  assert.equal((await send('getSettings')).look.colorScheme, 'dark');
+  await driver.findElement(By.id('appearance-defaults')).click();
+  await driver.wait(until.elementLocated(By.css('#appearance-confirm[open]')), 5000);
+  await driver.findElement(By.css('#appearance-confirm [value="cancel"]')).click();
+  assert.equal((await send('getSettings')).look.colorScheme, 'dark');
+  await driver.findElement(By.id('appearance-defaults')).click();
+  await driver.findElement(By.css('#appearance-confirm [value="reset"]')).click();
+  await driver.wait(async () => (await driver.findElement(By.id('appearance-status')).getText()) === 'All changes saved', 5000);
+  assert.deepEqual((await send('getSettings')).look, {
+    connectingLines: true, domains: false, folderCounts: false, tintFavicons: false,
+    animations: true, colorScheme: 'default', sidebarSize: 'default',
   });
+  console.log('✓ Appearance applies immediately; individual and page resets restore saved defaults');
   await driver.close();
   await driver.switchTo().window(sidebarHandle);
   assert.equal(

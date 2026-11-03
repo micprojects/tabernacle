@@ -105,7 +105,6 @@ try {
       refreshTest.calls = 0;
       refreshTest.maxInFlight = 0;
     });
-    if (view === 'settings') await page.locator('input[name="domains"]').check();
     await page.evaluate(() => {
       refreshTest.revision++;
       refreshTest.notify({ windowIds: [2] });
@@ -128,6 +127,7 @@ try {
     }
     await page.evaluate(() => {
       refreshTest.look.folderCounts = true;
+      refreshTest.look.domains = true;
       refreshTest.hidden = false;
       document.dispatchEvent(new Event('visibilitychange'));
     });
@@ -135,7 +135,7 @@ try {
     if (view === 'settings') {
       await expect(page.locator('input[name="domains"]')).toBeChecked();
       await expect(page.locator('input[name="folderCounts"]')).toBeChecked();
-      await expect(page.locator('#appearance-status')).toHaveText('Unsaved changes');
+      await expect(page.locator('#appearance-status')).toHaveText('All changes saved');
     }
     await page.evaluate(() => {
       refreshTest.calls = 0;
@@ -172,7 +172,6 @@ try {
     await expect.poll(() => page.evaluate(() => refreshTest.calls)).toBe(1);
     if (view === 'settings') {
       await expect(page.locator('input[name="domains"]')).toBeChecked();
-      await page.locator('#appearance-reset').click();
     } else {
       // A response dispatched before hiding must not repopulate released rows/state.
       await expect.poll(() => page.locator(rows).count()).toBeGreaterThan(0);

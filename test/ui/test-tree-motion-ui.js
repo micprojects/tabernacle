@@ -184,7 +184,6 @@ try {
   const animations = settings.getByRole('checkbox', { name: 'Show animations', exact: true });
   await expect(animations).toBeChecked();
   await animations.uncheck();
-  await settings.locator('#appearance-save').click();
   await expect(page.locator('html')).toHaveClass(/motion-off/);
   await settings.reload();
   await expect(animations).not.toBeChecked();
@@ -197,12 +196,10 @@ try {
   expect(await calls()).toEqual([]);
   await expect(page.locator('.navigation-capsule')).toHaveCSS('transition-duration', '0s');
   await animations.check();
-  await settings.locator('#appearance-save').click();
   await expect(page.locator('html')).not.toHaveClass(/motion-off/);
   await fold(design);
   await expect(branch).toHaveAttribute('data-tree-motion');
   await animations.uncheck();
-  await settings.locator('#appearance-save').click();
   await expect(branch).toHaveCount(0);
   expect(errors).toEqual([]);
   console.log(

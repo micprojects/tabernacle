@@ -109,17 +109,17 @@ try {
   await expect(page.locator('[data-key="group:work"]')).toHaveCSS('min-height', '30px');
   await expect(page.locator('#tree > .group-node').nth(1)).toHaveCSS('border-top-width', '0px');
   await counts.check();
-  await settings.locator('#appearance-reset').click();
+  await settings.locator('[data-look-default="folderCounts"]').click();
   await expect(counts).not.toBeChecked();
   await expect(folderCount).toBeHidden();
   await counts.check();
-  await settings.locator('#appearance-save').click();
+  await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   await expect(folderCount).toBeVisible();
   await expect(folderCount).toHaveText('4');
   await settings.reload();
   await expect(counts).toBeChecked();
   await counts.uncheck();
-  await settings.locator('#appearance-save').click();
+  await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   await expect(folderCount).toBeHidden();
   await expect(page.locator('#tree')).not.toHaveClass(/show-folder-counts/);
 
@@ -127,8 +127,6 @@ try {
     await openLook();
     await lines.setChecked(showLines);
     await domains.setChecked(showDomains);
-    if (await settings.locator('#appearance-save').isEnabled())
-      await settings.locator('#appearance-save').click();
     await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
     await expect
       .poll(() =>
@@ -282,16 +280,17 @@ try {
   await expect(page.locator('.row-detail')).toHaveCount(0);
   await expect.poll(guides).toBe('none');
 
-  // Editing then cancelling does not apply either preference.
+  // Edits apply immediately; resetting one option leaves the others alone.
   await openLook();
   await expect(settings.getByRole('combobox', { name: 'Theme', exact: true })).toHaveCount(0);
   await expect(lines).not.toBeChecked();
   await expect(domains).not.toBeChecked();
   await lines.check();
   await domains.check();
-  await settings.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await expect(parent.locator('.row-detail')).toBeVisible();
+  await settings.locator('[data-look-default="domains"]').click();
   await openLook();
-  await expect(lines).not.toBeChecked();
+  await expect(lines).toBeChecked();
   await expect(domains).not.toBeChecked();
   await page.keyboard.press('Escape');
 
@@ -316,14 +315,13 @@ try {
 
   // Failed saves remain editable and can be retried without losing selections.
   await openLook();
-  await lines.check();
   await page.evaluate(() => (window.failLookSave = true));
-  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await lines.check();
   await expect(settings.getByRole('alert')).toHaveText('Storage unavailable');
   await expect(lines).toBeEnabled();
   await expect.poll(guides).toBe('none');
   await page.evaluate(() => (window.failLookSave = false));
-  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await settings.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   await settleFocus();
   await expect.poll(guides).toBe('""');

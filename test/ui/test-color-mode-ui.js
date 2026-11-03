@@ -114,12 +114,13 @@ try {
     'Automatic follows Firefox’s light/dark appearance.',
   );
   await mode.selectOption('light');
-  await settings.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await checkPalette('light');
+  await settings.getByRole('button', { name: 'Reset colour mode to default', exact: true }).click();
   await checkPalette('dark');
   await openLook();
   await expect(mode).toHaveValue('default');
   await mode.selectOption('light');
-  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   await checkPalette('light');
   await page.emulateMedia({ colorScheme: 'light' });
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -127,15 +128,14 @@ try {
 
   await openLook();
   await expect(mode).toHaveValue('light');
-  await mode.selectOption('dark');
   await page.evaluate(() => (window.failLookSave = true));
-  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await mode.selectOption('dark');
   await expect(settings.getByRole('alert')).toHaveText('Storage unavailable');
   await expect(mode).toBeEnabled();
   await expect(mode).toHaveValue('dark');
   await checkPalette('light');
   await page.evaluate(() => (window.failLookSave = false));
-  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await settings.getByRole('button', { name: 'Retry', exact: true }).click();
   await page.emulateMedia({ colorScheme: 'light' });
   await checkPalette('dark');
 
@@ -159,7 +159,7 @@ try {
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await page.emulateMedia({ forcedColors: 'none' });
   await mode.selectOption('default');
-  await settings.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
   await checkPalette('light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await checkPalette('dark');
@@ -167,7 +167,7 @@ try {
   await checkPalette('light');
   expect(errors).toEqual([]);
   console.log(
-    '✓ Accessible compact palettes, live Default mode, saved overrides, cancellation, save retry, narrow layouts and forced colours work without Firefox theme access',
+    '✓ Accessible compact palettes, live Default mode, saved overrides, individual reset, save retry, narrow layouts and forced colours work without Firefox theme access',
   );
 } finally {
   await close();

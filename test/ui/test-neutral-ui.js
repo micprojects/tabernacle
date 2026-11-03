@@ -92,8 +92,7 @@ try {
 
   for (const colorScheme of ['dark', 'light', 'default']) {
     await mode.selectOption(colorScheme);
-    await settings.locator('#appearance-save').click();
-    await expect(settings.locator('#appearance-save')).toBeDisabled();
+    await expect(settings.locator('#appearance-status')).toHaveText('All changes saved');
     for (const preferred of ['dark', 'light']) {
       for (const tab of pages) await tab.emulateMedia({ colorScheme: preferred });
       await checkSharedPalette((colorScheme === 'default' ? preferred : colorScheme) === 'dark');

@@ -36,10 +36,14 @@
           Preview with sample data. Changes here do not affect Firefox.
         </p>
         <section id="appearance" aria-labelledby="appearance-title">
-          <h2 id="appearance-title" tabindex="-1">Appearance</h2>
+          <div class="settings-heading">
+            <h2 id="appearance-title" tabindex="-1">Appearance</h2>
+            <button class="settings-button" id="appearance-defaults" type="button" disabled>
+              Reset all
+            </button>
+          </div>
           <p class="section-description">
-            Choose the size, colours and details in your sidebar. Saved changes apply to every
-            window.
+            Changes apply immediately to every window and are saved automatically.
           </p>
           <form id="appearance-form">
             <fieldset id="appearance-fields" disabled>
@@ -53,15 +57,23 @@
                       Automatic follows Firefox’s light/dark appearance.
                     </p>
                   </div>
-                  <select
-                    id="look-color-scheme"
-                    name="colorScheme"
-                    aria-describedby="look-color-scheme-help"
-                  >
-                    <option value="default">Automatic</option>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                  </select>
+                  <div class="setting-controls">
+                    <select
+                      id="look-color-scheme"
+                      name="colorScheme"
+                      aria-describedby="look-color-scheme-help"
+                    >
+                      <option value="default">Automatic</option>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                    <button
+                      class="icon-button setting-default"
+                      type="button"
+                      data-look-default="colorScheme"
+                      aria-label="Reset colour mode to default"
+                    ></button>
+                  </div>
                 </div>
               </div>
               <div class="settings-card">
@@ -73,95 +85,157 @@
                       Adjust text and row spacing. Compact fits more tabs and longer titles.
                     </p>
                   </div>
-                  <select
-                    id="look-sidebar-size"
-                    name="sidebarSize"
-                    aria-describedby="look-sidebar-size-help"
-                  >
-                    <option value="default">Compact (default)</option>
-                    <option value="comfortable">Comfortable</option>
-                    <option value="large">Large</option>
-                  </select>
+                  <div class="setting-controls">
+                    <select
+                      id="look-sidebar-size"
+                      name="sidebarSize"
+                      aria-describedby="look-sidebar-size-help"
+                    >
+                      <option value="default">Compact (default)</option>
+                      <option value="comfortable">Comfortable</option>
+                      <option value="large">Large</option>
+                    </select>
+                    <button
+                      class="icon-button setting-default"
+                      type="button"
+                      data-look-default="sidebarSize"
+                      aria-label="Reset sidebar size to default"
+                    ></button>
+                  </div>
                 </div>
-                <label class="setting-check"
-                  ><input
-                    name="tintFavicons"
-                    type="checkbox"
-                    aria-labelledby="tint-favicons-label"
-                    aria-describedby="tint-favicons-help"
-                  /><span
-                    ><span id="tint-favicons-label">Tint website icons</span
-                    ><span id="tint-favicons-help" class="setting-help"
-                      >Match website icons to each tab’s Firefox container colour.</span
-                    ></span
-                  ></label
-                >
-                <label class="setting-check"
-                  ><input
-                    name="animations"
-                    type="checkbox"
-                    aria-labelledby="animations-label"
-                    aria-describedby="animations-help"
-                  /><span
-                    ><span id="animations-label">Show animations</span
-                    ><span id="animations-help" class="setting-help"
-                      >Use brief transitions and button feedback. Animations stay off when your
-                      device requests reduced motion.</span
-                    ></span
-                  ></label
-                >
-                <label class="setting-check"
-                  ><input
-                    name="connectingLines"
-                    type="checkbox"
-                    aria-labelledby="lines-label"
-                    aria-describedby="lines-help"
-                  /><span
-                    ><span id="lines-label">Show connecting lines</span
-                    ><span id="lines-help" class="setting-help"
-                      >Trace the relationship between nested tabs.</span
-                    ></span
-                  ></label
-                >
-                <label class="setting-check"
-                  ><input
-                    name="folderCounts"
-                    type="checkbox"
-                    aria-labelledby="folder-counts-label"
-                    aria-describedby="folder-counts-help"
-                  /><span
-                    ><span id="folder-counts-label">Show folder tab counts</span
-                    ><span id="folder-counts-help" class="setting-help"
-                      >Show the number of tabs beside each folder.</span
-                    ></span
-                  ></label
-                >
-                <label class="setting-check"
-                  ><input
-                    name="domains"
-                    type="checkbox"
-                    aria-labelledby="domains-label"
-                    aria-describedby="domains-help"
-                  /><span
-                    ><span id="domains-label">Show the domain as a second line</span
-                    ><span id="domains-help" class="setting-help"
-                      >See the website address beneath each tab title.</span
-                    ></span
-                  ></label
-                >
+                <div class="appearance-option">
+                  <label class="setting-check"
+                    ><input
+                      name="tintFavicons"
+                      type="checkbox"
+                      aria-labelledby="tint-favicons-label"
+                      aria-describedby="tint-favicons-help"
+                    /><span
+                      ><span id="tint-favicons-label">Tint website icons</span
+                      ><span id="tint-favicons-help" class="setting-help"
+                        >Match website icons to each tab’s Firefox container colour.</span
+                      ></span
+                    ></label
+                  >
+                  <button
+                    class="icon-button setting-default"
+                    type="button"
+                    data-look-default="tintFavicons"
+                    aria-label="Reset website icon tint to default"
+                  ></button>
+                </div>
+                <div class="appearance-option">
+                  <label class="setting-check"
+                    ><input
+                      name="animations"
+                      type="checkbox"
+                      aria-labelledby="animations-label"
+                      aria-describedby="animations-help"
+                    /><span
+                      ><span id="animations-label">Show animations</span
+                      ><span id="animations-help" class="setting-help"
+                        >Use brief transitions and button feedback. Animations stay off when your
+                        device requests reduced motion.</span
+                      ></span
+                    ></label
+                  >
+                  <button
+                    class="icon-button setting-default"
+                    type="button"
+                    data-look-default="animations"
+                    aria-label="Reset animations to default"
+                  ></button>
+                </div>
+                <div class="appearance-option">
+                  <label class="setting-check"
+                    ><input
+                      name="connectingLines"
+                      type="checkbox"
+                      aria-labelledby="lines-label"
+                      aria-describedby="lines-help"
+                    /><span
+                      ><span id="lines-label">Show connecting lines</span
+                      ><span id="lines-help" class="setting-help"
+                        >Trace the relationship between nested tabs.</span
+                      ></span
+                    ></label
+                  >
+                  <button
+                    class="icon-button setting-default"
+                    type="button"
+                    data-look-default="connectingLines"
+                    aria-label="Reset connecting lines to default"
+                  ></button>
+                </div>
+                <div class="appearance-option">
+                  <label class="setting-check"
+                    ><input
+                      name="folderCounts"
+                      type="checkbox"
+                      aria-labelledby="folder-counts-label"
+                      aria-describedby="folder-counts-help"
+                    /><span
+                      ><span id="folder-counts-label">Show folder tab counts</span
+                      ><span id="folder-counts-help" class="setting-help"
+                        >Show the number of tabs beside each folder.</span
+                      ></span
+                    ></label
+                  >
+                  <button
+                    class="icon-button setting-default"
+                    type="button"
+                    data-look-default="folderCounts"
+                    aria-label="Reset folder tab counts to default"
+                  ></button>
+                </div>
+                <div class="appearance-option">
+                  <label class="setting-check"
+                    ><input
+                      name="domains"
+                      type="checkbox"
+                      aria-labelledby="domains-label"
+                      aria-describedby="domains-help"
+                    /><span
+                      ><span id="domains-label">Show the domain as a second line</span
+                      ><span id="domains-help" class="setting-help"
+                        >See the website address beneath each tab title.</span
+                      ></span
+                    ></label
+                  >
+                  <button
+                    class="icon-button setting-default"
+                    type="button"
+                    data-look-default="domains"
+                    aria-label="Reset domain subtitles to default"
+                  ></button>
+                </div>
               </div>
             </fieldset>
             <p id="appearance-error" class="settings-error" role="alert" hidden></p>
             <div class="settings-actions">
-              <button class="settings-button primary" id="appearance-save" type="submit" disabled>
-                Save changes</button
-              ><button class="settings-button" id="appearance-reset" type="button" disabled>
-                Discard changes</button
-              ><span id="appearance-status" role="status" aria-live="polite"
-                >Loading settings…</span
-              >
+              <button class="settings-button" id="appearance-retry" type="button" hidden>
+                Retry
+              </button>
+              <span id="appearance-status" role="status" aria-live="polite">Loading settings…</span>
             </div>
           </form>
+          <dialog
+            id="appearance-confirm"
+            class="settings-card"
+            aria-labelledby="appearance-confirm-title"
+            aria-describedby="appearance-confirm-help"
+          >
+            <form method="dialog">
+              <h2 id="appearance-confirm-title">Reset all appearance settings?</h2>
+              <p id="appearance-confirm-help">
+                Restore the default size, colour mode and sidebar details.
+              </p>
+              <div class="settings-actions">
+                <button class="settings-button" value="cancel" autofocus>Cancel</button>
+                <button class="settings-button primary" value="reset">Reset all</button>
+              </div>
+            </form>
+          </dialog>
         </section>
         <!-- Experimental: keep direct access for testing, but omit from navigation. -->
         <section id="new-tab" aria-labelledby="new-tab-title" hidden>
