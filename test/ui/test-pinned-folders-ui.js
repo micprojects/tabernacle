@@ -81,9 +81,14 @@ try {
 
   await send('renameGroup', { id: 'design', name: 'Ideas' });
   await send('setGroupAppearance', { id: 'design', appearance: { icon: 'book' } });
-  await send('setGroupAppearance', { id: 'work', appearance: { color: 'purple' } });
   await expect(pin('design')).toHaveAttribute('title', /Work \/ Ideas\nOpen folder/);
   await expect(pin('design').locator('use')).toHaveAttribute('href', /#book-16$/);
+  const previousFolderColour = await row('design')
+    .locator('.folder-glyph')
+    .evaluate((node) => getComputedStyle(node).color);
+  await send('setGroupAppearance', { id: 'work', appearance: { color: 'purple' } });
+  // A request can settle before the sidebar accepts its refresh.
+  await expect(row('design').locator('.folder-glyph')).not.toHaveCSS('color', previousFolderColour);
   const folderColour = await row('design')
     .locator('.folder-glyph')
     .evaluate((node) => getComputedStyle(node).color);
