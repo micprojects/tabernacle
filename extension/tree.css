@@ -335,6 +335,17 @@ svg.folder-icon,
   color: var(--muted);
 }
 @media not (forced-colors: active) {
+  .tab-row:is(:hover, .active):not(.drop-inside) {
+    /* The actual tab container wins over the surrounding folder or parent tab. */
+    background: color-mix(
+      in srgb,
+      var(--tab-highlight, var(--parent-guide, var(--neutral-marker))) var(--highlight-strength, 7%),
+      var(--background)
+    );
+  }
+  .tab-row.active {
+    --highlight-strength: 14%;
+  }
   .row .label {
     color: var(--label-color, currentColor);
   }
@@ -620,6 +631,15 @@ svg.folder-icon,
 }
 .show-connecting-lines :is(.branch, .tab-branch) {
   position: relative;
+}
+.show-connecting-lines :is(.branch, .tab-branch) > .tab-node > .tab-row:is(.active, :hover) {
+  /* Extend only the background to the rail's inner edge. Compensating padding
+     keeps the favicon, caption and controls in their original positions. */
+  --highlight-start: calc(var(--guide-x) - var(--tree-indent) - 1px + var(--guide-width));
+  margin-inline-start: var(--highlight-start);
+  padding-inline-start: calc(var(--row-padding) - var(--highlight-start));
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
 }
 .tree :is(.branch, .tab-branch) {
   --parent-guide: var(--guide-1);

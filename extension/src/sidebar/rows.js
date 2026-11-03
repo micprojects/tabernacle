@@ -6,7 +6,7 @@ import {
   reconcileRetainedChildren,
   setAttribute,
 } from '../dom.js';
-import { guideColors } from '../appearance-colors.js';
+import { appearanceColor, guideColors } from '../appearance-colors.js';
 import { folderIcon, folderIconColor } from '../folder-icons.js';
 import { pinActionLabels } from '../pinned-items.js';
 
@@ -908,6 +908,11 @@ export function createSidebarRows({
       });
     } else if (!recyclable) pooledLeafParts.delete(row);
     labelColors.apply(row, tab.container?.colorCode);
+    const highlight = appearanceColor(tab.container?.colorCode);
+    if (highlight) {
+      if (row.style.getPropertyValue('--tab-highlight') !== highlight)
+        row.style.setProperty('--tab-highlight', highlight);
+    } else row.style.removeProperty('--tab-highlight');
     return row;
   }
 

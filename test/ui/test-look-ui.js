@@ -56,7 +56,14 @@ try {
       .locator('#tree .row, #tree .new-tab-action, footer, .footer-actions > button')
       .evaluateAll((nodes) =>
         nodes.map((node) => {
-          const { x, y, width, height } = node.getBoundingClientRect();
+          let { x, y, width, height } = node.getBoundingClientRect();
+          // Active backgrounds extend to a visible rail, but their content box
+          // and every other row/control must retain the same layout.
+          if (node.matches('.row')) {
+            const style = getComputedStyle(node);
+            x += parseFloat(style.paddingLeft);
+            width -= parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+          }
           return { x, y, width, height };
         }),
       );
@@ -294,7 +301,7 @@ try {
   await expect(domains).not.toBeChecked();
   await page.keyboard.press('Escape');
 
-  // Lines change no row geometry or controls; domains remain disabled.
+  // Lines preserve row content geometry and controls; domains remain disabled.
   await saveLook(true, false);
   await expect.poll(guides).toBe('""');
   expect(await geometry()).toEqual(baselineGeometry);

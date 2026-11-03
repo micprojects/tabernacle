@@ -29,6 +29,27 @@ const rail = (key) =>
     };
   });
 
+const highlight = (key) =>
+  row(key).evaluate((row) => {
+    const style = getComputedStyle(row);
+    const wrapper = row.parentElement;
+    const line = getComputedStyle(wrapper, '::before');
+    const bounds = wrapper.getBoundingClientRect();
+    const rect = row.getBoundingClientRect();
+    const rtl = style.direction === 'rtl';
+    const offset = parseFloat(line.insetInlineStart) + parseFloat(line.maskSize);
+    const context = document.createElement('canvas').getContext('2d');
+    context.fillStyle = style.backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return {
+      colour: [...context.getImageData(0, 0, 1, 1).data].slice(0, 3),
+      gap: rtl ? bounds.right - offset - rect.right : rect.left - bounds.left - offset,
+      startRadius: style.borderStartStartRadius,
+      endRadius: style.borderStartEndRadius,
+      icon: row.querySelector('.tab-icon').getBoundingClientRect().x,
+    };
+  });
+
 try {
   await page.goto(`${base}/extension/sidebar.html?demo`);
   await expect(row('tab:1')).toBeVisible();
@@ -67,10 +88,52 @@ try {
     expect(b).toBeGreaterThan(r);
     expect(b).toBeGreaterThan(g);
     expect(new Set(parentRail.segments)).toEqual(new Set([parentRail.color]));
+
+    // A blue container overrides its green folder; an ordinary child uses the
+    // blue parent line, while a pink child keeps its own container colour.
+    await send('activateTab', { id: parent });
+    await expect(row(`tab:${parent}`)).toHaveClass(/active/);
+    const own = (await highlight(`tab:${parent}`)).colour;
+    expect(own[2]).toBeGreaterThan(own[1]);
+    await send('activateTab', { id: 2 });
+    await expect(row('tab:2')).toHaveClass(/active/);
+    const inherited = (await highlight('tab:2')).colour;
+    expect(inherited[2]).toBeGreaterThan(inherited[1]);
+    const inactiveIcon = (await highlight(`tab:${child}`)).icon;
+    await send('activateTab', { id: child });
+    await expect(row(`tab:${child}`)).toHaveClass(/active/);
+    const attached = await highlight(`tab:${child}`);
+    expect(attached.colour[0]).toBeGreaterThan(attached.colour[2]);
+    expect(attached.colour[2]).toBeGreaterThan(attached.colour[1]);
+    expect(Math.abs(attached.gap)).toBeLessThan(0.02);
+    expect(attached.startRadius).toBe('0px');
+    expect(attached.endRadius).toBe('6px');
+    expect(attached.icon).toBe(inactiveIcon);
+    expect((await rail(`tab:${parent}`)).color).toBe(parentRail.color);
     await page.screenshot({ path: `test-results/tree-guides-${theme}.png` });
   }
 
+  await page.setViewportSize({ width: 220, height: 960 });
+  for (const sidebarSize of ['default', 'comfortable', 'large']) {
+    for (const domains of [false, true]) {
+      await send('setLook', { partial: true, value: { sidebarSize, domains } });
+      await expect(page.locator('#tree')).toHaveClass(
+        domains ? /show-domains/ : /^(?!.*show-domains)/,
+      );
+      for (const dir of ['ltr', 'rtl']) {
+        await page.evaluate((dir) => (document.documentElement.dir = dir), dir);
+        expect(Math.abs((await highlight(`tab:${child}`)).gap)).toBeLessThan(0.02);
+      }
+    }
+  }
+  await page.evaluate(() => (document.documentElement.dir = 'ltr'));
+  await page.setViewportSize({ width: 340, height: 960 });
+  await send('setLook', { partial: true, value: { sidebarSize: 'default', domains: false } });
+
   const before = await rail(`tab:${parent}`);
+  await send('activateTab', { id: parent });
+  await expect(row(`tab:${parent}`)).toHaveClass(/active/);
+  const beforeHighlight = (await highlight(`tab:${parent}`)).colour;
   await send('updateContainer', {
     cookieStoreId: 'firefox-container-1',
     name: 'Personal',
@@ -82,6 +145,12 @@ try {
   const [r, g, b] = updated.color.match(/\d+/g).map(Number);
   expect(r).toBeGreaterThan(g);
   expect(g).toBeGreaterThan(b);
+  await expect
+    .poll(async () => (await highlight(`tab:${parent}`)).colour)
+    .not.toEqual(beforeHighlight);
+  const orange = (await highlight(`tab:${parent}`)).colour;
+  expect(orange[0]).toBeGreaterThan(orange[1]);
+  expect(orange[1]).toBeGreaterThan(orange[2]);
 
   // The visible depth resets after focusing a folder; moving it back restores it.
   const rootColour = (await rail('group:work')).color;
@@ -101,6 +170,13 @@ try {
   await expect(row(`tab:${parent}`)).toBeVisible();
   const neutral = (await rail(`tab:${parent}`)).color.match(/\d+/g).map(Number);
   expect(new Set(neutral).size).toBe(1);
+  // Reopening without a container removes the old orange tint and uses the
+  // containing green folder instead, including when a row is reused.
+  await send('activateTab', { id: parent });
+  await expect(row(`tab:${parent}`)).toHaveClass(/active/);
+  const fallback = (await highlight(`tab:${parent}`)).colour;
+  expect(fallback[1]).toBeGreaterThan(fallback[0]);
+  expect(fallback[1]).toBeGreaterThan(fallback[2]);
 
   await page.emulateMedia({ forcedColors: 'active' });
   const forced = await Promise.all(
@@ -108,6 +184,7 @@ try {
   );
   expect(new Set(forced.map((r) => r.color)).size).toBe(1);
   for (const result of forced) expect(new Set(result.segments)).toEqual(new Set([result.color]));
+  expect(new Set((await highlight(`tab:${parent}`)).colour).size).toBe(1);
   await send('setLook', { partial: true, value: { connectingLines: false } });
   await expect
     .poll(() =>
@@ -116,9 +193,10 @@ try {
       ),
     )
     .toBe('none');
+  expect((await highlight(`tab:${parent}`)).startRadius).toBe('6px');
   expect(errors).toEqual([]);
   console.log(
-    '✓ Three-level guide fade, parent-tab colour ownership, live container edits, scope/move changes and forced colours',
+    '✓ Guide ownership and fading; flush active highlights with container precedence, live edits, all sizes, RTL and forced colours',
   );
 } finally {
   await close();

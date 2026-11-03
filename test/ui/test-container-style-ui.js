@@ -11,6 +11,14 @@ const send = (type, args = {}) =>
     { type, args },
   );
 
+const backgroundChannels = (target) =>
+  target.evaluate((node) => {
+    const context = document.createElement('canvas').getContext('2d');
+    context.fillStyle = getComputedStyle(node).backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+  });
+
 const expectFolderColours = async (id, rawColor) => {
   const expected = await page.evaluate(async (color) => {
     const { appearanceColor } = await import('/extension/src/appearance-colors.js');
@@ -116,10 +124,20 @@ try {
     for (const target of [row, page.locator('[data-key="tab:8"]')]) {
       const before = await target.locator('.tab-icon').boundingBox();
       await target.hover();
-      await expect(target).toHaveCSS('background-color', folderHover);
+      await expect(target).not.toHaveCSS('background-color', folderHover);
       await expect(target).toHaveCSS('box-shadow', 'none');
       expect(await target.locator('.tab-icon').boundingBox()).toEqual(before);
       await expect(active).toHaveCSS('background-color', activeBackground);
+      const hover = await backgroundChannels(target);
+      const surface = await backgroundChannels(page.locator('html'));
+      const strength = (colour) =>
+        colour.reduce((sum, channel, index) => sum + Math.abs(channel - surface[index]), 0);
+      expect(strength(hover)).toBeGreaterThan(0);
+      await send('activateTab', { id: Number(await target.getAttribute('data-id')) });
+      await expect(target).toHaveClass(/active/);
+      expect(strength(hover)).toBeLessThan(strength(await backgroundChannels(target)));
+      await send('activateTab', { id: 2 });
+      await expect(active).toHaveClass(/active/);
     }
     await page.mouse.move(0, 0);
     await page.screenshot({ path: `test-results/ink-and-rails-${mode}.png` });
