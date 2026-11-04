@@ -54,7 +54,7 @@ async function hashes(directory) {
 
 async function call(fn, ...args) {
   const result = await driver.executeAsyncScript(
-    `const done=arguments[arguments.length-1];Promise.resolve().then(()=>(${fn.toString()})(...arguments[0])).then(value=>done({ok:true,value:value??null}),error=>done({ok:false,error:error.stack||error.message}));`,
+    `const done=arguments[arguments.length-1];Promise.resolve().then(()=>(${fn.toString()})(...arguments[0])).then(value=>done({ok:true,value:value??null}),error=>done({ok:false,error:[error.message,error.stack].filter(Boolean).join(String.fromCharCode(10))}));`,
     args,
   );
   if (!result.ok) throw new Error(result.error);
@@ -522,6 +522,23 @@ try {
   await reload();
   preserved(recovered, await capture(windowIds, treeIds));
   checkpoint('interrupted move completes after reload and subsequent retry is stable');
+  const validModel = recovered.raw.storage[modelKey];
+  const unsupportedModels = [
+    null,
+    { ...validModel, folderPins: validModel.folderPins.map((pin, index) => index ? pin : { ...pin, action: 'future-action' }) },
+    { ...validModel, domainPins: [...(validModel.domainPins || []), { futureDomain: 'keep.example' }] },
+  ];
+  for (const invalid of unsupportedModels) {
+    await call(async (key, value) => browser.storage.local.set({ [key]: value }), modelKey, invalid);
+    await assert.rejects(reload(), /stored data has not been changed/);
+    await assert.rejects(send('createGroup', { name: 'Must not overwrite unsupported data' }), /stored data has not been changed/);
+    await assert.rejects(send('closeTab', { id: ids[0] }), /stored data has not been changed/);
+    assert.deepEqual(await call(async key => (await browser.storage.local.get(key))[key], modelKey), invalid);
+    // Explicitly repair only this isolated fixture, then exercise load retry.
+    await call(async (key, value) => browser.storage.local.set({ [key]: value }), modelKey, validModel);
+    preserved(recovered, await capture(windowIds, treeIds));
+  }
+  checkpoint('unsupported saved model and pin records block writes without resetting data and can retry after repair');
   assert.deepEqual(
     await hashes(resolve('extension')),
     initialHashes,

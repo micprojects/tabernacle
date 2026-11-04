@@ -273,6 +273,10 @@ export function createController(
   function initialize() {
     ready ??= (async () => {
       const saved = await api.storage.local.get(MODEL_KEY);
+      if (saved[MODEL_KEY] === null)
+        throw new Error(
+          'The saved Tabernacle data is invalid. Your stored data has not been changed.',
+        );
       const next = deserializeModel(saved[MODEL_KEY]) ?? emptyModel();
       if (next.version !== 1 || !Array.isArray(next.groups))
         throw new Error('This Tabernacle data needs a newer version of the extension.');
@@ -280,11 +284,33 @@ export function createController(
         throw new Error(
           'The saved folder structure is invalid. Your stored data has not been changed.',
         );
+      const folderPins = normalizeFolderPins(next.groups, next.folderPins);
+      if (
+        next.folderPins !== undefined &&
+        (!Array.isArray(next.folderPins) ||
+          folderPins.length !== next.folderPins.length ||
+          next.folderPins.some(
+            (pin) =>
+              pin.action !== undefined &&
+              (typeof pin.action !== 'string' || !Object.hasOwn(pinActionLabels, pin.action)),
+          ))
+      )
+        throw new Error(
+          'The saved folder pins contain unsupported data. Your stored data has not been changed.',
+        );
+      const domainPins = normaliseDomainPins(next.domainPins);
+      if (
+        next.domainPins !== undefined &&
+        (!Array.isArray(next.domainPins) || domainPins.length !== next.domainPins.length)
+      )
+        throw new Error(
+          'The saved domain pins contain unsupported data. Your stored data has not been changed.',
+        );
       const preferences = { look: next.look, newTab: next.newTab };
       next.look = normalizeLook(next.look);
       next.newTab = normalizeNewTab(next.newTab);
-      next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
-      next.domainPins = normaliseDomainPins(next.domainPins);
+      next.folderPins = folderPins;
+      next.domainPins = domainPins;
       await moves.load();
       savedPreferences = preferences;
       commitModel(next);
