@@ -9,6 +9,7 @@ import firefox from 'selenium-webdriver/firefox.js';
 import { startFirefox } from '../../scripts/firefox-session.js';
 import { previewServer } from '../../scripts/preview.js';
 import { upgradeOrganisation } from '../helpers/upgrade-state.js';
+import { NEW_TAB_AVAILABLE } from '../../extension/src/new-tab/availability.js';
 
 // This checks a real same-ID update and extension reload. Temporary add-ons do
 // not survive a whole Firefox restart; this suite makes no claim to cover that.
@@ -251,8 +252,8 @@ try {
   report.versions = { released: releaseManifest.version, candidate: candidateManifest.version };
   assert.equal(
     candidateManifest.version,
-    releaseManifest.version,
-    'This fixture checks a same-version update',
+    JSON.parse(await readFile('package.json', 'utf8')).version,
+    'The upgrade fixture must use the current package version',
   );
   checkpoint('release and candidate source fingerprints captured');
   server = await previewServer(0);
@@ -440,9 +441,7 @@ try {
   const upgraded = await capture(windowIds, treeIds);
   preserved(expectedUpgrade, upgraded);
   assert.equal(upgraded.raw.storage[moveKey], null);
-  checkpoint(
-    'same-ID same-version update completes the pending move and preserves unrelated state',
-  );
+  checkpoint('same-ID update completes the pending move and preserves unrelated state');
   await reload();
   preserved(upgraded, await capture(windowIds, treeIds));
   checkpoint('candidate extension reload preserves organisation');
@@ -517,11 +516,14 @@ try {
   assert.deepEqual(appearanceEdited.raw.memberships, afterRename.raw.memberships);
   await send('setGroupAppearance', { id: work, appearance: {} });
   await send('setLook', { partial: true, value: { domains: false } });
-  await send('setNewTab', { value: { showRecent: false } });
   const preferences = (await send('getSettings')).newTab;
-  await send('setNewTab', {
-    value: { links: [{ ...preferences.links[0], name: 'Renamed link' }] },
-  });
+  for (const value of [
+    { showRecent: false },
+    { links: [{ ...preferences.links[0], name: 'Renamed link' }] },
+  ]) {
+    if (NEW_TAB_AVAILABLE) await send('setNewTab', { value });
+    else await assert.rejects(send('setNewTab', { value }), /currently unavailable/);
+  }
   const beforeRecovery = await capture(windowIds, treeIds);
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].upgradeOpaque, sentinel.opaque);
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].stashes, sentinel.opaque);
@@ -548,8 +550,10 @@ try {
   for (const pin of saved.folderPins) assert.deepEqual(pin.upgradeOpaque, sentinel.opaque);
   assert.equal(saved.newTab.unit, 'future-unit');
   assert.equal(saved.look.domains, false);
-  assert.equal(saved.newTab.showRecent, false);
-  assert.equal(saved.newTab.links[0].name, 'Renamed link');
+  if (NEW_TAB_AVAILABLE) {
+    assert.equal(saved.newTab.showRecent, false);
+    assert.equal(saved.newTab.links[0].name, 'Renamed link');
+  } else assert.deepEqual(saved.newTab, before.raw.storage[modelKey].newTab);
   checkpoint('unrelated saves and appearance/preference edits retain opaque saved metadata');
   const changes = await interruptedMove(ids.slice(0, 3), nested);
   console.log('Reloading the candidate after another interrupted move…');
@@ -657,7 +661,7 @@ try {
   );
   report.passed = true;
   console.log(
-    'Firefox upgrade checks passed: published source → same-version candidate, delayed restore and recovery.',
+    'Firefox upgrade checks passed: published source → current candidate, delayed restore and recovery.',
   );
 } catch (error) {
   report.error = error.stack || error.message;
