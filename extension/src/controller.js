@@ -64,6 +64,9 @@ export function createController(
 ) {
   const receiptKey = 'tabernacle.move-receipts.v1';
   let model;
+  // Views use normalised preferences; saves retain fields this version cannot
+  // interpret until an action explicitly edits them.
+  let savedPreferences;
   let folderIndex = new Map();
   const folderById = (id) => groupById(model, id, folderIndex);
   const requireFolder = (id) => requireGroup(model, id, folderIndex);
@@ -241,7 +244,7 @@ export function createController(
       // Reordering does not remove slots. Other windows reconcile their own
       // mixed layouts against this shared folder order on their next snapshot.
       const next = { ...model, folderPins };
-      await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
+      await writeModel(next);
       commitModel(next);
       stateWrites++;
     }
@@ -277,11 +280,13 @@ export function createController(
         throw new Error(
           'The saved folder structure is invalid. Your stored data has not been changed.',
         );
+      const preferences = { look: next.look, newTab: next.newTab };
       next.look = normalizeLook(next.look);
       next.newTab = normalizeNewTab(next.newTab);
       next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
       next.domainPins = normaliseDomainPins(next.domainPins);
       await moves.load();
+      savedPreferences = preferences;
       commitModel(next);
     })().catch((error) => {
       ready = null;
@@ -310,14 +315,20 @@ export function createController(
     return result;
   };
 
-  async function changeModel(change) {
+  async function writeModel(next, edits) {
+    const saved = serializeModel(next, savedPreferences, edits);
+    await api.storage.local.set({ [MODEL_KEY]: saved });
+    savedPreferences = { look: saved.look, newTab: saved.newTab };
+  }
+
+  async function changeModel(change, preferenceEdits) {
     // Publish only after storage succeeds; a rejected save must not leak into
     // later requests or get persisted by an unrelated action.
     const next = structuredClone(model);
     const previousPins = model.folderPins;
     const result = change(next);
     next.folderPins = normalizeFolderPins(next.groups, next.folderPins);
-    await api.storage.local.set({ [MODEL_KEY]: serializeModel(next) });
+    await writeModel(next, preferenceEdits);
     commitModel(next);
     stateWrites++;
     if (
@@ -2216,6 +2227,7 @@ export function createController(
         presentation.dispose();
         pendingCreations = null;
         model = undefined;
+        savedPreferences = undefined;
         ready = undefined;
       });
     },

@@ -360,6 +360,16 @@ try {
       const model = (await browser.storage.local.get(modelKey))[modelKey];
       model.stashes = value.opaque;
       model.upgradeOpaque = value.opaque;
+      model.look.upgradeOpaque = value.opaque;
+      // Unknown preferences may come from another extension version. The old
+      // release must retain these raw records before the candidate receives them.
+      model.newTab = {
+        enabled: false,
+        upgradeOpaque: value.opaque,
+        unit: 'future-unit',
+        links: [{ id: 'upgrade-link', name: 'Example', url: 'https://example.test/', upgradeOpaque: value.opaque }],
+        location: { name: 'Place', latitude: 50, longitude: 1, upgradeOpaque: value.opaque },
+      };
       await browser.storage.local.set({ [modelKey]: model, [sentinelKey]: value });
     },
     modelKey,
@@ -441,9 +451,26 @@ try {
   );
   checkpoint('delayed native restore keeps membership and reconnects ancestry');
   await send('renameGroup', { id: destination, name: 'Regular renamed' });
+  const afterRename = await capture(windowIds, treeIds);
+  for (const key of ['look', 'newTab'])
+    assert.deepEqual(afterRename.raw.storage[modelKey][key], before.raw.storage[modelKey][key]);
+  await send('setLook', { partial: true, value: { domains: false } });
+  await send('setNewTab', { value: { showRecent: false } });
+  const preferences = (await send('getSettings')).newTab;
+  await send('setNewTab', { value: { links: [{ ...preferences.links[0], name: 'Renamed link' }] } });
   const beforeRecovery = await capture(windowIds, treeIds);
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].upgradeOpaque, sentinel.opaque);
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].stashes, sentinel.opaque);
+  const saved = beforeRecovery.raw.storage[modelKey];
+  assert.deepEqual(saved.look.upgradeOpaque, sentinel.opaque);
+  assert.deepEqual(saved.newTab.upgradeOpaque, sentinel.opaque);
+  assert.deepEqual(saved.newTab.links[0].upgradeOpaque, sentinel.opaque);
+  assert.deepEqual(saved.newTab.location.upgradeOpaque, sentinel.opaque);
+  assert.equal(saved.newTab.unit, 'future-unit');
+  assert.equal(saved.look.domains, false);
+  assert.equal(saved.newTab.showRecent, false);
+  assert.equal(saved.newTab.links[0].name, 'Renamed link');
+  checkpoint('unrelated saves and preference edits retain opaque preferences and link metadata');
   const changes = await interruptedMove(ids.slice(0, 3), nested);
   console.log('Reloading the candidate after another interrupted move…');
   await reload();

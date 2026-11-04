@@ -5,16 +5,22 @@ import { requireNewTab } from '../new-tab/preferences.js';
 export function createPreferenceActions({ api, getModel, changeModel }) {
   async function setLook(value, partial) {
     const look = requireLook(partial ? { ...getModel().look, ...value } : value);
-    await changeModel((next) => {
-      next.look = look;
-    });
+    await changeModel(
+      (next) => {
+        next.look = look;
+      },
+      { look: Object.keys(partial ? value || {} : look) },
+    );
   }
 
   async function setNewTab(value) {
     const preference = requireNewTab({ ...getModel().newTab, ...value });
-    await changeModel((next) => {
-      next.newTab = preference;
-    });
+    await changeModel(
+      (next) => {
+        next.newTab = preference;
+      },
+      { newTab: Object.keys(value || {}) },
+    );
   }
 
   async function previewNewTab(value, windowId) {
