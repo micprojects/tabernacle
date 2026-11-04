@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createController } from '../extension/src/controller.js';
 import { createBrowserCache } from '../extension/src/browser-cache.js';
 import { performanceFixture, performanceBrowser } from '../preview/performance-fixture.js';
@@ -85,4 +86,49 @@ test('disposing a browser cache cannot be undone by an outstanding membership sa
   release();
   await saving;
   assert(Object.values(cache.stats()).every((value) => value === 0));
+});
+
+test('retained disposed controllers release their last saved model records', () => {
+  execFileSync(
+    process.execPath,
+    [
+      '--expose-gc',
+      '--input-type=module',
+      '-e',
+      `
+        import assert from 'node:assert/strict';
+        import { createController } from ${JSON.stringify(new URL('../extension/src/controller.js', import.meta.url).href)};
+        import { memoryBrowser } from ${JSON.stringify(new URL('../preview/browser.js', import.meta.url).href)};
+        import { MODEL_KEY } from ${JSON.stringify(new URL('../extension/src/model.js', import.meta.url).href)};
+        const retained = [];
+        const references = [];
+        for (const write of [false, true]) {
+          const api = memoryBrowser({ groups: [{ id: 'work', name: 'Work', parentId: null }] });
+          const get = api.storage.local.get;
+          const set = api.storage.local.set;
+          api.storage.local.get = async (key) => {
+            const value = await get(key);
+            if (key === MODEL_KEY) references.push(new WeakRef(value[key]));
+            return value;
+          };
+          api.storage.local.set = async (value) => {
+            if (value[MODEL_KEY]) references.push(new WeakRef(value[MODEL_KEY]));
+            return set(value);
+          };
+          const controller = createController(api);
+          await controller.start();
+          if (write) await controller.request({ type: 'renameGroup', windowId: 1, id: 'work', name: 'Renamed' });
+          await controller.dispose();
+          retained.push(controller);
+        }
+        for (let i = 0; i < 8; i++) {
+          await new Promise(setImmediate);
+          global.gc();
+        }
+        assert(retained.every(controller => Object.values(controller.cacheStats()).every(value => value === 0)));
+        assert(references.every(reference => reference.deref() === undefined), 'Disposal must release loaded and subsequently saved model records');
+      `,
+    ],
+    { timeout: 10000, stdio: 'pipe' },
+  );
 });

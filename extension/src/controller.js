@@ -2291,6 +2291,7 @@ export function createController(
         pendingCreations = null;
         model = undefined;
         savedPreferences = undefined;
+        savedModel = undefined;
         ready = undefined;
       });
     },
