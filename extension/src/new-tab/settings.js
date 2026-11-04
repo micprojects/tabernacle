@@ -359,17 +359,24 @@ export function createNewTabSettings({ request, demo }) {
     }
   });
   $('nt-remove-weather').addEventListener('click', async () => {
+    if (saving) return;
+    saving = true;
+    status();
     cancelLocationSearch();
     errorAt('nt-weather-error');
     try {
       if (demo) throw new Error('Weather access is managed in Firefox.');
       await browser.permissions.remove(WEATHER_ACCESS);
       const result = await request('setNewTab', { value: { weatherEnabled: false } });
+      if (disposed) return;
       change('weatherEnabled', false);
       accept(result.newTab, result);
       $('nt-location-status').textContent = 'Weather access removed.';
     } catch (error) {
-      errorAt('nt-weather-error', error);
+      if (!disposed) errorAt('nt-weather-error', error);
+    } finally {
+      saving = false;
+      if (!disposed) status();
     }
   });
 

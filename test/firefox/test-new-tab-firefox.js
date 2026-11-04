@@ -501,7 +501,7 @@ try {
     await allowWeather();
     await call(
       `const mode=arguments[0];
-      const state=window.weatherRevocation={mode,requests:0};
+      const state=window.weatherRevocation={mode,requests:0,holdRemoval:true};
       const permission=browser.permissions.request.bind(browser.permissions);
       const send=browser.runtime.sendMessage.bind(browser.runtime);
       browser.permissions.request=async access=>{
@@ -510,6 +510,12 @@ try {
         return allowed;
       };
       browser.runtime.sendMessage=async message=>{
+        if(message.type==='tabernacle:setNewTab'&&message.value.weatherEnabled===false&&state.holdRemoval){
+          state.holdRemoval=false;
+          const result=await send(message);
+          await new Promise(resolve=>state.releaseRemoval=resolve);
+          return state.mode==='failure'?{ok:false,error:'Removal reply lost'}:result;
+        }
         if(message.type!=='tabernacle:weatherLocations')return send(message);
         state.requests++;
         if(['success','failure'].includes(state.mode))
@@ -525,13 +531,49 @@ try {
     await driver.findElement(By.id('nt-location-query')).sendKeys('York');
     await driver.findElement(By.id('nt-find-location')).click();
     await driver.wait(() => call('return Boolean(weatherRevocation.release);'), 10000);
+    if (mode === 'permission')
+      await driver.findElement(By.css('#nt-style option[value="list"]')).click();
     await driver.findElement(By.id('nt-remove-weather')).click();
+    await driver.wait(() => call('return Boolean(weatherRevocation.releaseRemoval);'), 10000);
+    for (const id of [
+      'nt-location-query',
+      'nt-find-location',
+      'nt-remove-weather',
+      'nt-style',
+      'new-tab-save',
+      'new-tab-discard',
+      'new-tab-preview',
+    ])
+      assert.equal(await driver.findElement(By.id(id)).isEnabled(), false);
+    assert.equal(await driver.findElement(By.id('new-tab-status')).getText(), 'Saving…');
+    assert.equal(
+      await call(
+        `const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;`,
+      ),
+      true,
+    );
+    await call('weatherRevocation.releaseRemoval();');
+    if (mode === 'failure') {
+      await driver.wait(
+        async () =>
+          (await driver.findElement(By.id('nt-weather-error')).getText()) === 'Removal reply lost',
+        10000,
+      );
+      assert(await driver.findElement(By.id('nt-remove-weather')).isEnabled());
+      await driver.findElement(By.id('nt-remove-weather')).click();
+    }
     await driver.wait(
       async () =>
         (await driver.findElement(By.id('nt-location-status')).getText()) ===
         'Weather access removed.',
       10000,
     );
+    if (mode === 'permission') {
+      assert.equal(await driver.findElement(By.id('nt-style')).getAttribute('value'), 'list');
+      assert.equal(await driver.findElement(By.id('new-tab-status')).getText(), 'Unsaved changes');
+      await driver.findElement(By.id('new-tab-discard')).click();
+      assert.equal(await driver.findElement(By.id('nt-style')).getAttribute('value'), 'icons');
+    }
     assert.equal(
       await call('return browser.permissions.contains(arguments[0]);', WEATHER_ACCESS),
       false,
@@ -564,6 +606,21 @@ try {
         'Current York result',
       10000,
     );
+    await driver.findElement(By.css('#nt-location-results button')).click();
+    await driver.findElement(By.css('[name="weatherEnabled"]')).click();
+    await driver.findElement(By.id('new-tab-save')).click();
+    await driver.wait(
+      async () =>
+        (await driver.findElement(By.id('new-tab-status')).getText()) === 'All changes saved',
+      10000,
+    );
+    assert.equal((await send('getSettings')).newTab.weatherEnabled, true);
+    assert.equal((await send('getSettings')).newTab.location.name, 'Current York result');
+    await driver.findElement(By.id('nt-find-location')).click();
+    await driver.wait(
+      () => call("return document.getElementById('nt-location-results').childElementCount === 1;"),
+      10000,
+    );
     await driver.findElement(By.id('nt-remove-weather')).click();
     await driver.wait(
       async () =>
@@ -579,7 +636,7 @@ try {
   await driver.navigate().refresh();
   await driver.switchTo().window(activeHandle);
   console.log(
-    '✓ Weather revocation cancels pending permission/results and supports a fresh lookup',
+    '✓ Weather removal protects pending saves, retries, drafts and fresh permission/location choices',
   );
   const container = await call(
     `return browser.contextualIdentities.create({name:'New tab test',color:'blue',icon:'briefcase'});`,
