@@ -2,14 +2,17 @@ import { instrumentSource } from '../helpers/probes/new-tab.js';
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { composingKey, startUiTest } from '../helpers/ui-test.js';
+import { enableNewTabInContext } from '../helpers/new-tab-feature.js';
 
 const { page, base, close } = await startUiTest({ viewport: { width: 1440, height: 1080 } });
 const errors = [];
 page.context().on('page', (page) => page.on('pageerror', (error) => errors.push(error.message)));
 page.on('pageerror', (error) => errors.push(error.message));
 try {
+  await enableNewTabInContext(page.context());
   const reorderContext = await page.context().browser().newContext();
   try {
+    await enableNewTabInContext(reorderContext);
     const reorder = await reorderContext.newPage();
     reorder.on('pageerror', (error) => errors.push(error.message));
     await reorder.goto(`${base}/extension/settings.html?demo#new-tab`);

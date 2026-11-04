@@ -5,6 +5,7 @@ import { sortContainers } from './containers.js';
 import { icon } from './icons.js';
 import { createSettingsBackup } from './settings-backup.js';
 import { createNewTabSettings } from './new-tab/settings.js';
+import { NEW_TAB_AVAILABLE } from './new-tab/availability.js';
 
 const $ = (id) => document.getElementById(id);
 const demo = !globalThis.browser?.runtime?.id && new URLSearchParams(location.search).has('demo');
@@ -23,7 +24,10 @@ let containerItems = [],
 let settingsState;
 let disposed = false;
 const folderBackup = createSettingsBackup({ request: (...args) => request(...args) });
-const newTabSettings = createNewTabSettings({ request: (...args) => request(...args), demo });
+const newTabSettings = NEW_TAB_AVAILABLE
+  ? createNewTabSettings({ request: (...args) => request(...args), demo })
+  : null;
+document.querySelector('nav a[href="#features"]').hidden = !NEW_TAB_AVAILABLE;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -422,7 +426,10 @@ function navigate(focus = false) {
   const sections = ['appearance', 'features', 'containers', 'backup', 'shortcuts', 'about'];
   // Keep bookmarks and existing Customise links to the old section working.
   const requested = location.hash.slice(1) === 'new-tab' ? 'features' : location.hash.slice(1);
-  const section = sections.includes(requested) ? requested : 'appearance';
+  const section =
+    sections.includes(requested) && (requested !== 'features' || NEW_TAB_AVAILABLE)
+      ? requested
+      : 'appearance';
   for (const id of sections) $(id).hidden = id !== section;
   if (section !== 'appearance' && $('appearance-confirm').open)
     $('appearance-confirm').close('cancel');
@@ -450,7 +457,7 @@ const refreshScheduler = createRefreshScheduler({
       if (disposed) return;
       settingsState = next;
       acceptLook(next.look, next);
-      newTabSettings.accept(next.newTab, next);
+      newTabSettings?.accept(next.newTab, next);
       $('appearance-fields').disabled = false;
       errorAt('page-error');
       if (!$('containers').hidden) await loadContainers();
@@ -468,7 +475,7 @@ window.addEventListener(
   () => {
     disposed = true;
     refreshScheduler.dispose();
-    newTabSettings.dispose();
+    newTabSettings?.dispose();
   },
   { once: true },
 );
@@ -484,7 +491,7 @@ window.addEventListener('beforeunload', (event) => {
     savingLook ||
     savingContainer ||
     folderBackup.isBusy() ||
-    newTabSettings.isBusy()
+    newTabSettings?.isBusy()
   )
     event.preventDefault();
 });
@@ -545,7 +552,7 @@ async function start() {
   $('extension-version').textContent = `Version ${manifest.version}`;
   settingsState = await request('getSettings');
   acceptLook(settingsState.look, settingsState);
-  newTabSettings.accept(settingsState.newTab, settingsState);
+  newTabSettings?.accept(settingsState.newTab, settingsState);
   $('appearance-fields').disabled = false;
   navigate();
 }

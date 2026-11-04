@@ -9,7 +9,7 @@ import { download } from 'geckodriver';
 // This session always owns a new profile and process. Never attach to an existing
 // Firefox instance, copy a personal profile, or use OS input/clipboard APIs.
 export class ScreenshotBrowser {
-  async open(fixture, logPath) {
+  async open(fixture, logPath, extensionPath = resolve('extension')) {
     console.log('Firefox fixture: preparing isolated profile');
     this.root = await mkdtemp(join(tmpdir(), 'tabernacle-screenshots-'));
     const appData = join(this.root, 'app-data');
@@ -55,7 +55,7 @@ export class ScreenshotBrowser {
     assert(within && !within.startsWith('..') && !isAbsolute(within), 'Unexpected Firefox profile');
     await this.driver.setContext(firefox.Context.CONTENT);
     console.log('Firefox fixture: installing extension');
-    const addonId = await this.driver.installAddon(resolve('extension'), true);
+    const addonId = await this.driver.installAddon(extensionPath, true);
     assert.equal(addonId, 'tabernacle@michaelprojects.com');
     console.log('Firefox fixture: extension installed, waiting for sidebar');
     await this.driver.setContext(firefox.Context.CHROME);

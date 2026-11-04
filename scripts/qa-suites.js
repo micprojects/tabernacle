@@ -56,6 +56,7 @@ export const firefoxSuites = [
   'test-tab-close-firefox',
   'test-backup-firefox',
   'test-new-tab-firefox',
+  'test-new-tab-disabled-firefox',
   'test-activity-firefox',
   'test-find-firefox',
   'test-pinned-folders-firefox',

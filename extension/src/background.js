@@ -2,8 +2,9 @@ import { createController } from './controller.js';
 import { createSnapshotEncoder } from './snapshot-transfer.js';
 import { createNewTabRouting } from './new-tab/routing.js';
 import { createWeatherService } from './new-tab/weather.js';
+import { NEW_TAB_AVAILABLE } from './new-tab/availability.js';
 
-const weather = createWeatherService(browser);
+const weather = NEW_TAB_AVAILABLE ? createWeatherService(browser) : null;
 
 let notificationTimer;
 let pendingWindows = new Set();
@@ -33,9 +34,9 @@ const notify = ({ windowId, revision, generation: nextGeneration } = {}) => {
 };
 
 const controller = createController(browser, notify, {
-  onFreshMembership: (id, treeId) => newTabRouting.recordFreshMembership(id, treeId),
+  onFreshMembership: (id, treeId) => newTabRouting?.recordFreshMembership(id, treeId),
 });
-const newTabRouting = createNewTabRouting(browser);
+const newTabRouting = NEW_TAB_AVAILABLE ? createNewTabRouting(browser) : null;
 const snapshots = createSnapshotEncoder();
 browser.windows.onRemoved.addListener(snapshots.forget);
 
@@ -67,6 +68,16 @@ browser.runtime.onMessage.addListener((message, sender) => {
     )
   )
     return undefined;
+  if (
+    !NEW_TAB_AVAILABLE &&
+    [
+      'tabernacle:setNewTab',
+      'tabernacle:previewNewTab',
+      'tabernacle:weatherLocations',
+      'tabernacle:weatherCurrent',
+    ].includes(message.type)
+  )
+    return Promise.resolve({ ok: false, error: 'The new tab page is currently unavailable.' });
   if (['tabernacle:weatherLocations', 'tabernacle:weatherCurrent'].includes(message.type)) {
     const work =
       message.type === 'tabernacle:weatherLocations'

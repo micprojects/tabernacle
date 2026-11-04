@@ -124,6 +124,16 @@ test('background validates messages and forwards container and session lifecycle
       }
     }
     const generation = success.data.generation;
+    for (const type of ['setNewTab', 'previewNewTab', 'weatherLocations', 'weatherCurrent']) {
+      const disabled = await receive(
+        { type: `tabernacle:${type}`, windowId: 1, value: { enabled: true }, query: 'London' },
+        sender,
+      );
+      assert.deepEqual(disabled, {
+        ok: false,
+        error: 'The new tab page is currently unavailable.',
+      });
+    }
     for (const type of ['tabernacle:snapshot', 'tabernacle:getNewTabState']) {
       const initial = await receive({ type, windowId: 1, incremental: 3 }, sender);
       assert.equal(initial.data.snapshotProtocol, 3);

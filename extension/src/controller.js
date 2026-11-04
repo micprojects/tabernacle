@@ -16,6 +16,7 @@ import { normaliseDomain } from './domain-filter.js';
 import { normaliseDomainPins } from './domains.js';
 import { normalizeLook } from './look.js';
 import { normalizeNewTab, isNewTabPage } from './new-tab/preferences.js';
+import { NEW_TAB_AVAILABLE } from './new-tab/availability.js';
 import { recordExpansions } from './folder-activity.js';
 import { normalizeFolderPins, reconcilePins, pinActionLabels, pinKey } from './pinned-items.js';
 import { requireGroupAppearance } from './folder-appearance.js';
@@ -1911,7 +1912,9 @@ export function createController(
           windowId,
           openerTabId: parent.id,
           active: true,
-          ...(model.newTab.enabled ? { url: api.runtime.getURL('new-tab.html?start=1') } : {}),
+          ...(NEW_TAB_AVAILABLE && model.newTab.enabled
+            ? { url: api.runtime.getURL('new-tab.html?start=1') }
+            : {}),
           ...(cookieStoreId !== undefined ? { cookieStoreId } : {}),
         });
         await moveTab(tab.id, parent.groupId, windowId, null, parent.id);
@@ -1923,7 +1926,9 @@ export function createController(
         const tab = await writeTab(windowId, 'create', {
           windowId,
           active: true,
-          ...(model.newTab.enabled ? { url: api.runtime.getURL('new-tab.html?start=1') } : {}),
+          ...(NEW_TAB_AVAILABLE && model.newTab.enabled
+            ? { url: api.runtime.getURL('new-tab.html?start=1') }
+            : {}),
           ...(cookieStoreId !== undefined ? { cookieStoreId } : {}),
         });
         await moveTab(tab.id, groupId, windowId);
