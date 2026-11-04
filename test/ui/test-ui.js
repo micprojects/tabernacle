@@ -64,7 +64,7 @@ try {
       page.waitForEvent('popup'),
       settingsButton.press('Enter'),
     ]);
-    await expect(settings.locator('#appearance-fields')).toBeEnabled();
+    await expect(settings.locator('#look-color-scheme')).toBeEnabled();
     await expect(page.locator('#menu')).toBeHidden();
     await settings.close();
     expect(await page.locator('.footer-actions').boundingBox()).toEqual(dock);

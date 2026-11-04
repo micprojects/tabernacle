@@ -31,7 +31,7 @@ export async function prepareSettings(sidebar) {
     const opened = settings ? Promise.resolve(settings) : sidebar.waitForEvent('popup');
     await sidebar.getByRole('button', { name: 'Settings', exact: true }).click();
     settings = await opened;
-    await expect(settings.locator('#appearance-fields')).toBeEnabled();
+    await expect(settings.locator('#look-color-scheme')).toBeEnabled();
     await settings.getByRole('link', { name: 'Appearance', exact: true }).click();
     return settings;
   };

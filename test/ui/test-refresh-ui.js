@@ -94,7 +94,7 @@ try {
   }, manifest);
   for (const view of ['settings', 'activity', 'new-tab']) {
     await page.goto(`${base}/extension/${view}.html`);
-    if (view === 'settings') await expect(page.locator('#appearance-fields')).toBeEnabled();
+    if (view === 'settings') await expect(page.locator('#look-color-scheme')).toBeEnabled();
     else if (view === 'activity')
       await expect(page.locator('#activity-results')).toHaveAttribute('aria-busy', 'false');
     else await expect(page.locator('#loading')).toBeHidden();

@@ -565,7 +565,7 @@ async function checkCloseConfirmation() {
     await driver.setContext(firefox.Context.CONTENT);
     await driver.get(`moz-extension://${uuid}/settings.html`);
     await driver.wait(
-      async () => await driver.findElement(By.id('appearance-fields')).isEnabled(),
+      async () => await driver.findElement(By.id('look-color-scheme')).isEnabled(),
       10000,
     );
     const control = await driver.getWindowHandle();

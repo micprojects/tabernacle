@@ -204,7 +204,7 @@ try {
       await expect(page.getByLabel('Folder name', { exact: true })).toBeFocused();
     } else if (id === 'settings') {
       const settings = await popup;
-      await expect(settings.locator('#appearance-fields')).toBeEnabled();
+      await expect(settings.locator('#look-color-scheme')).toBeEnabled();
       await expect(page.getByRole('menu')).toBeHidden();
       await settings.close();
     } else {
