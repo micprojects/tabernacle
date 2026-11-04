@@ -9,7 +9,7 @@ export function normalizeFolderPins(groups, value) {
     if (!valid.has(item?.id) || seen.has(item.id)) return [];
     seen.add(item.id);
     return [
-      { id: item.id, action: Object.hasOwn(pinActionLabels, item.action) ? item.action : 'open' },
+      { ...item, action: Object.hasOwn(pinActionLabels, item.action) ? item.action : 'open' },
     ];
   });
 }
@@ -22,7 +22,7 @@ export function normalizePinLayout(value) {
     const key = pinKey(item);
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ kind: item.kind, id: item.id }];
+    return [{ ...item }];
   });
 }
 
@@ -46,17 +46,21 @@ export function reconcilePins(saved, folders, tabs, forgotten = new Set()) {
       ? groupIds.has(item.id)
       : !unpinned.has(item.id) && !forgotten.has(item.id),
   );
-  const existing = new Set(layout.map(pinKey));
+  const existing = new Map(layout.map((item) => [pinKey(item), item]));
   for (const item of [...tabItems, ...groups]) if (!existing.has(pinKey(item))) layout.push(item);
   let groupIndex = 0,
     tabIndex = 0;
-  const ordered = layout.map((item) =>
-    item.kind === 'group'
-      ? groups[groupIndex++]
-      : tabIds.has(item.id)
-        ? tabItems[tabIndex++]
-        : item,
-  );
+  const ordered = layout.map((item) => {
+    const next =
+      item.kind === 'group'
+        ? groups[groupIndex++]
+        : tabIds.has(item.id)
+          ? tabItems[tabIndex++]
+          : item;
+    // A slot can receive a different identity when Firefox or another window
+    // reorders pins. Keep saved metadata with its identity, not its old slot.
+    return { ...existing.get(pinKey(next)), ...next };
+  });
   return {
     layout: ordered,
     items: ordered.filter((item) => item.kind === 'group' || tabIds.has(item.id)),

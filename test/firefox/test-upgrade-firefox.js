@@ -361,6 +361,7 @@ try {
       model.stashes = value.opaque;
       model.upgradeOpaque = value.opaque;
       model.look.upgradeOpaque = value.opaque;
+      model.folderPins = model.folderPins.map(pin => ({ ...pin, upgradeOpaque: value.opaque }));
       // Unknown preferences may come from another extension version. The old
       // release must retain these raw records before the candidate receives them.
       model.newTab = {
@@ -384,8 +385,11 @@ try {
   const expectedUpgrade = completedMove(before, upgradeChanges, treeIds);
   // v0.2.0 predates sidebar sizing. The candidate exposes its new default;
   // every existing preference and the raw saved model must still match exactly.
-  for (const state of expectedUpgrade.organisation)
+  for (const state of expectedUpgrade.organisation) {
     state.look = { ...state.look, sidebarSize: 'default' };
+    // The candidate retains opaque pin fields in its normalised records too.
+    state.folderPins = state.folderPins.map(pin => ({ ...pin, upgradeOpaque: sentinel.opaque }));
+  }
   console.log('Replacing the published extension with the candidate while a move is pending…');
   await driver.get('about:blank');
   assert.equal(await driver.installAddon(candidate, true), addonId);
@@ -466,6 +470,7 @@ try {
   assert.deepEqual(saved.newTab.upgradeOpaque, sentinel.opaque);
   assert.deepEqual(saved.newTab.links[0].upgradeOpaque, sentinel.opaque);
   assert.deepEqual(saved.newTab.location.upgradeOpaque, sentinel.opaque);
+  for (const pin of saved.folderPins) assert.deepEqual(pin.upgradeOpaque, sentinel.opaque);
   assert.equal(saved.newTab.unit, 'future-unit');
   assert.equal(saved.look.domains, false);
   assert.equal(saved.newTab.showRecent, false);

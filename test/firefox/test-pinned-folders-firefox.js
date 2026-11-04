@@ -148,6 +148,20 @@ try {
   );
 
   const beforeReload = signature(await send('snapshot'));
+  await call(`
+    for (const id of arguments[0]) {
+      const view = await browser.sessions.getWindowValue(id, 'tabernacle.view.v1');
+      view.pinLayout = view.pinLayout.map(item => ({ ...item, opaque: {identity: item.kind + ':' + item.id} }));
+      await browser.sessions.setWindowValue(id, 'tabernacle.view.v1', view);
+    }
+  `, [firstWindow, secondWindow.id]);
+
+  const assertPinMetadata = async (windowId) => {
+    const view = await call('return browser.sessions.getWindowValue(arguments[0], "tabernacle.view.v1");', windowId);
+    for (const item of view.pinLayout)
+      assert.deepEqual(item.opaque, {identity: `${item.kind}:${item.id}`});
+  };
+
   await driver.get('about:blank');
   await driver.setContext(firefox.Context.CHROME);
   await driver.executeAsyncScript(
@@ -158,6 +172,8 @@ try {
   await driver.get(sidebarUrl);
   await driver.wait(until.elementLocated(By.css('.pinned-folder')), 15000);
   assert.deepEqual(signature(await send('snapshot')), beforeReload);
+  await assertPinMetadata(firstWindow);
+  await assertPinMetadata(secondWindow.id);
   console.log(
     '✓ Folder reveal retains the active tab, and extension reload retains icon-only pins and ordering',
   );
@@ -183,6 +199,7 @@ try {
     10000,
   );
   const restoredState = await send('snapshot', { windowId: restoredId });
+  await assertPinMetadata(restoredId);
   assert.deepEqual(signature(restoredState), signature(secondState));
   assert.deepEqual(
     restoredState.tabs
