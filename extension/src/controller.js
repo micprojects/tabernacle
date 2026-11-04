@@ -593,13 +593,32 @@ export function createController(
     }
   }
 
+  async function removeTabs(windowId, ids) {
+    // Firefox resolves tabs.remove() when a beforeunload prompt is dismissed,
+    // even if the user keeps the page open. Confirm native removal explicitly.
+    const remaining = new Set(Array.isArray(ids) ? ids : [ids]);
+    const removed = (id) => remaining.delete(id);
+    api.tabs.onRemoved?.addListener(removed);
+    try {
+      await writeTab(windowId, 'remove', ids);
+      // Removal events are authoritative and avoid rereading a closed batch.
+      const results = await mapSettledBounded([...remaining], findOpenTab);
+      const failed = results.find((result) => result.status === 'rejected');
+      if (failed) throw failed.reason;
+      if (results.some((result) => result.value))
+        throw new Error('Some tabs are still open. Close them or try again.');
+    } finally {
+      api.tabs.onRemoved?.removeListener(removed);
+    }
+  }
+
   async function closeTabs(windowId, ids, validate) {
     const before = await selectionState(windowId);
     const closing = Array.isArray(ids) ? ids : [ids];
     const active = before.tabs.find((tab) => tab.active && closing.includes(tab.id));
     const current = closeSelection.guard(windowId, closing);
     if (validate && !(await validate())) return false;
-    await writeTab(windowId, 'remove', ids);
+    await removeTabs(windowId, ids);
     if (active) await settleClose(windowId, before, active.id, current);
   }
 
@@ -1983,7 +2002,7 @@ export function createController(
             // user activation can change it while this batch is running.
             if ((await findOpenTab(id))?.active) return closeTabs(windowId, id, validate);
             if (!(await validate())) return false;
-            await writeTab(windowId, 'remove', id);
+            await removeTabs(windowId, id);
           },
         });
         break;

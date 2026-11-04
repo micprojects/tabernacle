@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { Button, Key } from 'selenium-webdriver';
+import { By, Button, Key } from 'selenium-webdriver';
+import firefox from 'selenium-webdriver/firefox.js';
+import { createServer } from 'node:http';
+import { resolve } from 'node:path';
+import { startFirefox } from '../../scripts/firefox-session.js';
 import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
 import { previewServer } from '../../scripts/preview.js';
 
@@ -531,3 +535,182 @@ try {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));
 }
+
+async function checkCloseConfirmation() {
+  const root = 'test-results/';
+  const report = { startedAt: new Date().toISOString(), stages: [] };
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'text/html');
+    response.end(
+      '<!doctype html><title>Unsaved close QA</title><button id="dirty">Edit document</button><script>document.getElementById("dirty").onclick=()=>{window.onbeforeunload=event=>{event.preventDefault();event.returnValue="";};document.title="Unsaved document";};</script>',
+    );
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const url = 'http://127.0.0.1:' + server.address().port + '/';
+  let session, driver;
+  try {
+    const options = new firefox.Options()
+      .enableBidi()
+      .setAlertBehavior({ default: 'ignore', beforeUnload: 'ignore' });
+    session = await startFirefox({ options });
+    driver = session.driver;
+    report.environment = { version: session.version, profile: session.profile };
+    await driver.manage().setTimeouts({ script: 15000, pageLoad: 15000 });
+    const addon = await driver.installAddon(resolve('extension'), true);
+    await driver.setContext(firefox.Context.CHROME);
+    const uuid = await driver.executeScript(
+      'return JSON.parse(Services.prefs.getStringPref("extensions.webextensions.uuids"))[arguments[0]];',
+      addon,
+    );
+    await driver.setContext(firefox.Context.CONTENT);
+    await driver.get(`moz-extension://${uuid}/settings.html`);
+    await driver.wait(
+      async () => await driver.findElement(By.id('appearance-fields')).isEnabled(),
+      10000,
+    );
+    const control = await driver.getWindowHandle();
+
+    const call = async (body, ...args) => {
+      const result = await driver.executeAsyncScript(
+        `const done=arguments[arguments.length-1];(async()=>{${body}})().then(value=>done({ok:true,value}),e=>done({ok:false,error:e.message}));`,
+        ...args,
+      );
+      if (!result.ok) throw new Error(result.error);
+      return result.value;
+    };
+
+    const f = await call(
+      `
+  const {windowId}=await browser.tabs.getCurrent();
+  window.send=async(type,args={})=>browser.runtime.sendMessage({type:'tabernacle:'+type,windowId,...args});
+  const parent=await browser.tabs.create({url:arguments[0]+'?parent',active:true});
+  const child=await browser.tabs.create({url:arguments[0]+'?child',active:false});
+  const sibling=await browser.tabs.create({url:arguments[0]+'?sibling',active:false});
+  for(const tab of [child,sibling]){const result=await send('nestTab',{id:tab.id,parentTabId:parent.id});if(!result.ok)throw new Error(result.error);}
+  return {windowId,parent:parent.id,child:child.id,sibling:sibling.id};
+ `,
+      url,
+    );
+    let dirtyHandle;
+    await driver.wait(async () => {
+      for (const handle of await driver.getAllWindowHandles()) {
+        await driver.switchTo().window(handle);
+        if ((await driver.getCurrentUrl()) === url + '?parent') {
+          dirtyHandle = handle;
+          return true;
+        }
+      }
+      return false;
+    }, 10000);
+    await driver.findElement(By.id('dirty')).click();
+    assert.equal(
+      await driver.executeScript('return navigator.userActivation.hasBeenActive;'),
+      true,
+    );
+    await driver.switchTo().window(control);
+    const before = await call(
+      `return {snapshot:await send('snapshot'),raw:await Promise.all(arguments[0].map(async id=>[id,await browser.sessions.getTabValue(id,'tabernacle.membership.v1')]))};`,
+      [f.parent, f.child, f.sibling],
+    );
+    report.fixture = f;
+    report.before = before;
+
+    const attempt = async (type, args, accept) => {
+      await driver.switchTo().window(control);
+      await driver.executeScript(
+        `window.closeResult=undefined;window.send(arguments[0],arguments[1]).then(value=>window.closeResult=value,e=>window.closeResult={ok:false,error:e.message});`,
+        type,
+        args,
+      );
+      await driver.switchTo().window(dirtyHandle);
+      const alert = await driver.wait(
+        async () => {
+          try {
+            const alert = await driver.switchTo().alert();
+            await alert.getText();
+            return alert;
+          } catch (error) {
+            if (error.name === 'NoSuchAlertError') return false;
+            throw error;
+          }
+        },
+        10000,
+        'Extension close must display the real unsaved-page prompt',
+      );
+      const prompt = await alert.getText();
+      if (accept) await alert.accept();
+      else await alert.dismiss();
+      await driver.switchTo().window(control);
+      await driver.wait(
+        async () => Boolean(await driver.executeScript('return window.closeResult;')),
+        10000,
+      );
+      const result = await driver.executeScript('return window.closeResult;');
+      const after = await call(
+        `return {snapshot:await send('snapshot'),raw:await Promise.all(arguments[0].map(async id=>[id,await browser.sessions.getTabValue(id,'tabernacle.membership.v1').catch(()=>null)]))};`,
+        [f.parent, f.child, f.sibling],
+      );
+      report.stages.push({ type, accept, prompt, result, after });
+      return { result, after };
+    };
+
+    const single = await attempt('closeTab', { id: f.parent, promoteFirstChild: true }, false);
+    const target = before.snapshot.data.tabs.find((tab) => tab.id === f.parent);
+    const capture = await call(
+      `const {captureTarget}=await import(browser.runtime.getURL('src/tab-collection.js'));return captureTarget(arguments[0]);`,
+      target,
+    );
+    const batch = await attempt(
+      'closeTabSet',
+      { scope: { kind: 'window' }, targets: [capture] },
+      false,
+    );
+
+    assert.equal(single.result.ok, false, 'A cancelled parent close must not report success');
+    assert.deepEqual(
+      single.after.raw,
+      before.raw,
+      'Cancelling rolls back the prepared child promotion',
+    );
+    assert.deepEqual(batch.result.data.batchResult.completed, []);
+    assert.equal(batch.result.data.batchResult.failed.length, 1);
+    const accepted = await attempt('closeTab', { id: f.parent, promoteFirstChild: true }, true);
+    assert.equal(accepted.result.ok, true);
+    assert(!accepted.after.snapshot.data.tabs.some((tab) => tab.id === f.parent));
+    report.passed = true;
+    console.log(
+      'Real Firefox cancelled close keeps data, reports failure and retries successfully when accepted.',
+    );
+  } catch (error) {
+    report.error = { message: error.message, stack: error.stack };
+    throw error;
+  } finally {
+    report.finishedAt = new Date().toISOString();
+    await writeFile(
+      root + 'cancelled-close-native-report.json',
+      JSON.stringify(report, null, 2) + '\n',
+    );
+    try {
+      if (driver) {
+        try {
+          await driver.switchTo().alert().dismiss();
+        } catch {}
+        await driver.setContext(firefox.Context.CONTENT);
+        for (const handle of await driver.getAllWindowHandles()) {
+          await driver.switchTo().window(handle);
+          if ((await driver.getCurrentUrl()).startsWith(url))
+            await driver.executeScript('window.onbeforeunload=null;');
+        }
+      }
+    } catch {
+    } finally {
+      try {
+        await session?.close();
+      } finally {
+        await new Promise((resolve) => server.close(resolve));
+      }
+    }
+  }
+}
+
+await checkCloseConfirmation();
