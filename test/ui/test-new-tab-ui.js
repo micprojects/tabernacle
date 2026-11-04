@@ -182,6 +182,90 @@ try {
   });
   await live.locator('#search').press('Escape');
   console.log('✓ Successful new-tab refresh clears read failures and preserves action errors');
+  await live.evaluate(async () => {
+    const controller = await window.tabernacleDemoSession.ready;
+    const request = controller.request;
+    window.newTabPress = { completed: 0, restore: () => (controller.request = request) };
+    controller.request = async (message) => {
+      const result = await request(message);
+      if (message.type === 'getNewTabState') newTabPress.completed++;
+      return result;
+    };
+  });
+  for (const input of ['pointer', 'Space']) {
+    const folder = live.locator('#folders .folder').first();
+    await folder.focus();
+    await live.evaluate(() => {
+      newTabPress.target = document.querySelector('#folders .folder');
+      newTabPress.completed = 0;
+      document.getElementById('page-status').textContent = '';
+    });
+    if (input === 'pointer') {
+      const box = await folder.boundingBox();
+      await live.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await live.mouse.down();
+    } else await live.keyboard.down(input);
+    const updatedName = await live.evaluate(async () => {
+      const controller = await window.tabernacleDemoSession.ready;
+      const state = await controller.request({ type: 'getNewTabState', windowId: 1 });
+      newTabPress.completed = 0;
+      const group = state.groups[0];
+      const name = `${group.name} updated`;
+      await controller.request({ type: 'renameGroup', windowId: 1, id: group.id, name });
+      return name;
+    });
+    await live.waitForFunction(() => newTabPress.completed > 0);
+    expect(await live.evaluate(() => newTabPress.target.isConnected)).toBe(true);
+    if (input === 'pointer') await live.mouse.up();
+    else await live.keyboard.up(input);
+    await expect(live.locator('#page-status')).toContainText('Opened');
+    await expect(live.locator('#folders .folder').first()).toContainText(updatedName);
+  }
+  for (const release of ['pointercancel', 'blur', 'hidden']) {
+    const folder = live.locator('#folders .folder').first();
+    const box = await folder.boundingBox();
+    await live.evaluate(() => {
+      document.addEventListener(
+        'pointerdown',
+        (event) => (newTabPress.pointerId = event.pointerId),
+        {
+          once: true,
+        },
+      );
+      newTabPress.target = document.querySelector('#folders .folder');
+      newTabPress.completed = 0;
+    });
+    await live.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await live.mouse.down();
+    await live.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await live.waitForFunction(() => newTabPress.completed > 0);
+    expect(await live.evaluate(() => newTabPress.target.isConnected)).toBe(true);
+    await live.evaluate((release) => {
+      if (release === 'hidden') {
+        Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+      } else if (release === 'blur') window.dispatchEvent(new Event('blur'));
+      else
+        document.dispatchEvent(
+          new PointerEvent('pointercancel', { pointerId: newTabPress.pointerId }),
+        );
+    }, release);
+    await live.waitForFunction(() => !newTabPress.target.isConnected);
+    await live.mouse.up();
+    if (release === 'hidden')
+      await live.evaluate(() => {
+        delete document.hidden;
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    await expect(live.locator('#folders .folder').first()).toBeVisible();
+  }
+  await live.evaluate(() => {
+    newTabPress.restore();
+    delete window.newTabPress;
+  });
+  console.log(
+    '✓ New tab activation survives refresh; cancellation, blur and hiding release held controls',
+  );
   const faviconLookup = await live.evaluate(() => {
     const art = (colour) =>
       'data:image/svg+xml,' +

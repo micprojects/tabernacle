@@ -258,11 +258,30 @@ try {
     async () => (await driver.findElements(By.css('#links a'))).length === 1,
     10000,
   );
-  await driver.findElement(By.css('#links a')).click();
+  await call(`
+    const send = browser.runtime.sendMessage.bind(browser.runtime);
+    window.newTabPress = { completed: 0 };
+    document.addEventListener('pointerdown', event => {
+      newTabPress.target = event.target.closest('#links a');
+    }, {once:true});
+    browser.runtime.sendMessage = async message => {
+      const result = await send(message);
+      if (message.type === 'tabernacle:getNewTabState') newTabPress.completed++;
+      return result;
+    };
+  `);
+  await driver.actions().move({ origin: await driver.findElement(By.css('#links a')) }).press().perform();
+  assert(await call('return Boolean(newTabPress.target);'), 'The native pointer must press a link');
+  await call('newTabPress.completed = 0;');
+  await send('renameGroup', { id: group.createdGroupId, name: 'Work updated' });
+  await driver.wait(() => call('return newTabPress.completed > 0;'), 10000);
+  assert(await call('return newTabPress.target.isConnected;'), 'A refresh must retain the pressed link');
+  await driver.actions().release().perform();
   await driver.wait(
     async () => (await driver.getCurrentUrl()).startsWith('https://example.com/'),
     10000,
   );
+  console.log('✓ Native new-tab link activation survives a background refresh');
   await driver.navigate().back();
   await driver.wait(async () => (await driver.findElements(By.id('search'))).length > 0, 10000);
   await driver

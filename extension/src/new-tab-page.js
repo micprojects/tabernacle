@@ -19,6 +19,45 @@ let suspendedView;
 let viewGeneration = 0;
 let weatherGeneration = 0;
 const expanded = new Set();
+const presses = new Map();
+let renderPending = false;
+
+function deferRender() {
+  if (!presses.size) return false;
+  renderPending = true;
+  return true;
+}
+
+function holdRender(key, event) {
+  if (event.target.closest('#new-tab-content button, #new-tab-content a')) presses.set(key, {});
+}
+
+function releaseRender(key) {
+  const press = presses.get(key);
+  if (!press) return;
+  // Pointer and Space activation dispatch their click after the release event.
+  // Retain the original control until that click has reached its handler.
+  setTimeout(() => {
+    if (presses.get(key) !== press) return;
+    presses.delete(key);
+    if (renderPending) render();
+  }, 0);
+}
+
+document.addEventListener('pointerdown', (event) => holdRender(event.pointerId, event), true);
+for (const type of ['pointerup', 'pointercancel'])
+  document.addEventListener(type, (event) => releaseRender(event.pointerId), true);
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (event.key === ' ' || event.key === 'Enter') holdRender(event.key, event);
+  },
+  true,
+);
+document.addEventListener('keyup', (event) => releaseRender(event.key), true);
+window.addEventListener('blur', () => {
+  for (const key of presses.keys()) releaseRender(key);
+});
 
 function el(tag, className = '', text) {
   const node = document.createElement(tag);
@@ -110,6 +149,7 @@ function tabs() {
 }
 
 function renderSearch() {
+  if (deferRender()) return;
   const query = $('search').value.trim().toLocaleLowerCase();
   $('search-results').hidden = !query;
   const matches = $('search-matches');
@@ -158,6 +198,8 @@ function showRows(id, items, limit, render, empty) {
 
 function render() {
   if (!state || disposed || document.hidden) return;
+  if (deferRender()) return;
+  renderPending = false;
   const focused = document.activeElement?.dataset.key;
   const value = prefs();
   document.documentElement.dataset.colorScheme =
@@ -263,6 +305,7 @@ function render() {
 }
 
 function renderWeather() {
+  if (deferRender()) return;
   const value = prefs();
   const holder = $('weather');
   holder.hidden = !value.weatherEnabled;
@@ -512,6 +555,8 @@ function hasResultSelection() {
 }
 
 function suspend() {
+  presses.clear();
+  renderPending = false;
   viewGeneration++;
   weatherGeneration++;
   // Preserve the existing visible refresh path for native Find/user selections.
