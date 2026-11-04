@@ -358,6 +358,53 @@ test('location search is bounded, user-initiated, encoded and ignores invalid pr
   assert.equal(results[0].name, 'York, England, United Kingdom');
 });
 
+test('revoking access during a location permission read prevents a late request and permits a fresh retry', async () => {
+  const f = weatherFixture();
+  f.allow();
+  const contains = f.api.permissions.contains;
+  let release;
+  f.api.permissions.contains = async (access) => {
+    const allowed = await contains(access);
+    await new Promise((resolve) => {
+      release = resolve;
+    });
+    return allowed;
+  };
+  const service = createWeatherService(f.api, f.fetcher);
+  const pending = service.locations('York').then(
+    (value) => ({ value }),
+    (error) => ({ error }),
+  );
+  await tick();
+  f.revoke();
+  release();
+  const result = await pending;
+  assert.equal(f.calls.length, 0);
+  assert.match(result.error?.message || '', /Weather settings changed/);
+  f.api.permissions.contains = contains;
+  f.allow();
+  assert.deepEqual(await service.locations('York'), []);
+  assert.equal(f.calls.length, 1);
+});
+
+test('revoking access discards a location response even when its transport ignores cancellation', async () => {
+  const f = weatherFixture();
+  f.allow();
+  let release;
+  const service = createWeatherService(f.api, async (url, options) => {
+    await new Promise((resolve) => {
+      release = resolve;
+    });
+    return f.fetcher(url, options);
+  });
+  const pending = service.locations('York');
+  await tick();
+  f.revoke();
+  release();
+  await assert.rejects(pending, /Weather settings changed/);
+  assert(f.calls[0].options.signal.aborted);
+});
+
 test('weather rejects malformed cache entries and keeps stale readings available during an outage', async () => {
   const f = weatherFixture();
   f.allow();

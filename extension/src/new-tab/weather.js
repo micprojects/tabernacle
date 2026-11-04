@@ -87,10 +87,11 @@ export function createWeatherService(api, fetcher = fetch) {
 
   return {
     async locations(query) {
+      const version = epoch;
       await access();
+      if (version !== epoch) throw new Error('Weather settings changed. Try again.');
       if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100)
         throw new Error('Enter a town or city with at least two characters.');
-      const version = epoch;
       const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
       url.search = new URLSearchParams({
         name: query.trim(),

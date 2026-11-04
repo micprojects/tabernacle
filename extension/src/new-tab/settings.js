@@ -283,12 +283,15 @@ export function createNewTabSettings({ request, demo }) {
       errorAt('new-tab-error', error);
     }
   });
-  $('nt-location-query').addEventListener('input', () => {
+
+  function cancelLocationSearch() {
     locationGeneration++;
     $('nt-location-results').replaceChildren();
     $('nt-location-status').textContent = '';
     $('nt-find-location').disabled = false;
-  });
+  }
+
+  $('nt-location-query').addEventListener('input', cancelLocationSearch);
   $('nt-location-query').addEventListener('keydown', (event) => {
     if (event.isComposing) return;
     if (event.key === 'Enter') {
@@ -311,7 +314,9 @@ export function createNewTabSettings({ request, demo }) {
       // Request from this click, before any await, so Firefox can show consent.
       const permission = browser.permissions.request(WEATHER_ACCESS);
       $('nt-find-location').disabled = true;
-      if (!(await permission))
+      const allowed = await permission;
+      if (disposed || generation !== locationGeneration) return;
+      if (!allowed)
         throw new Error(
           'Weather access was not allowed. You can keep using the page without weather.',
         );
@@ -342,6 +347,7 @@ export function createNewTabSettings({ request, demo }) {
     }
   });
   $('nt-remove-weather').addEventListener('click', async () => {
+    cancelLocationSearch();
     errorAt('nt-weather-error');
     try {
       if (demo) throw new Error('Weather access is managed in Firefox.');

@@ -342,6 +342,105 @@ try {
     10000,
   );
   await send('setNewTab', { value: { weatherEnabled: false } });
+
+  for (const mode of ['permission', 'success', 'failure']) {
+    await driver.switchTo().window(settingsHandle);
+    await driver.navigate().refresh();
+    await driver.wait(() => driver.findElement(By.id('new-tab-add-link')).isEnabled(), 10000);
+
+    const allowWeather = async () => {
+      await driver.setContext(firefox.Context.CHROME);
+      await driver.executeAsyncScript(
+        `const [id,access,done]=arguments;const {ExtensionPermissions}=ChromeUtils.importESModule('resource://gre/modules/ExtensionPermissions.sys.mjs');ExtensionPermissions.add(id,{permissions:[],...access},WebExtensionPolicy.getByID(id).extension).then(()=>done(true));`,
+        addonId,
+        WEATHER_ACCESS,
+      );
+      await driver.setContext(firefox.Context.CONTENT);
+    };
+
+    await allowWeather();
+    await call(
+      `const mode=arguments[0];
+      const state=window.weatherRevocation={mode,requests:0};
+      const permission=browser.permissions.request.bind(browser.permissions);
+      const send=browser.runtime.sendMessage.bind(browser.runtime);
+      browser.permissions.request=async access=>{
+        const allowed=await permission(access);
+        if(state.mode==='permission')await new Promise(resolve=>state.release=resolve);
+        return allowed;
+      };
+      browser.runtime.sendMessage=async message=>{
+        if(message.type!=='tabernacle:weatherLocations')return send(message);
+        state.requests++;
+        if(['success','failure'].includes(state.mode))
+          await new Promise(resolve=>state.release=resolve);
+        return state.mode==='failure'
+          ? {ok:false,error:'Old location lookup failed'}
+          : {ok:true,data:[{name:state.mode==='fresh'?'Current York result':'Old York result',
+              latitude:53.95,longitude:-1.08}]};
+      };`,
+      mode,
+    );
+    await driver.findElement(By.id('nt-location-query')).clear();
+    await driver.findElement(By.id('nt-location-query')).sendKeys('York');
+    await driver.findElement(By.id('nt-find-location')).click();
+    await driver.wait(() => call('return Boolean(weatherRevocation.release);'), 10000);
+    await driver.findElement(By.id('nt-remove-weather')).click();
+    await driver.wait(
+      async () =>
+        (await driver.findElement(By.id('nt-location-status')).getText()) ===
+        'Weather access removed.',
+      10000,
+    );
+    assert.equal(
+      await call('return browser.permissions.contains(arguments[0]);', WEATHER_ACCESS),
+      false,
+    );
+    await call('weatherRevocation.release();');
+    // Flush the released message continuation before asserting it has no effect.
+    await call('await new Promise(resolve=>setTimeout(resolve,100));');
+    assert.deepEqual(
+      await call(`return {
+        requests:weatherRevocation.requests,
+        results:document.getElementById('nt-location-results').childElementCount,
+        status:document.getElementById('nt-location-status').textContent,
+        error:document.getElementById('nt-weather-error').hidden?'':
+          document.getElementById('nt-weather-error').textContent
+      };`),
+      {
+        requests: mode === 'permission' ? 0 : 1,
+        results: 0,
+        status: 'Weather access removed.',
+        error: '',
+      },
+    );
+    assert(await driver.findElement(By.id('nt-find-location')).isEnabled());
+    await call("weatherRevocation.mode='fresh';");
+    await allowWeather();
+    await driver.findElement(By.id('nt-find-location')).click();
+    await driver.wait(
+      async () =>
+        (await driver.findElement(By.id('nt-location-results')).getText()) ===
+        'Current York result',
+      10000,
+    );
+    await driver.findElement(By.id('nt-remove-weather')).click();
+    await driver.wait(
+      async () =>
+        (await driver.findElement(By.id('nt-location-status')).getText()) ===
+        'Weather access removed.',
+      10000,
+    );
+    assert.equal(
+      await call("return document.getElementById('nt-location-results').childElementCount;"),
+      0,
+    );
+  }
+  await driver.navigate().refresh();
+  await driver.switchTo().window(activeHandle);
+  console.log(
+    '✓ Weather revocation cancels pending permission/results and supports a fresh lookup',
+  );
   const container = await call(
     `return browser.contextualIdentities.create({name:'New tab test',color:'blue',icon:'briefcase'});`,
   );
