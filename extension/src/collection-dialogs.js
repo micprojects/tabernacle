@@ -43,6 +43,7 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
       title: 'Close these tabs?',
       description: `Close ${count} from these results in this window.${pinned ? ` This includes ${pinned} pinned ${pinned === 1 ? 'tab' : 'tabs'}.` : ''} Other tabs and folders will stay.`,
       input: false,
+      closeButton: true,
       submit: `Close ${count}`,
 
       onSubmit: async () => {
@@ -51,7 +52,6 @@ export function createCollectionDialogs({ showDialog, getState, request, onChang
         onNotice(batchSummary(next.batchResult, 'Closed'), Boolean(next.batchResult.failed.length));
       },
     });
-    document.getElementById('dialog-icon').replaceChildren(icon('close'));
     submitButton().disabled = !targets.length;
     document.getElementById('dialog-cancel').focus();
   }

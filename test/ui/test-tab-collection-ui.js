@@ -149,6 +149,14 @@ try {
   );
   await page.locator('#domain-actions').click();
   await page.getByRole('menuitem', { name: 'Close 240 tabs…', exact: true }).click();
+  await expect(page.locator('#dialog-icon')).toBeHidden();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(
+    (await snapshot()).tabs.filter((tab) => tab.url.startsWith('https://large.test/')),
+  ).toHaveLength(240);
+  await page.locator('#domain-actions').click();
+  await page.getByRole('menuitem', { name: 'Close 240 tabs…', exact: true }).click();
   await page.getByRole('button', { name: 'Close 240 tabs', exact: true }).click();
   await expect(page.locator('#tree .tab-row')).toHaveCount(0);
   expect((await snapshot()).tabs.some((tab) => tab.url.startsWith('https://large.test/'))).toBe(

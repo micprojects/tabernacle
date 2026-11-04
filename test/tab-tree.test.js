@@ -517,9 +517,46 @@ test('branch close rejects invalid confirmations and parents in other windows', 
   assert.equal((await api.tabs.query({})).length, 5);
 });
 
-test('branch close can retry a partial failure without losing the remaining descendants', async () => {
-  const { api, send, tree } = fixture();
+for (const operation of ['read', 'repair']) {
+  test(`branch close preserves tabs on a membership ${operation} failure and can retry`, async () => {
+    const { api, send, tree, restart } = fixture();
+    await tree();
+    await send('toggleTab', { id: 1 });
+    if (operation === 'repair') delete api.testing.tabValues.get(2).order;
+    restart();
+    const method = operation === 'read' ? 'getTabValue' : 'setTabValue';
+    const original = api.sessions[method];
+    api.sessions[method] = async (id, ...args) => {
+      if (id === 2) throw new Error('Session unavailable');
+      return original(id, ...args);
+    };
+    await assert.rejects(
+      send('closeTabTree', { id: 1, tabIds: [1, 2, 3] }),
+      /organisation.*Session unavailable/,
+    );
+    assert.deepEqual(
+      (await api.tabs.query({})).map((tab) => tab.id),
+      [1, 2, 3, 4, 5],
+    );
+    api.sessions[method] = original;
+    const preserved = await send('snapshot');
+    assert.deepEqual(
+      tabSubtree(preserved.tabs, 1).map((tab) => tab.id),
+      [1, 2, 3],
+    );
+    assert.equal(get(preserved, 1).collapsed, true);
+    assert.deepEqual(
+      (await send('closeTabTree', { id: 1, tabIds: [1, 2, 3] })).tabs.map((tab) => tab.id),
+      [4],
+    );
+    assert.equal((await api.tabs.get(5)).windowId, 2);
+  });
+}
+
+test('branch close can retry a partial failure after restart without losing the remaining descendants', async () => {
+  const { api, send, tree, restart } = fixture();
   await tree();
+  await send('toggleTab', { id: 1 });
   const remove = api.tabs.remove;
   api.tabs.remove = async (ids) => {
     await remove(ids[0]);
@@ -531,6 +568,8 @@ test('branch close can retry a partial failure without losing the remaining desc
     [1, 2],
   );
   api.tabs.remove = remove;
+  restart();
+  assert.equal(get(await send('snapshot'), 1).collapsed, true);
   assert.deepEqual(
     (await send('closeTabTree', { id: 1, tabIds: [1, 2, 3] })).tabs.map((tab) => tab.id),
     [4],

@@ -51,6 +51,7 @@ try {
   const parent = page.locator('[data-key="tab:1"]');
   const dialog = page.getByRole('dialog', { name: 'Close tab and nested tabs?', exact: true });
   const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+  const dismiss = page.getByRole('button', { name: 'Close dialog', exact: true });
   const confirm = page.getByRole('button', { name: 'Close 4 tabs', exact: true });
   const snapshot = async () =>
     page.evaluate(
@@ -71,6 +72,26 @@ try {
     '“Figma — Website” and its 3 nested tabs',
   );
   await expect(cancel).toBeFocused();
+  await expect(dismiss).toBeVisible();
+  await expect(page.locator('#dialog-icon')).toBeHidden();
+  for (const mode of ['light', 'dark', 'forced']) {
+    await page.emulateMedia({
+      colorScheme: mode === 'dark' ? 'dark' : 'light',
+      forcedColors: mode === 'forced' ? 'active' : 'none',
+    });
+    for (const width of [220, 320]) {
+      await page.setViewportSize({ width, height: 820 });
+      const heading = await page.locator('#dialog-title').boundingBox();
+      const button = await dismiss.boundingBox();
+      const bounds = await dialog.boundingBox();
+      expect(button.x).toBeGreaterThan(heading.x + heading.width);
+      expect(Math.abs(button.y - heading.y)).toBeLessThan(1);
+      expect(button.x + button.width).toBeLessThan(bounds.x + bounds.width);
+      expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      await page.screenshot({ path: `test-results/close-nested-tabs-${mode}-${width}.png` });
+    }
+  }
+  await page.emulateMedia({ colorScheme: 'light', forcedColors: 'none' });
   await page.screenshot({ path: 'test-results/close-nested-tabs.png' });
   await cancel.click();
   expect((await snapshot()).tabs).toHaveLength(17);
@@ -78,13 +99,26 @@ try {
   // Hidden descendants are included; Escape leaves the collapsed branch intact.
   await parent.locator('.tab-disclosure').click();
   await expect(parent).toHaveAttribute('aria-expanded', 'false');
-  await parent.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Close tab and nested tabs…', exact: true }).click();
+  await parent.locator('.label').click({ button: 'middle' });
   await expect(confirm).toBeVisible();
+  await expect(cancel).toBeFocused();
+  expect((await snapshot()).tabs).toHaveLength(17);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   expect((await snapshot()).tabs).toHaveLength(17);
   await expect(parent).toHaveAttribute('aria-expanded', 'false');
+
+  // The header cross cancels by pointer and keyboard without closing any tabs.
+  for (const keyboard of [false, true]) {
+    await parent.locator('.label').click({ button: 'middle' });
+    if (keyboard) {
+      await dismiss.focus();
+      await page.keyboard.press('Enter');
+    } else await dismiss.click();
+    await expect(dialog).toBeHidden();
+    expect((await snapshot()).tabs).toHaveLength(17);
+    await expect(parent).toHaveAttribute('aria-expanded', 'false');
+  }
 
   // Leaves still close immediately, without a dialog.
   await page.locator('[data-key="tab:8"] .close-tab').click();
@@ -94,7 +128,7 @@ try {
   await page.evaluate(() => {
     window.failClose = true;
   });
-  await closeBranch();
+  await parent.locator('.tab-disclosure').click({ button: 'middle' });
   await confirm.click();
   await expect(page.locator('#dialog-error')).toHaveText('Firefox could not close these tabs.');
   expect((await snapshot()).tabs).toHaveLength(16);
@@ -110,7 +144,9 @@ try {
 
   // A live refresh must not change the opening confirmation, including on retry.
   await load();
-  await closeBranch();
+  await parent.locator('.tab-disclosure').click();
+  await expect(parent).toHaveAttribute('aria-expanded', 'false');
+  await parent.locator('.label').click({ button: 'middle' });
   const openingDescription = await page.locator('#dialog-description').textContent();
   await expect(cancel).toBeFocused();
   const newChildId = await page.evaluate(async () => {
@@ -138,6 +174,7 @@ try {
   await confirm.click();
   await expect(confirm).toBeDisabled();
   await expect(cancel).toBeDisabled();
+  await expect(dismiss).toBeDisabled();
   await expect(page.locator('#dialog-error')).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
@@ -153,6 +190,7 @@ try {
   await expect(dialog).toBeVisible();
   await expect(confirm).toBeEnabled();
   await expect(cancel).toBeEnabled();
+  await expect(dismiss).toBeEnabled();
   await expect(page.locator('#dialog-description')).toHaveText(openingDescription);
   expect((await snapshot()).tabs.map((tab) => tab.id)).toEqual(refreshedIds);
   await page.evaluate(() => {
@@ -170,16 +208,36 @@ try {
   );
   expect(refreshedRemaining.tabs.find((tab) => tab.id === newChildId).parentTabId).toBe(null);
 
-  // Every single-tab affordance preserves children, even in collapsed branches.
+  // Only a collapsed parent's middle click closes the confirmed branch.
   for (const method of ['middle', 'button', 'menu']) {
     for (const collapsed of [false, true]) {
       await load();
-      if (collapsed) await parent.locator('.tab-disclosure').click();
-      if (method === 'middle') await parent.click({ button: 'middle' });
+      if (collapsed) {
+        await parent.locator('.tab-disclosure').click();
+        await expect(parent).toHaveAttribute('aria-expanded', 'false');
+      }
+      if (method === 'middle') await parent.locator('.close-tab').click({ button: 'middle' });
       else if (method === 'button') await parent.locator('.close-tab').click();
       else {
         await parent.click({ button: 'right' });
         await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click();
+      }
+      if (method === 'middle' && collapsed) {
+        await expect(dialog).toBeVisible();
+        await expect(confirm).toBeVisible();
+        expect((await snapshot()).tabs).toHaveLength(17);
+        await cancel.click();
+        await expect(dialog).toBeHidden();
+        await expect(parent).toHaveAttribute('aria-expanded', 'false');
+        expect((await snapshot()).tabs).toHaveLength(17);
+        await parent.locator('.close-tab').click({ button: 'middle' });
+        await confirm.click();
+        await expect(dialog).toBeHidden();
+        await expect(parent).toHaveCount(0);
+        const remaining = (await snapshot()).tabs.map((tab) => tab.id);
+        expect(remaining).toHaveLength(13);
+        for (const id of [1, 2, 3, 4]) expect(remaining).not.toContain(id);
+        continue;
       }
       await expect(parent).toHaveCount(0);
       await expect(dialog).toBeHidden();
@@ -193,8 +251,32 @@ try {
     }
   }
 
-  // Middle-clicking a pin also preserves its children in their folder.
+  // Search-expanded and flat domain results preserve children despite saved folds.
+  for (const mode of ['search', 'domain']) {
+    await load();
+    await parent.locator('.tab-disclosure').click();
+    await expect(parent).toHaveAttribute('aria-expanded', 'false');
+    if (mode === 'search') {
+      await page.locator('#search-toggle').click();
+      await page.locator('#search').fill('Figma');
+      await expect(page.locator('.tab-row')).toHaveCount(4);
+    } else {
+      await parent.click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Filter by domain', exact: true }).click();
+      await expect(page.locator('#domain-name')).toHaveText('figma.com');
+    }
+    await expect(parent).not.toHaveAttribute('aria-expanded', 'false');
+    await parent.locator('.label').click({ button: 'middle' });
+    await expect(parent).toHaveCount(0);
+    await expect(dialog).toBeHidden();
+    expect((await snapshot()).tabs).toHaveLength(16);
+    expect((await snapshot()).tabs.find((tab) => tab.id === 3).parentTabId).toBe(2);
+  }
+
+  // Middle-clicking a pin preserves children even with a saved collapsed fold.
   await load();
+  await parent.locator('.tab-disclosure').click();
+  await expect(parent).toHaveAttribute('aria-expanded', 'false');
   await parent.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Pin tab', exact: true }).click();
   const pin = page.locator('.pinned-tab[data-key="tab:1"]');
@@ -216,7 +298,7 @@ try {
   expect((await snapshot()).tabs).toHaveLength(13);
   expect(errors).toEqual([]);
   console.log(
-    '✓ Close button, menu and middle click promote the first child; the separate branch action confirms every depth and supports retry, including collapsed branches and pins',
+    '✓ Collapsed middle click confirms every depth and supports cancel and retry; expanded parents, close buttons, menus, flat results and pins preserve children',
   );
 } finally {
   await close();
