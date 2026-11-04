@@ -42,7 +42,7 @@ try {
         });
     };
     const ready = import('/preview/demo.js').then(async ({ createDemo }) => {
-      const state = await (await createDemo()).request({ type: 'snapshot', windowId: 1 });
+      const state = await (await createDemo()).request({ type: 'getNewTabState', windowId: 1 });
       const now = Date.now();
       return {
         ...state,
@@ -77,6 +77,18 @@ try {
           const state = await ready;
           const data = {
             ...state,
+            newTab: {
+              ...state.newTab,
+              links: [{ id: 'kept', name: 'Find retained link', url: 'https://example.test/kept' }],
+            },
+            recentlyClosed: [
+              {
+                sessionId: 'kept',
+                title: 'Find retained closed tab',
+                url: 'https://example.test/closed',
+                closedAt: 1_794_000_000_000,
+              },
+            ],
             look: { ...state.look, ...test.look },
             generation: test.generation,
             revision: test.revision,
@@ -366,8 +378,32 @@ try {
         .poll(() => page.evaluate(() => retainedViewRevision() === refreshTest.revision))
         .toBe(true);
       await expect(page.locator(rows)).toHaveCount(selected.rows);
-      // New Tab keeps its existing full render on return; native Find parity is
-      // checked separately after that render has completed.
+      expect(await page.evaluate(() => getSelection().toString())).toBe(selected.text);
+      // Refreshes and clock ticks preserve unchanged text in every result area.
+      await page.locator('#search').fill('Tabernacle');
+      for (const selector of ['.site-label', '.recent-title', '#search-matches strong']) {
+        const before = await page.evaluate((selector) => {
+          const node = document.querySelector(selector).firstChild;
+          window.selectedTextNode = node;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          getSelection().removeAllRanges();
+          getSelection().addRange(range);
+          return getSelection().toString();
+        }, selector);
+        await page.evaluate(() => {
+          refreshTest.hidden = true;
+          document.dispatchEvent(new Event('visibilitychange'));
+          refreshTest.revision++;
+          refreshTest.hidden = false;
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect
+          .poll(() => page.evaluate(() => retainedViewRevision() === refreshTest.revision))
+          .toBe(true);
+        expect(await page.evaluate(() => getSelection().toString())).toBe(before);
+        expect(await page.evaluate(() => selectedTextNode.isConnected)).toBe(true);
+      }
       await page.evaluate(() => {
         const range = document.createRange();
         range.selectNodeContents(document.querySelector('#new-tab-content [data-key]'));

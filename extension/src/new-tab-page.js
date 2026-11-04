@@ -7,6 +7,7 @@ import { normalizeNewTab, isNewTabPage, searchAddress } from './new-tab/preferen
 import { createRefreshScheduler } from './refresh-scheduler.js';
 import { weatherLabel } from './new-tab/weather.js';
 import { captureFocus, restoreFocusToken, captureScroll, restoreScroll } from './view-state.js';
+import { createRowCache, reconcileChildren } from './dom.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -20,6 +21,10 @@ let viewGeneration = 0;
 let weatherGeneration = 0;
 const expanded = new Set();
 const presses = new Map();
+const linkRows = createRowCache();
+const searchRows = createRowCache();
+const recentRows = createRowCache();
+const recentSections = new Map();
 let renderPending = false;
 
 function deferRender() {
@@ -121,7 +126,9 @@ function settings() {
   return request('openPage', { page: 'settings', section: 'features' });
 }
 
-async function openFolder(group) {
+async function openFolder(id) {
+  const group = state.groups.find((group) => group.id === id);
+  if (!group) throw new Error('That folder is no longer available.');
   // Call before awaiting anything so Firefox receives the click's user activation.
   const opening = demo ? Promise.resolve() : browser.sidebarAction.open().catch(() => {});
   await request('enterGroup', { id: group.id });
@@ -153,43 +160,54 @@ function renderSearch() {
   const query = $('search').value.trim().toLocaleLowerCase();
   $('search-results').hidden = !query;
   const matches = $('search-matches');
-  matches.replaceChildren();
-  if (!query || !state) return;
+  if (!query || !state) {
+    matches.replaceChildren();
+    searchRows.clear();
+    return;
+  }
   const foundTabs = tabs().filter((tab) =>
     `${tab.title} ${tab.url}`.toLocaleLowerCase().includes(query),
   );
   const groups = state.groups.filter((group) => group.name.toLocaleLowerCase().includes(query));
   const count = foundTabs.length + groups.length;
+  const children = [];
   for (const tab of foundTabs.slice(0, 12))
-    matches.append(
-      entry(
-        tab,
-        `Open tab · ${domain(tab.url)}`,
-        () => request('activateTab', { id: tab.id }),
-        `search-tab-${tab.id}`,
+    children.push(
+      searchRows.get(`search-tab-${tab.id}`, [tab.title, tab.url, tab.favIconUrl], () =>
+        entry(
+          tab,
+          `Open tab · ${domain(tab.url)}`,
+          () => request('activateTab', { id: tab.id }),
+          `search-tab-${tab.id}`,
+        ),
       ),
     );
-  for (const group of groups.slice(0, 6))
-    matches.append(
-      entry(
-        group,
-        `Folder · ${groupPath(state, group.id)
-          .map((item) => item.name)
-          .join(' / ')}`,
-        () => openFolder(group),
-        `search-group-${group.id}`,
+  for (const group of groups.slice(0, 6)) {
+    const path = groupPath(state, group.id)
+      .map((item) => item.name)
+      .join(' / ');
+    children.push(
+      searchRows.get(`search-group-${group.id}`, [group.name, path], () =>
+        entry(group, `Folder · ${path}`, () => openFolder(group.id), `search-group-${group.id}`),
       ),
     );
+  }
   if (!count)
-    matches.append(el('p', 'empty', 'No matching tabs or folders. Press Enter to search the web.'));
+    children.push(el('p', 'empty', 'No matching tabs or folders. Press Enter to search the web.'));
+  reconcileChildren(matches, children);
+  searchRows.finish();
   $('search-status').textContent =
     `${count} matching tabs and folders${foundTabs.length > 12 || groups.length > 6 ? '; showing the first matches' : ''}.`;
 }
 
 function renderRecent(now = Date.now()) {
   const container = $('recent');
-  container.replaceChildren();
-  if (!prefs().showRecent) return;
+  if (!prefs().showRecent) {
+    container.replaceChildren();
+    recentRows.clear();
+    recentSections.clear();
+    return;
+  }
   const items = recentItems(state, 'closed');
   const limit = 8;
   const shown = expanded.has('recent') ? items : items.slice(0, limit);
@@ -198,54 +216,72 @@ function renderRecent(now = Date.now()) {
     minute: '2-digit',
     hourCycle: 'h23',
   });
+  const sections = [];
+  const days = new Set();
   for (const [index, day] of recentActivityDays(shown).entries()) {
-    const section = el('section', 'recent-day');
+    days.add(day.date);
     const label = activityDay(day.timestamp, now);
-    const heading = el('h3', 'recent-day-heading', label);
+    if (!recentSections.has(day.date)) {
+      const section = el('section', 'recent-day');
+      const heading = el('h3', 'recent-day-heading', label);
+      const list = el('div', 'recent-day-list');
+      section.append(heading, list);
+      recentSections.set(day.date, { section, heading, list });
+    }
+    const { section, heading, list } = recentSections.get(day.date);
+    if (heading.textContent !== label) heading.textContent = label;
     heading.id = `recent-day-${index}`;
     section.setAttribute('aria-labelledby', heading.id);
-    const list = el('div', 'recent-day-list');
+    const children = [];
     for (const { items } of day.sessions) {
       for (const item of items) {
-        const row = button(
-          `Reopen ${item.title}`,
-          'entry recent-entry',
-          () => request('restoreClosedTab', { sessionId: item.sessionId }),
+        const timeLabel = item.timestamp
+          ? label === 'Today'
+            ? activityTime(item.timestamp, now)
+            : formatter.format(item.timestamp)
+          : '';
+        const timeTitle = item.timestamp ? new Date(item.timestamp).toLocaleString() : '';
+        const row = recentRows.get(
           `closed-${item.sessionId}`,
+          [item.title, item.url, item.detail, item.favIconUrl, item.timestamp],
+          () => {
+            const row = button(
+              `Reopen ${item.title}`,
+              'entry recent-entry',
+              () => request('restoreClosedTab', { sessionId: item.sessionId }),
+              `closed-${item.sessionId}`,
+            );
+            const time = el('time', 'recent-time');
+            if (item.timestamp) time.dateTime = new Date(item.timestamp).toISOString();
+            row.append(
+              favicon(item, 'entry-icon'),
+              el('span', 'recent-title', item.title),
+              el('span', 'recent-domain', item.detail),
+              time,
+              icon('undo'),
+            );
+            return row;
+          },
         );
-        const time = el(
-          'time',
-          'recent-time',
-          item.timestamp
-            ? label === 'Today'
-              ? activityTime(item.timestamp, now)
-              : formatter.format(item.timestamp)
-            : '',
-        );
-        if (item.timestamp) {
-          time.dateTime = new Date(item.timestamp).toISOString();
-          time.title = new Date(item.timestamp).toLocaleString();
-        }
-        row.title = [item.title, item.url, time.title].filter(Boolean).join('\n');
-        row.append(
-          favicon(item, 'entry-icon'),
-          el('span', 'recent-title', item.title),
-          el('span', 'recent-domain', item.detail),
-          time,
-          icon('undo'),
-        );
-        list.append(row);
+        const time = row.querySelector('.recent-time');
+        if (time.textContent !== timeLabel) time.textContent = timeLabel;
+        time.title = timeTitle;
+        row.title = [item.title, item.url, timeTitle].filter(Boolean).join('\n');
+        children.push(row);
       }
     }
-    section.append(heading, list);
-    container.append(section);
+    reconcileChildren(list, children);
+    sections.push(section);
   }
   if (state.recentlyClosedError)
-    container.append(
+    sections.push(
       el('p', 'error', 'Recently closed tabs are unavailable. Try reloading this page.'),
     );
   else if (!items.length)
-    container.append(el('p', 'empty', 'Tabs closed in this window appear here.'));
+    sections.push(el('p', 'empty', 'Tabs closed in this window appear here.'));
+  reconcileChildren(container, sections);
+  recentRows.finish();
+  for (const date of recentSections.keys()) if (!days.has(date)) recentSections.delete(date);
   const toggle = $('all-recent');
   toggle.hidden = items.length <= limit;
   toggle.textContent = expanded.has('recent') ? 'Show fewer' : 'View all';
@@ -281,21 +317,27 @@ function render() {
     if (remainingDomains.delete(key)) tabsByDomain.set(key, tab);
   }
   $('links').classList.toggle('list-style', value.linkStyle === 'list');
-  $('links').replaceChildren(
-    ...value.links.map((link, i) => {
+  const links = value.links.map((link, i) => {
+    const known = tabsByDomain.get(linkDomains[i]);
+    return linkRows.get(`link-${link.id}`, [link.name, link.url, known?.favIconUrl], () => {
       const node = el('a', 'site');
       node.href = link.url;
       node.dataset.key = `link-${link.id}`;
-      const known = tabsByDomain.get(linkDomains[i]);
       node.append(favicon(known, 'site-icon'), el('span', 'site-label', link.name));
       return node;
+    });
+  });
+  links.push(
+    linkRows.get('add-link', [], () => {
+      const add = button('Add link', 'site add', settings, 'add-link');
+      const plus = el('span', 'site-icon');
+      plus.append(icon('plus'));
+      add.append(plus, el('span', 'site-label', 'Add link'));
+      return add;
     }),
   );
-  const add = button('Add link', 'site add', settings, 'add-link');
-  const plus = el('span', 'site-icon');
-  plus.append(icon('plus'));
-  add.append(plus, el('span', 'site-label', 'Add link'));
-  $('links').append(add);
+  reconcileChildren($('links'), links);
+  linkRows.finish();
   renderRecent();
   renderSearch();
   renderWeather();
@@ -590,8 +632,8 @@ function suspend() {
   renderPending = false;
   viewGeneration++;
   weatherGeneration++;
-  // Preserve the existing visible refresh path for native Find/user selections.
-  // Page disposal still releases all derived state.
+  // Keep selected rows connected across hiding and the next refresh. Closing
+  // the page still releases all derived state, including the row caches.
   if (!disposed && hasResultSelection()) return;
   if (state && !suspendedView)
     suspendedView = {
@@ -608,6 +650,8 @@ function suspend() {
   weatherKey = undefined;
   weatherData = null;
   for (const id of ['links', 'recent', 'search-matches']) $(id).replaceChildren();
+  for (const rows of [linkRows, searchRows, recentRows]) rows.clear();
+  recentSections.clear();
   $('loading').hidden = false;
 }
 

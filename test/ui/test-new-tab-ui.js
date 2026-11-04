@@ -435,9 +435,17 @@ try {
     });
     await live.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await live.mouse.down();
-    await live.evaluate(() => window.dispatchEvent(new Event('focus')));
+    const changedName = await live.evaluate(async () => {
+      const controller = await window.tabernacleDemoSession.ready;
+      const state = await controller.request({ type: 'getNewTabState', windowId: 1 });
+      const group = state.groups[0];
+      const name = `${group.name} cancelled`;
+      await controller.request({ type: 'renameGroup', windowId: 1, id: group.id, name });
+      return name;
+    });
     await live.waitForFunction(() => newTabPress.completed > 0);
     expect(await live.evaluate(() => newTabPress.target.isConnected)).toBe(true);
+    expect(await folder.textContent()).not.toContain(changedName);
     await live.evaluate((release) => {
       if (release === 'hidden') {
         Object.defineProperty(document, 'hidden', { configurable: true, value: true });
@@ -448,7 +456,8 @@ try {
           new PointerEvent('pointercancel', { pointerId: newTabPress.pointerId }),
         );
     }, release);
-    await live.waitForFunction(() => !newTabPress.target.isConnected);
+    if (release === 'hidden') await live.waitForFunction(() => !newTabPress.target.isConnected);
+    else await expect(folder).toContainText(changedName);
     await live.mouse.up();
     if (release === 'hidden')
       await live.evaluate(() => {
@@ -456,6 +465,7 @@ try {
         document.dispatchEvent(new Event('visibilitychange'));
       });
     await expect(live.locator('#search-matches [data-key^="search-group-"]').first()).toBeVisible();
+    await expect(folder).toContainText(changedName);
   }
   await live.evaluate(() => {
     newTabPress.restore();
