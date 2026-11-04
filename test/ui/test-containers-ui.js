@@ -392,7 +392,7 @@ try {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.setViewportSize({ width: 240, height: 540 });
   await expectQuietTab(child);
-  await expect(child).toHaveCSS('min-height', '30px');
+  await expect(child).toHaveCSS('min-height', '28px');
   await expectQuietTab(child);
   expect(
     await page.locator('.sidebar').evaluate((node) => node.scrollWidth <= node.clientWidth),

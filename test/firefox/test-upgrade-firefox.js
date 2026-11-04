@@ -372,6 +372,10 @@ try {
   checkpoint('published-source fixture, distinct window views and opaque storage created');
   const upgradeChanges = await interruptedMove(ids.slice(0, 3), destination);
   const expectedUpgrade = completedMove(before, upgradeChanges, treeIds);
+  // v0.2.0 predates sidebar sizing. The candidate exposes its new default;
+  // every existing preference and the raw saved model must still match exactly.
+  for (const state of expectedUpgrade.organisation)
+    state.look = { ...state.look, sidebarSize: 'default' };
   console.log('Replacing the published extension with the candidate while a move is pending…');
   await driver.get('about:blank');
   assert.equal(await driver.installAddon(candidate, true), addonId);
