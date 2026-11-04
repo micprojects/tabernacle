@@ -65,6 +65,14 @@ try {
   await expect(menu('Unpin folder')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(pin('design')).toBeFocused();
+  const beforeMiddleClick = await send('snapshot');
+  await pin('design').locator('.folder-glyph').click({ button: 'middle' });
+  const afterMiddleClick = await send('snapshot');
+  expect(afterMiddleClick.groups).toEqual(beforeMiddleClick.groups);
+  expect(afterMiddleClick.tabs.map((tab) => tab.id)).toEqual(
+    beforeMiddleClick.tabs.map((tab) => tab.id),
+  );
+  expect(afterMiddleClick.view.scopeId).toBe(beforeMiddleClick.view.scopeId);
   await pin('design').click({ button: 'right' });
   await menu('Change default action…').click();
   await expect(page.getByLabel('Default action', { exact: true })).toHaveValue('reveal');

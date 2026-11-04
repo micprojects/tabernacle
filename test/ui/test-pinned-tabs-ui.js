@@ -69,6 +69,10 @@ try {
   await pin(13).focus();
   await page.keyboard.press('Enter');
   await expect(pin(13)).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Shift+F10');
+  await expect(page.getByRole('menuitem', { name: 'Unpin tab', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(pin(13)).toBeFocused();
   console.log('✓ Normal clicks, keyboard activation, context menus and self drops still work');
 
   const containerTab = await page.evaluate(async () => {
@@ -194,6 +198,13 @@ try {
   await expect.poll(order).toEqual(savedOrder);
   await expect(shelf.locator('.dragging, .drop-before, .drop-after')).toHaveCount(0);
   console.log('✓ Dropping outside the pins or a failed move leaves the order intact');
+
+  const closedPin = extra[0];
+  const remaining = savedOrder.filter((id) => id !== closedPin);
+  await pin(closedPin).locator('.tab-icon').click({ button: 'middle' });
+  await expect.poll(order).toEqual(remaining);
+  expect((await snapshot()).tabs.some((tab) => tab.id === closedPin)).toBe(false);
+  console.log('✓ Middle-clicking a pin’s icon closes that tab and preserves the other pins');
   expect(errors).toEqual([]);
 } finally {
   await close();
