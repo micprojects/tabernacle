@@ -2,6 +2,7 @@ import { instrumentPointer, instrumentDemo } from '../helpers/probes/drag.js';
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startUiTest } from '../helpers/ui-test.js';
+import { VIEW_KEY } from '../../extension/src/model.js';
 
 const { page, close, base } = await startUiTest({ viewport: { width: 320, height: 820 } });
 const errors = [];
@@ -224,13 +225,14 @@ try {
 
   await reset();
   await begin(tab(2), group('later'));
-  await page.evaluate(() => {
+  await page.evaluate((viewKey) => {
     const save = dragTest.api.sessions.setWindowValue;
     dragTest.api.sessions.setWindowValue = async (...args) => {
+      if (args[1] !== viewKey) return save(...args);
       dragTest.api.sessions.setWindowValue = save;
       throw new Error('View save unavailable');
     };
-  });
+  }, VIEW_KEY);
   await finish();
   await expect(page.locator('#toast')).toContainText('Moved 1 tab');
   await expect(page.locator('#toast')).toContainText('Could not show the destination');
