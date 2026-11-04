@@ -88,8 +88,14 @@ function showError(message, retry = false) {
   if (retry) node.append(button('retry', 'Try again', refresh));
 }
 
-async function act(item) {
+async function act(key) {
   if (busyKey) return;
+  // A focused button survives row updates; its original item may be stale.
+  const item = activityItems(state, { pageUrl }).find((item) => item.key === key);
+  if (!item) {
+    showError('That activity is no longer available.');
+    return;
+  }
   busyKey = item.key;
   showError('');
   render();
@@ -117,7 +123,7 @@ function row(item, timeLabel) {
   const li = el('li', 'activity-row');
   li.dataset.kind = item.kind;
   const action = activityKinds[item.kind];
-  const node = button('item-button', undefined, () => act(item));
+  const node = button('item-button', undefined, (event) => act(event.currentTarget.dataset.key));
   node.dataset.key = item.key;
   node.disabled = busyKey === item.key;
   node.setAttribute('aria-label', `${action.action}: ${item.title}`);

@@ -219,6 +219,33 @@ try {
     false,
   );
   await driver.findElement(By.css('[data-kind="folder"].filter-link')).click();
+  const focusedGroup = crypto.randomUUID();
+  await send('createGroup', { id: focusedGroup, name: 'Before focused rename' });
+  await send('enterGroup', { id: focusedGroup });
+  const focusedSelector = `[data-key="folder:${focusedGroup}"]`;
+  await driver.wait(until.elementLocated(By.css(focusedSelector)), 5000);
+  await driver.executeScript('document.querySelector(arguments[0]).focus();', focusedSelector);
+  await send('renameGroup', { id: focusedGroup, name: 'After focused rename' });
+  await driver.wait(
+    async () =>
+      (await driver.findElement(By.css(focusedSelector)).getAttribute('aria-label')) ===
+      'Open folder: After focused rename',
+    5000,
+    'Focused activity button displays the renamed folder',
+  );
+  assert.equal(
+    await driver.executeScript('return document.activeElement.dataset.key;'),
+    `folder:${focusedGroup}`,
+  );
+  await driver.actions().sendKeys(Key.SPACE).perform();
+  await driver.wait(
+    () =>
+      driver.executeScript(
+        'return document.getElementById("activity-status").textContent === "Opened After focused rename.";',
+      ),
+    5000,
+    'Keyboard activation announces the current folder name',
+  );
   await driver.executeScript('window.activityVisit = "retained";');
   const count = (await driver.getAllWindowHandles()).length;
   await driver.switchTo().window(sidebar);

@@ -286,6 +286,7 @@ try {
   await activity.keyboard.press('ArrowDown');
   await expect(activity.locator('.item-button').nth(1)).toBeFocused();
   // A second view changes the controller and the page refreshes itself.
+  await activity.getByRole('button', { name: 'Open folder: Website refresh', exact: true }).focus();
   await page.evaluate(async () =>
     (await window.activityTest.ready).request({
       type: 'renameGroup',
@@ -297,6 +298,11 @@ try {
   await expect(
     activity.getByRole('button', { name: 'Open folder: Website updates' }),
   ).toBeVisible();
+  await expect(
+    activity.getByRole('button', { name: 'Open folder: Website updates' }),
+  ).toBeFocused();
+  await activity.keyboard.press('Space');
+  await expect(activity.locator('#activity-status')).toHaveText('Opened Website updates.');
   await page.evaluate(() => {
     window.activityTest.fail = 'tabernacle:snapshot';
   });
