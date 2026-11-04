@@ -8,16 +8,36 @@ export function createNewTabRouting(api) {
   let version = 0;
   const pending = new Map();
   const freshMemberships = new Map();
-  const ready = api.storage.local
-    .get(MODEL_KEY)
-    .then((saved) => {
-      if (!version) enabled = saved[MODEL_KEY]?.newTab?.enabled === true;
-    })
-    .catch(() => {});
+  let preferencesLoaded = false;
+  let preferenceRead;
+
+  function readPreference() {
+    if (preferencesLoaded) return Promise.resolve();
+    if (!preferenceRead) {
+      const currentVersion = version;
+      preferenceRead = api.storage.local
+        .get(MODEL_KEY)
+        .then((saved) => {
+          if (version === currentVersion) {
+            enabled = saved[MODEL_KEY]?.newTab?.enabled === true;
+            preferencesLoaded = true;
+          }
+        })
+        .finally(() => {
+          preferenceRead = undefined;
+        });
+    }
+    return preferenceRead;
+  }
+
+  // A failed initial load leaves routing undecided; the next fresh tab retries.
+  // Share pending reads, and never replace a newer saved choice with a late read.
+  readPreference().catch(() => {});
 
   const changed = (changes, area) => {
     if (area !== 'local' || !changes[MODEL_KEY]) return;
     version++;
+    preferencesLoaded = true;
     enabled = changes[MODEL_KEY].newValue?.newTab?.enabled === true;
     if (!enabled) pending.clear();
   };
@@ -25,7 +45,10 @@ export function createNewTabRouting(api) {
   async function redirect(tab, started) {
     // Capture membership before waiting for startup. Only an identity explicitly
     // assigned to this fresh tab can exempt an existing record from restore checks.
-    const [saved] = await Promise.all([api.sessions.getTabValue(tab.id, TAB_KEY), ready]);
+    const [saved] = await Promise.all([
+      api.sessions.getTabValue(tab.id, TAB_KEY),
+      readPreference(),
+    ]);
     if (!enabled || tab.incognito || tab.discarded || Date.now() - started > 5000) return;
     const fresh = freshMemberships.get(tab.id);
     if (saved && (!fresh || saved.treeId !== fresh.treeId || fresh.expiresAt < Date.now())) return;
