@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Tabernacle Optimise'
+  short_description: 'Improve Tabernacle memory, CPU and responsiveness'
+  default_prompt: "Use $tabernacle-optimise to investigate and validate improvements to Tabernacle's memory use, CPU efficiency and UI responsiveness."
+policy:
+  allow_implicit_invocation: true
