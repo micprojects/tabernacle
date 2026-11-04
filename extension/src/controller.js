@@ -8,6 +8,7 @@ import { mapSettledBounded } from './bounded-settled.js';
 import { closeFallback, createCloseSelection } from './close-selection.js';
 import { createTreeIndex, scopeBranches } from './tree/index.js';
 import { containerDetails } from './containers.js';
+import { removeUnusedCreatedContainer } from './container-rollback.js';
 import { createPreferenceActions } from './controller/preference-actions.js';
 import { createContainerActions } from './controller/container-actions.js';
 import { deserializeModel, serializeModel } from './persistence.js';
@@ -70,6 +71,7 @@ export function createController(
   // Views use normalised preferences; saves retain fields this version cannot
   // interpret until an action explicitly edits them.
   let savedPreferences;
+  let savedModel;
   let folderIndex = new Map();
   const folderById = (id) => groupById(model, id, folderIndex);
   const requireFolder = (id) => requireGroup(model, id, folderIndex);
@@ -320,6 +322,7 @@ export function createController(
       next.domainPins = domainPins;
       await moves.load();
       savedPreferences = preferences;
+      savedModel = saved[MODEL_KEY];
       commitModel(next);
     })().catch((error) => {
       ready = null;
@@ -350,7 +353,20 @@ export function createController(
 
   async function writeModel(next, edits) {
     const saved = serializeModel(next, savedPreferences, edits);
-    await api.storage.local.set({ [MODEL_KEY]: saved });
+    try {
+      await api.storage.local.set({ [MODEL_KEY]: saved });
+    } catch (error) {
+      // A rejected reply may follow a durable write. Keep the current cache
+      // only if an authoritative read confirms its saved record is unchanged.
+      try {
+        const current = (await api.storage.local.get(MODEL_KEY))[MODEL_KEY];
+        if (JSON.stringify(current) !== JSON.stringify(savedModel)) ready = null;
+      } catch {
+        ready = null;
+      }
+      throw error;
+    }
+    savedModel = saved;
     savedPreferences = { look: saved.look, newTab: saved.newTab };
   }
 
@@ -1622,13 +1638,7 @@ export function createController(
         } catch (error) {
           if (createdContainer) {
             try {
-              if (
-                (await api.tabs.query({})).some(
-                  (tab) => tab.cookieStoreId === createdContainer.cookieStoreId,
-                )
-              )
-                throw new Error('The new container is already in use.');
-              await api.contextualIdentities.remove(createdContainer.cookieStoreId);
+              await removeUnusedCreatedContainer(api, createdContainer.cookieStoreId);
             } catch {
               throw new Error(
                 `${error.message} The container “${createdContainer.name}” was created. Choose it using Change before retrying.`,

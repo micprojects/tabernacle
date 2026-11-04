@@ -140,6 +140,80 @@ try {
   console.log(
     '✓ Native Firefox: JSON download/upload, preview, merge, container reuse, new destination, persistence and unchanged tab memberships',
   );
+  const otherWindow = await call(
+    'return browser.windows.create({url:"about:blank",focused:false});',
+  );
+  const preview = await send('previewFolderImport', {
+    backup: saved,
+    destination: { newFolderName: 'Interrupted import' },
+  });
+  const request = {
+    backup: saved,
+    token: preview.token,
+    fingerprint: preview.fingerprint,
+    destination: preview.destination,
+    containers: { [saved.containers[0].id]: 'create' },
+  };
+  const containersBefore = await call('return browser.contextualIdentities.query({});');
+  await call(
+    `const [key,token]=arguments;
+    const background=await browser.runtime.getBackgroundPage();
+    const local=background.browser.storage.local;
+    const set=local.set.bind(local);
+    let once=true;
+    const wrapped=async(value)=>{
+      await set(value);
+      if(once && value[key]?.lastFolderImport?.token===token){
+        once=false;
+        throw new Error('Storage reply lost after commit');
+      }
+    };
+    local.set=wrapped;
+    if(local.set!==wrapped)throw new Error('Cannot intercept the storage response');`,
+    MODEL_KEY,
+    preview.token,
+  );
+  await assert.rejects(send('importFolders', request), /Storage reply lost after commit/);
+  const committed = await call(
+    'return (await browser.storage.local.get(arguments[0]))[arguments[0]];',
+    MODEL_KEY,
+  );
+  const containersAfter = await call('return browser.contextualIdentities.query({});');
+  assert.equal(containersAfter.length, containersBefore.length + 1);
+  const importedContainer = containersAfter.find(
+    (item) => !containersBefore.some((prior) => prior.cookieStoreId === item.cookieStoreId),
+  );
+  assert(
+    committed.groups.some(
+      (group) => group.defaultCookieStoreId === importedContainer.cookieStoreId,
+    ),
+  );
+  await send('renameGroup', {
+    id: created.createdGroupId,
+    name: 'Research renamed in another window',
+    windowId: otherWindow.id,
+  });
+  const retained = await call(
+    'return (await browser.storage.local.get(arguments[0]))[arguments[0]];',
+    MODEL_KEY,
+  );
+  for (const group of committed.groups)
+    assert.deepEqual(
+      retained.groups.find((item) => item.id === group.id),
+      group.id === created.createdGroupId
+        ? { ...group, name: 'Research renamed in another window' }
+        : group,
+    );
+  assert.deepEqual(await send('importFolders', request), committed.lastFolderImport.result);
+  assert.equal((await send('getFolderBackupState')).groups.length, committed.groups.length);
+  assert.deepEqual(await call('return browser.contextualIdentities.query({});'), containersAfter);
+  assert.deepEqual(
+    (await membershipSnapshot()).filter((tab) => beforeTabs.some((prior) => prior.id === tab.id)),
+    beforeTabs,
+  );
+  console.log(
+    '✓ A lost native storage reply retains imported containers and folders through another-window save and retry',
+  );
 } finally {
   await session?.close();
 }

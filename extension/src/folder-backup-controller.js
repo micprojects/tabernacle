@@ -1,3 +1,4 @@
+import { removeUnusedCreatedContainer } from './container-rollback.js';
 import { containerChoices, containerDetails } from './containers.js';
 import {
   exportFolderBackup,
@@ -157,11 +158,7 @@ export function createFolderBackupController({
       const leftovers = [];
       for (const identity of created.reverse()) {
         try {
-          const used = (await api.tabs.query({})).some(
-            (tab) => tab.cookieStoreId === identity.cookieStoreId,
-          );
-          if (used) throw new Error('Container is in use.');
-          await api.contextualIdentities.remove(identity.cookieStoreId);
+          await removeUnusedCreatedContainer(api, identity.cookieStoreId);
         } catch {
           leftovers.push(identity.name);
         }
