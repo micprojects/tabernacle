@@ -42,6 +42,36 @@ try {
         row.getByRole('button', { name: `Move Example ${direction}`, exact: true }),
       ).toBeFocused();
     }
+    for (const [input, colorScheme] of [
+      ['Space', 'dark'],
+      ['pointer', 'light'],
+    ]) {
+      const control = reorder
+        .getByRole('button', { name: 'Move Example down', exact: true })
+        .first();
+      await control.focus();
+      if (input === 'pointer') {
+        const box = await control.boundingBox();
+        await reorder.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await reorder.mouse.down();
+      } else await reorder.keyboard.down(input);
+      await reorder.evaluate(
+        async (colorScheme) =>
+          (await window.tabernacleDemoSession.ready).request({
+            type: 'setLook',
+            windowId: 1,
+            partial: true,
+            value: { colorScheme },
+          }),
+        colorScheme,
+      );
+      await expect(reorder.locator('html')).toHaveAttribute('data-color-scheme', colorScheme);
+      if (input === 'pointer') await reorder.mouse.up();
+      else await reorder.keyboard.up(input);
+      const moved = reorder.locator('.nt-link-row').nth(1);
+      await expect(moved.locator('.nt-link-copy small')).toHaveText('0.example.test');
+      await moved.getByRole('button', { name: 'Move Example up', exact: true }).click();
+    }
   } finally {
     await reorderContext.close();
   }

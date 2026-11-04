@@ -161,7 +161,17 @@ try {
     [1, 'up'],
     [0, 'down'],
   ]) {
-    await driver.actions().sendKeys(Key.SPACE).perform();
+    if (index === 1 && direction === 'down') {
+      await driver.actions().keyDown(Key.SPACE).perform();
+      await send('setLook', { partial: true, value: { colorScheme: 'dark' } });
+      await driver.wait(
+        () =>
+          driver.executeScript('return document.documentElement.dataset.colorScheme === "dark";'),
+        5000,
+        'Appearance refresh arrives while the move key is held',
+      );
+      await driver.actions().keyUp(Key.SPACE).perform();
+    } else await driver.actions().sendKeys(Key.SPACE).perform();
     assert.deepEqual(
       await driver.executeScript(
         `

@@ -13,7 +13,8 @@ export function createNewTabSettings({ request, demo }) {
     disposed = false,
     editing,
     trigger,
-    dragging;
+    dragging,
+    linksKey;
   let locationGeneration = 0;
 
   function el(tag, className, text) {
@@ -73,6 +74,10 @@ export function createNewTabSettings({ request, demo }) {
   }
 
   function renderLinks() {
+    // Unrelated settings refreshes must not detach a pressed native control.
+    const key = JSON.stringify(draft.links);
+    if (key === linksKey) return;
+    linksKey = key;
     const list = $('new-tab-links');
     const active = document.activeElement;
     const focusedRow = list.contains(active) ? active.closest('.nt-link-row') : null;
