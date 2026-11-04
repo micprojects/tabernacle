@@ -38,6 +38,8 @@ export function createRecentActivity({
   openMore,
 }) {
   const events = new AbortController();
+  const presses = new Map();
+  let renderPending = false;
   const pane = el('section', 'recently-closed');
   pane.id = 'recently-closed';
   pane.hidden = true;
@@ -58,6 +60,48 @@ export function createRecentActivity({
   let filter = 'all';
   let renderKey, timer, foldDisabled;
   let disposed = false;
+
+  function holdRender(key, event) {
+    if (event.target.closest('.recently-closed-row')) presses.set(key, {});
+  }
+
+  function releaseRender(key) {
+    const press = presses.get(key);
+    if (!press) return;
+    // Native activation follows the release event. Keep its original button
+    // attached until the click has reached its handler.
+    setTimeout(() => {
+      if (presses.get(key) !== press) return;
+      presses.delete(key);
+      if (renderPending) render();
+    }, 0);
+  }
+
+  pane.addEventListener('pointerdown', (event) => holdRender(event.pointerId, event), true);
+  pane.addEventListener(
+    'keydown',
+    (event) => {
+      if (!event.isComposing && (event.key === ' ' || event.key === 'Enter'))
+        holdRender(event.key, event);
+    },
+    true,
+  );
+  for (const type of ['pointerup', 'pointercancel'])
+    document.addEventListener(type, (event) => releaseRender(event.pointerId), {
+      capture: true,
+      signal: events.signal,
+    });
+  document.addEventListener('keyup', (event) => releaseRender(event.key), {
+    capture: true,
+    signal: events.signal,
+  });
+  window.addEventListener(
+    'blur',
+    () => {
+      for (const key of presses.keys()) releaseRender(key);
+    },
+    { signal: events.signal },
+  );
 
   function selectFilter(value) {
     filter = value;
@@ -112,6 +156,8 @@ export function createRecentActivity({
 
   function close(restoreFocus = false) {
     if (pane.hidden) return;
+    presses.clear();
+    renderPending = false;
     pane.hidden = true;
     root.classList.remove('recent-open');
     clearInterval(timer);
@@ -171,6 +217,11 @@ export function createRecentActivity({
 
   function render() {
     if (disposed || pane.hidden) return false;
+    if (presses.size) {
+      renderPending = true;
+      return true;
+    }
+    renderPending = false;
     const state = getState();
     const items = recentPreviewItems(state, filter, itemLimit, search.value);
     const error = (filter === 'all' || filter === 'closed') && state.recentlyClosedError;
@@ -328,6 +379,8 @@ export function createRecentActivity({
 
     dispose() {
       disposed = true;
+      presses.clear();
+      renderPending = false;
       events.abort();
       clearInterval(timer);
       list.replaceChildren();

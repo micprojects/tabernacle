@@ -177,8 +177,25 @@ try {
     5000,
     'Closed sidebar fixture appears in the session list',
   );
+  await call('await browser.tabs.update((await browser.tabs.getCurrent()).id, {active:true});');
+  await driver.wait(() => call('return !document.hidden;'), 5000);
   await driver.findElement(By.id('recently-closed-toggle')).click();
-  await clickRow(`[data-recent-key="closed:${sidebarSession.sessionId}"]`);
+  await driver.wait(
+    until.elementLocated(By.css(`[data-recent-key="closed:${sidebarSession.sessionId}"]`)),
+    5000,
+  );
+  await call(
+    'window.heldActivityRow=document.querySelector(`[data-recent-key="closed:${arguments[0]}"]`);heldActivityRow.focus();',
+    sidebarSession.sessionId,
+  );
+  await driver.actions().keyDown(Key.SPACE).perform();
+  await send('setLook', { partial: true, value: { colorScheme: 'dark', tintFavicons: true } });
+  await driver.wait(
+    () => call("return document.documentElement.dataset.colorScheme==='dark';"),
+    5000,
+  );
+  assert.equal(await call('return heldActivityRow.isConnected;'), true);
+  await driver.actions().keyUp(Key.SPACE).perform();
   await driver.wait(
     async () =>
       !(await send('snapshot')).recentlyClosed.some(
@@ -187,6 +204,7 @@ try {
     5000,
     'Restoring the sidebar fixture removes its closed-session entry',
   );
+  await send('setLook', { partial: true, value: { colorScheme: 'default', tintFavicons: false } });
   await driver.switchTo().window(sidebar);
   await driver.findElement(By.id('recently-closed-toggle')).click();
   await driver.findElement(By.css('.recent-more')).click();

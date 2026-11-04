@@ -136,8 +136,24 @@ try {
   await page.keyboard.press('End');
   await expect(rows.last()).toBeFocused();
   await page.screenshot({ path: 'test-results/recently-closed-light.png' });
-  await page.keyboard.press('Enter');
+  await rows.last().evaluate((node) => (window.heldActivityRow = node));
+  await page.keyboard.down('Space');
+  await page.evaluate(() =>
+    window.closedTabsTest.send('setLook', {
+      partial: true,
+      value: { colorScheme: 'dark', tintFavicons: true },
+    }),
+  );
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark');
+  expect(await page.evaluate(() => window.heldActivityRow.isConnected)).toBe(true);
+  await page.keyboard.up('Space');
   await expect(popup).toBeHidden();
+  await page.evaluate(() =>
+    window.closedTabsTest.send('setLook', {
+      partial: true,
+      value: { colorScheme: 'default', tintFavicons: false },
+    }),
+  );
   await expect(trigger).toBeFocused();
   await expect(page.locator('[data-key="group:work"]')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('treeitem', { name: /Nyhavn/ })).toBeVisible();
@@ -146,6 +162,32 @@ try {
   await page.keyboard.press('ArrowDown');
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Reopen Restaurant Barr — Copenhagen');
+
+  // Moving focus away while Space is held cancels activation and releases the refresh.
+  await rows.first().evaluate((node) => (window.heldActivityRow = node));
+  await page.keyboard.down('Space');
+  await page.evaluate(() =>
+    window.closedTabsTest.send('setLook', {
+      partial: true,
+      value: { colorScheme: 'dark', tintFavicons: true },
+    }),
+  );
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark');
+  expect(await page.evaluate(() => window.heldActivityRow.isConnected)).toBe(true);
+  await popup.getByRole('searchbox').click();
+  await page.keyboard.up('Space');
+  await expect.poll(() => page.evaluate(() => window.heldActivityRow.isConnected)).toBe(false);
+  await expect(popup).toBeVisible();
+  await expect(rows).toHaveCount(1);
+  await expect(popup.getByRole('searchbox')).toBeFocused();
+  await page.evaluate(() =>
+    window.closedTabsTest.send('setLook', {
+      partial: true,
+      value: { colorScheme: 'default', tintFavicons: false },
+    }),
+  );
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'default');
+  await rows.first().focus();
 
   // External closes update the open view without losing the selected row.
   await page.evaluate(() => window.closedTabsTest.api.tabs.remove(3));
