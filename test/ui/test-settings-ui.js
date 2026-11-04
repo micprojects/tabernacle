@@ -82,6 +82,18 @@ try {
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(settings).toHaveTitle('Settings · Tabernacle');
   await expect(settings.getByRole('heading', { name: 'Appearance', exact: true })).toBeVisible();
+  await expect(settings.getByRole('link', { name: 'Features', exact: true })).toHaveCount(0);
+  for (const section of ['features', 'new-tab']) {
+    await settings.evaluate((section) => (location.hash = section), section);
+    await expect(settings.locator('#appearance')).toBeVisible();
+    await expect(settings.locator('#features')).toBeHidden();
+    await expect(settings.locator('#new-tab-fields')).toHaveJSProperty('disabled', true);
+    await expect(settings.locator('nav a[aria-current]')).toHaveText('Appearance');
+    await settings.reload();
+    await expect(settings.locator('#look-color-scheme')).toBeEnabled();
+    await expect(settings.locator('#appearance')).toBeVisible();
+    await expect(settings.locator('#features')).toBeHidden();
+  }
   await expect(settings.getByRole('link', { name: 'Site Enhancements', exact: true })).toHaveCount(
     0,
   );
@@ -347,7 +359,6 @@ try {
   const beforeContainers = await send('getContainers');
   for (const [section, button, dialog, input] of [
     ['containers', 'container-new', 'container-editor', 'Container name'],
-    ['new-tab', 'new-tab-add-link', 'new-tab-link-editor', 'Name'],
   ]) {
     await settings.evaluate(() => (location.hash = 'appearance'));
     await expect(settings.locator('#appearance')).toBeVisible();

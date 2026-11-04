@@ -2,8 +2,10 @@ import { instrumentSource } from '../helpers/probes/incremental-pages.js';
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startUiTest } from '../helpers/ui-test.js';
+import { enableNewTabInContext } from '../helpers/new-tab-feature.js';
 
 const { page, base, close } = await startUiTest({ viewport: { width: 1000, height: 760 } });
+await enableNewTabInContext(page.context());
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 for (const name of ['activity-page', 'new-tab-page']) {

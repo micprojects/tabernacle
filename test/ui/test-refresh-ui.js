@@ -2,12 +2,14 @@ import { instrumentSource } from '../helpers/probes/refresh.js';
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startUiTest } from '../helpers/ui-test.js';
+import { enableNewTabInContext } from '../helpers/new-tab-feature.js';
 
 const manifest = JSON.parse(await readFile('extension/manifest.json', 'utf8'));
 const { page, base, close } = await startUiTest({ viewport: { width: 1100, height: 900 } });
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 try {
+  await enableNewTabInContext(page.context());
   for (const view of ['activity', 'new-tab']) {
     const source = await readFile('extension/src/' + view + '-page.js', 'utf8');
     await page.route('**/extension/src/' + view + '-page.js', (route) =>

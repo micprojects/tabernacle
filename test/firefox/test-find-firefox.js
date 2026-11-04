@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
+import { newTabTestExtension } from '../helpers/new-tab-feature.js';
 
 // Use Firefox's own Finder against the actual sidebar and extension tabs.
 // New Tab already rebuilds on visible refresh; its first Find Again can lose
@@ -353,6 +355,7 @@ async function check(name, work) {
   console.log(JSON.stringify({ name, passed: entry.passed, error: entry.error }));
 }
 
+const extensionRoot = await mkdtemp(join(tmpdir(), 'tabernacle-find-extension-'));
 try {
   report.environment = await browser.open(
     {
@@ -361,6 +364,7 @@ try {
       capture: { sourceSize: { width: 330, height: 600 } },
     },
     output + '.firefox.log',
+    await newTabTestExtension(extensionRoot),
   );
   await check('actual-sidebar-unicode-bridge', () => unicodeRoundTrip('sidebar'));
   await browser.chrome(() => Services.prefs.setBoolPref('findbar.highlightAll', true));
@@ -385,6 +389,15 @@ try {
       await send('enterGroup', { id });
     }
     await send('enterGroup', { id: null });
+    await send('setNewTab', {
+      value: {
+        links: Array.from({ length: count }, (_, i) => ({
+          id: `find-${i}`,
+          name: 'LifecycleNeedle ' + String(i).padStart(2, '0'),
+          url: `http://127.0.0.1:${port}/link-${i}`,
+        })),
+      },
+    });
     const root = browser.runtime.getURL('');
     const activity = root + 'activity.html#folder';
     const newTab = root + 'new-tab.html';
@@ -432,7 +445,7 @@ try {
   });
   for (const [name, target, selector] of [
     ['activity', fixture.activity, '.item-button'],
-    ['new-tab', fixture.newTab, '.folder'],
+    ['new-tab', fixture.newTab, 'a.site'],
   ]) {
     await check(name + '-unicode-bridge', async () => {
       await selectPage(target);
@@ -452,8 +465,6 @@ try {
           ),
         'Visible ' + name,
       );
-      if (name === 'new-tab')
-        await evaluateTarget(target, () => document.getElementById('all-folders').click());
       await wait(
         () =>
           evaluateTarget(
@@ -596,7 +607,7 @@ try {
   }
   for (const [name, original, selector] of [
     ['activity', fixture.activity, '.item-button'],
-    ['new-tab', fixture.newTab, '.folder'],
+    ['new-tab', fixture.newTab, 'a.site'],
   ]) {
     await check(name + '-back-forward', async () => {
       const address = new URL(original);
@@ -676,6 +687,7 @@ try {
 } finally {
   await writeFile(output, JSON.stringify(report, null, 2) + '\n');
   await browser.close();
+  await rm(extensionRoot, { recursive: true, force: true });
   await new Promise((done) => server.close(done));
 }
 process.exitCode = report.status === 'completed' ? 0 : 1;

@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import { By, Key } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { startFirefox } from '../../scripts/firefox-session.js';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { WEATHER_ACCESS } from '../../extension/src/new-tab/weather.js';
+import { newTabTestExtension } from '../helpers/new-tab-feature.js';
 
 const session = await startFirefox();
 const driver = session.driver;
 try {
   await driver.manage().setTimeouts({ script: 20000, pageLoad: 30000 });
   await driver.manage().window().setRect({ width: 1440, height: 1000 });
-  const addonId = await driver.installAddon(resolve('extension'), true);
+  const addonId = await driver.installAddon(await newTabTestExtension(session.root), true);
   await driver.setContext(firefox.Context.CHROME);
   const uuid = await driver.executeScript(
     'return JSON.parse(Services.prefs.getStringPref("extensions.webextensions.uuids"))[arguments[0]];',
