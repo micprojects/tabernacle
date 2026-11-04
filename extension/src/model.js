@@ -146,9 +146,17 @@ export function removeGroup(model, id) {
 
 export function normalizeView(model, view = {}, index) {
   view ??= {};
-  const recentExpandedFolders = normalizeExpansions(model.groups, view.recentExpandedFolders);
+  const {
+    scopeId,
+    collapsed,
+    recentFolders: visits,
+    recentExpandedFolders: expansions,
+    pinLayout,
+    ...extra
+  } = view;
+  const recentExpandedFolders = normalizeExpansions(model.groups, expansions);
   const seen = new Set();
-  const recentFolders = (Array.isArray(view.recentFolders) ? view.recentFolders : [])
+  const recentFolders = (Array.isArray(visits) ? visits : [])
     .filter(
       (entry) =>
         groupById(model, entry?.id, index) &&
@@ -162,15 +170,17 @@ export function normalizeView(model, view = {}, index) {
       return true;
     })
     .slice(0, 100)
-    .map(({ id, enteredAt }) => ({ id, enteredAt }));
+    .map((entry) => ({ ...entry }));
   return {
-    scopeId: groupById(model, view.scopeId, index) ? view.scopeId : null,
-    collapsed: Array.isArray(view.collapsed)
-      ? view.collapsed.filter((id) => groupById(model, id, index))
+    // Normalise owned fields without discarding unrelated saved view data.
+    ...extra,
+    scopeId: groupById(model, scopeId, index) ? scopeId : null,
+    collapsed: Array.isArray(collapsed)
+      ? collapsed.filter((id) => groupById(model, id, index))
       : [],
     ...(recentFolders.length ? { recentFolders } : {}),
     ...(recentExpandedFolders.length ? { recentExpandedFolders } : {}),
-    ...(Array.isArray(view.pinLayout) ? { pinLayout: normalizePinLayout(view.pinLayout) } : {}),
+    ...(Array.isArray(pinLayout) ? { pinLayout: normalizePinLayout(pinLayout) } : {}),
   };
 }
 

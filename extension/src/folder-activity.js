@@ -3,8 +3,9 @@
 export function recordExpansions(view, ids, now = Date.now()) {
   const expanded = new Set(ids);
   if (!expanded.size) return;
+  const previous = new Map((view.recentExpandedFolders ?? []).map((entry) => [entry.id, entry]));
   view.recentExpandedFolders = [
-    ...[...expanded].map((id) => ({ id, expandedAt: now })),
+    ...[...expanded].map((id) => ({ ...previous.get(id), id, expandedAt: now })),
     ...(view.recentExpandedFolders ?? []).filter(({ id }) => !expanded.has(id)),
   ].slice(0, 100);
 }
@@ -23,5 +24,5 @@ export function normalizeExpansions(groups, entries) {
       return true;
     })
     .slice(0, 100)
-    .map(({ id, expandedAt }) => ({ id, expandedAt }));
+    .map((entry) => ({ ...entry }));
 }

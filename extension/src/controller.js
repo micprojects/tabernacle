@@ -1681,7 +1681,11 @@ export function createController(
         const view = await viewFor(windowId);
         if (scopeId !== null && scopeId !== view.scopeId)
           view.recentFolders = [
-            { id: scopeId, enteredAt: Date.now() },
+            {
+              ...(view.recentFolders ?? []).find(({ id }) => id === scopeId),
+              id: scopeId,
+              enteredAt: Date.now(),
+            },
             ...(view.recentFolders ?? []).filter(({ id }) => id !== scopeId),
           ];
         view.scopeId = scopeId;

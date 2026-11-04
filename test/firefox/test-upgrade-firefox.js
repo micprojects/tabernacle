@@ -378,6 +378,15 @@ try {
     sentinel,
   );
   await reload();
+  await call(async (ids, key, opaque, folderId) => {
+    for (const id of ids) {
+      const view = await browser.sessions.getWindowValue(id, key);
+      view.upgradeOpaque = opaque;
+      view.recentFolders = (view.recentFolders || []).map(entry => ({ ...entry, upgradeOpaque: opaque }));
+      view.recentExpandedFolders = [{ id: folderId, expandedAt: 1700000000000, upgradeOpaque: opaque }];
+      await browser.sessions.setWindowValue(id, key, view);
+    }
+  }, windowIds, viewKey, sentinel.opaque, work);
   const before = await capture(windowIds, treeIds);
   assert.deepEqual(before.raw.storage[modelKey].upgradeOpaque, sentinel.opaque);
   checkpoint('published-source fixture, distinct window views and opaque storage created');
@@ -385,10 +394,15 @@ try {
   const expectedUpgrade = completedMove(before, upgradeChanges, treeIds);
   // v0.2.0 predates sidebar sizing. The candidate exposes its new default;
   // every existing preference and the raw saved model must still match exactly.
-  for (const state of expectedUpgrade.organisation) {
+  for (const [index, state] of expectedUpgrade.organisation.entries()) {
     state.look = { ...state.look, sidebarSize: 'default' };
     // The candidate retains opaque pin fields in its normalised records too.
     state.folderPins = state.folderPins.map(pin => ({ ...pin, upgradeOpaque: sentinel.opaque }));
+    const savedView = before.raw.views[windowIds[index]];
+    assert.deepEqual(savedView.upgradeOpaque, sentinel.opaque);
+    state.view.upgradeOpaque = savedView.upgradeOpaque;
+    state.view.recentFolders = savedView.recentFolders;
+    state.view.recentExpandedFolders = savedView.recentExpandedFolders;
   }
   console.log('Replacing the published extension with the candidate while a move is pending…');
   await driver.get('about:blank');
@@ -454,6 +468,10 @@ try {
     restored.tab.id,
   );
   checkpoint('delayed native restore keeps membership and reconnects ancestry');
+  await send('enterGroup', { id: destination });
+  await send('enterGroup', { id: work });
+  await send('toggleGroup', { id: work });
+  await send('toggleGroup', { id: work });
   await send('renameGroup', { id: destination, name: 'Regular renamed' });
   const afterRename = await capture(windowIds, treeIds);
   for (const key of ['look', 'newTab'])
@@ -466,6 +484,13 @@ try {
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].upgradeOpaque, sentinel.opaque);
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].stashes, sentinel.opaque);
   const saved = beforeRecovery.raw.storage[modelKey];
+  for (const id of windowIds) {
+    const view = beforeRecovery.raw.views[id];
+    assert.deepEqual(view.upgradeOpaque, sentinel.opaque);
+    for (const entry of view.recentFolders.filter(entry => before.raw.views[id].recentFolders.some(prior => prior.id === entry.id)))
+      assert.deepEqual(entry.upgradeOpaque, sentinel.opaque);
+    assert.deepEqual(view.recentExpandedFolders.find(entry => entry.id === work).upgradeOpaque, sentinel.opaque);
+  }
   assert.deepEqual(saved.look.upgradeOpaque, sentinel.opaque);
   assert.deepEqual(saved.newTab.upgradeOpaque, sentinel.opaque);
   assert.deepEqual(saved.newTab.links[0].upgradeOpaque, sentinel.opaque);

@@ -151,13 +151,15 @@ try {
   await call(`
     for (const id of arguments[0]) {
       const view = await browser.sessions.getWindowValue(id, 'tabernacle.view.v1');
+      view.opaque = { window: id };
       view.pinLayout = view.pinLayout.map(item => ({ ...item, opaque: {identity: item.kind + ':' + item.id} }));
       await browser.sessions.setWindowValue(id, 'tabernacle.view.v1', view);
     }
   `, [firstWindow, secondWindow.id]);
 
-  const assertPinMetadata = async (windowId) => {
+  const assertPinMetadata = async (windowId, savedWindowId = windowId) => {
     const view = await call('return browser.sessions.getWindowValue(arguments[0], "tabernacle.view.v1");', windowId);
+    assert.deepEqual(view.opaque, { window: savedWindowId });
     for (const item of view.pinLayout)
       assert.deepEqual(item.opaque, {identity: `${item.kind}:${item.id}`});
   };
@@ -199,7 +201,7 @@ try {
     10000,
   );
   const restoredState = await send('snapshot', { windowId: restoredId });
-  await assertPinMetadata(restoredId);
+  await assertPinMetadata(restoredId, secondWindow.id);
   assert.deepEqual(signature(restoredState), signature(secondState));
   assert.deepEqual(
     restoredState.tabs
