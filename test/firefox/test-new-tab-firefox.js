@@ -90,13 +90,13 @@ try {
   await driver.findElement(By.id('search')).clear();
   const modifier = process.platform === 'darwin' ? Key.META : Key.CONTROL;
   await driver.setContext(firefox.Context.CHROME);
-  await driver
-    .actions()
-    .keyDown(modifier)
-    .sendKeys('l')
-    .keyUp(modifier)
-    .sendKeys('example.test')
-    .perform();
+  await driver.actions().keyDown(modifier).sendKeys('l').keyUp(modifier).perform();
+  await driver.wait(
+    () => driver.executeScript('return document.activeElement === gURLBar.inputField;'),
+    5000,
+    'The address bar receives focus before typing',
+  );
+  await driver.actions().sendKeys('example.test').perform();
   await driver.setContext(firefox.Context.CHROME);
   assert.equal(
     await driver.executeScript('return gURLBar.value;'),
@@ -197,6 +197,56 @@ try {
       ),
       { host: 'example.com', focused: true, action: `Move Example ${direction}` },
     );
+  }
+  // The macOS headless pointer probe starts HTML drags but does not deliver drop.
+  // Exercise the real Firefox DOM handlers here; the UI suite uses real pointer drops.
+  for (const [source, target, after, expected] of [
+    [0, 2, true, ['second.example.test', 'third.example.test', 'example.com']],
+    [2, 0, false, ['example.com', 'second.example.test', 'third.example.test']],
+    [0, 1, true, ['second.example.test', 'example.com', 'third.example.test']],
+    [1, 0, false, ['example.com', 'second.example.test', 'third.example.test']],
+  ]) {
+    assert.deepEqual(
+      await driver.executeScript(
+        `
+        const rows = [...document.querySelectorAll('.nt-link-row')];
+        const source = rows[arguments[0]], target = rows[arguments[1]];
+        const rect = target.getBoundingClientRect();
+        const dataTransfer = new DataTransfer();
+        const options = {bubbles:true,cancelable:true,dataTransfer,
+          clientX:rect.left+24,clientY:arguments[2]?rect.bottom-3:rect.top+3};
+        source.dispatchEvent(new DragEvent('dragstart',options));
+        target.dispatchEvent(new DragEvent('dragover',options));
+        target.dispatchEvent(new DragEvent('drop',options));
+        source.dispatchEvent(new DragEvent('dragend',options));
+        return [...document.querySelectorAll('.nt-link-copy small')].map(node=>node.textContent);
+      `,
+        source,
+        target,
+        after,
+      ),
+      expected,
+    );
+    if (source === 0 && target === 1 && after) {
+      await driver.findElement(By.id('new-tab-save')).click();
+      await driver.wait(
+        async () =>
+          (await driver.findElement(By.id('new-tab-status')).getText()) === 'All changes saved',
+        10000,
+      );
+      await driver.navigate().refresh();
+      await driver.wait(
+        async () => (await driver.findElements(By.css('.nt-link-row'))).length === 3,
+        10000,
+      );
+      assert.deepEqual(
+        await driver.executeScript(
+          "return [...document.querySelectorAll('.nt-link-copy small')].map(node=>node.textContent);",
+        ),
+        expected,
+        'The dragged order survives saving and reloading the settings page',
+      );
+    }
   }
   for (let remaining = 3; remaining > 1; remaining--)
     await driver

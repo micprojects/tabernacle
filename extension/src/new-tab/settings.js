@@ -127,19 +127,27 @@ export function createNewTabSettings({ request, demo }) {
       row.addEventListener('dragover', (event) => {
         if (dragging) {
           event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+          const rect = row.getBoundingClientRect();
           row.classList.add('drag-over');
+          row.classList.toggle('drag-after', event.clientY >= rect.top + rect.height / 2);
         }
       });
-      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over', 'drag-after'));
       row.addEventListener('drop', (event) => {
         event.preventDefault();
-        row.classList.remove('drag-over');
-        if (dragging) move(dragging, link.id);
+        row.classList.remove('drag-over', 'drag-after');
+        if (dragging) {
+          const rect = row.getBoundingClientRect();
+          const after = event.clientY >= rect.top + rect.height / 2;
+          const next = draft.links[draft.links.findIndex((item) => item.id === link.id) + 1];
+          move(dragging, after ? (next?.id ?? null) : link.id);
+        }
         dragging = null;
       });
       row.addEventListener('dragend', () => {
         dragging = null;
-        for (const node of list.children) node.classList.remove('drag-over');
+        for (const node of list.children) node.classList.remove('drag-over', 'drag-after');
       });
       list.append(row);
     }

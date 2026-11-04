@@ -72,11 +72,58 @@ try {
       await expect(moved.locator('.nt-link-copy small')).toHaveText('0.example.test');
       await moved.getByRole('button', { name: 'Move Example up', exact: true }).click();
     }
+    const linkOrder = () =>
+      reorder.locator('.nt-link-row').evaluateAll((rows) => rows.map((row) => row.dataset.linkId));
+
+    const dragLink = async (sourceId, targetId, after) => {
+      const handle = reorder.locator(`.nt-link-row[data-link-id="${sourceId}"] .nt-drag`);
+      await reorder.locator('#new-tab-links').scrollIntoViewIfNeeded();
+      const source = await handle.boundingBox();
+      const target = await reorder
+        .locator(`.nt-link-row[data-link-id="${targetId}"]`)
+        .boundingBox();
+      const x = target.x + 24;
+      const y = after ? target.y + target.height - 3 : target.y + 3;
+      await reorder.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+      await reorder.mouse.down();
+      await reorder.mouse.move(x, y, { steps: 12 });
+      await reorder.mouse.move(x + 1, y);
+      await expect(reorder.locator('.nt-link-row.drag-over')).toHaveAttribute(
+        'data-link-id',
+        targetId,
+      );
+      expect(await reorder.locator('.nt-link-row.drag-after').count()).toBe(after ? 1 : 0);
+      await reorder.mouse.up();
+      await expect(reorder.locator('.nt-link-row.drag-over, .nt-link-row.drag-after')).toHaveCount(
+        0,
+      );
+    };
+
+    await dragLink('reorder-0', 'reorder-2', true);
+    expect(await linkOrder()).toEqual(['reorder-1', 'reorder-2', 'reorder-0']);
+    await dragLink('reorder-0', 'reorder-1', false);
+    expect(await linkOrder()).toEqual(['reorder-0', 'reorder-1', 'reorder-2']);
+    await dragLink('reorder-0', 'reorder-1', true);
+    expect(await linkOrder()).toEqual(['reorder-1', 'reorder-0', 'reorder-2']);
+    await dragLink('reorder-2', 'reorder-1', true);
+    expect(await linkOrder()).toEqual(['reorder-1', 'reorder-2', 'reorder-0']);
+    await reorder.locator('#new-tab-save').click();
+    await expect(reorder.locator('#new-tab-status')).toHaveText('All changes saved');
+    expect(
+      await reorder.evaluate(async () => {
+        const controller = await window.tabernacleDemoSession.ready;
+        const settings = await controller.request({ type: 'getSettings', windowId: 1 });
+        return settings.newTab.links.map((link) => link.id);
+      }),
+    ).toEqual(['reorder-1', 'reorder-2', 'reorder-0']);
+    await dragLink('reorder-0', 'reorder-1', false);
+    await reorder.locator('#new-tab-discard').click();
+    expect(await linkOrder()).toEqual(['reorder-1', 'reorder-2', 'reorder-0']);
   } finally {
     await reorderContext.close();
   }
   console.log(
-    '✓ Keyboard link reordering retains identity through duplicate names and both list ends',
+    '✓ Keyboard and pointer link reordering reach both list ends and retain identity, saved order and drafts',
   );
   const source = await readFile('extension/src/new-tab-page.js', 'utf8');
   await page.context().route('**/extension/src/new-tab-page.js', (route) =>

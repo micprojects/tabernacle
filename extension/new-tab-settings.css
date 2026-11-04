@@ -88,6 +88,7 @@
   margin: 12px 0 18px;
 }
 .nt-link-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -95,8 +96,16 @@
   border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
 }
-.nt-link-row.drag-over {
-  background: var(--selected);
+.nt-link-row.drag-over::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  border-top: 2px solid var(--focus);
+  pointer-events: none;
+}
+.nt-link-row.drag-over.drag-after::after {
+  top: auto;
+  bottom: 0;
 }
 .nt-link-copy {
   flex: 1;
