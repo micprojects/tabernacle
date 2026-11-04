@@ -8,6 +8,46 @@ const errors = [];
 page.context().on('page', (page) => page.on('pageerror', (error) => errors.push(error.message)));
 page.on('pageerror', (error) => errors.push(error.message));
 try {
+  const reorderContext = await page.context().browser().newContext();
+  try {
+    const reorder = await reorderContext.newPage();
+    reorder.on('pageerror', (error) => errors.push(error.message));
+    await reorder.goto(`${base}/extension/settings.html?demo#new-tab`);
+    await expect(reorder.locator('#new-tab-add-link')).toBeEnabled();
+    await reorder.evaluate(async () =>
+      (await window.tabernacleDemoSession.ready).request({
+        type: 'setNewTab',
+        windowId: 1,
+        value: {
+          links: [0, 1, 2].map((index) => ({
+            id: `reorder-${index}`,
+            name: 'Example',
+            url: `https://${index}.example.test/`,
+          })),
+        },
+      }),
+    );
+    await expect(reorder.locator('.nt-link-row')).toHaveCount(3);
+    await reorder.getByRole('button', { name: 'Move Example down', exact: true }).first().focus();
+    for (const [index, direction] of [
+      [1, 'down'],
+      [2, 'up'],
+      [1, 'up'],
+      [0, 'down'],
+    ]) {
+      await reorder.keyboard.press('Space');
+      const row = reorder.locator('.nt-link-row').nth(index);
+      await expect(row.locator('.nt-link-copy small')).toHaveText('0.example.test');
+      await expect(
+        row.getByRole('button', { name: `Move Example ${direction}`, exact: true }),
+      ).toBeFocused();
+    }
+  } finally {
+    await reorderContext.close();
+  }
+  console.log(
+    '✓ Keyboard link reordering retains identity through duplicate names and both list ends',
+  );
   const source = await readFile('extension/src/new-tab-page.js', 'utf8');
   await page.context().route('**/extension/src/new-tab-page.js', (route) =>
     route.fulfill({

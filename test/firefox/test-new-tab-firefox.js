@@ -146,6 +146,41 @@ try {
   await driver.findElement(By.id('nt-link-name')).sendKeys('Example');
   await driver.findElement(By.id('nt-link-url')).sendKeys('example.com:443/path?q=test#section');
   await driver.findElement(By.id('nt-link-submit')).click();
+  for (const host of ['second.example.test', 'third.example.test']) {
+    await driver.findElement(By.id('new-tab-add-link')).click();
+    await driver.findElement(By.id('nt-link-name')).sendKeys('Example');
+    await driver.findElement(By.id('nt-link-url')).sendKeys(`https://${host}/`);
+    await driver.findElement(By.id('nt-link-submit')).click();
+  }
+  await driver.executeScript(
+    'document.querySelectorAll(".nt-link-row")[0].querySelectorAll("button")[1].focus();',
+  );
+  for (const [index, direction] of [
+    [1, 'down'],
+    [2, 'up'],
+    [1, 'up'],
+    [0, 'down'],
+  ]) {
+    await driver.actions().sendKeys(Key.SPACE).perform();
+    assert.deepEqual(
+      await driver.executeScript(
+        `
+        const row = document.querySelectorAll('.nt-link-row')[arguments[0]];
+        return {host:row.querySelector('.nt-link-copy small').textContent,
+          focused:row.contains(document.activeElement),
+          action:document.activeElement.getAttribute('aria-label')};
+      `,
+        index,
+      ),
+      { host: 'example.com', focused: true, action: `Move Example ${direction}` },
+    );
+  }
+  for (let remaining = 3; remaining > 1; remaining--)
+    await driver
+      .findElement(
+        By.css(`.nt-link-row:nth-child(${remaining}) button[aria-label="Remove Example"]`),
+      )
+      .click();
   await driver.findElement(By.id('new-tab-save')).click();
   await driver.wait(
     async () =>

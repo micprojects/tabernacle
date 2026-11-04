@@ -73,11 +73,17 @@ export function createNewTabSettings({ request, demo }) {
   }
 
   function renderLinks() {
-    const focused = document.activeElement?.getAttribute('aria-label');
     const list = $('new-tab-links');
+    const active = document.activeElement;
+    const focusedRow = list.contains(active) ? active.closest('.nt-link-row') : null;
+    const focusedId = focusedRow?.dataset.linkId;
+    const focusedControl = focusedRow
+      ? [...focusedRow.querySelectorAll('button')].indexOf(active)
+      : -1;
     list.replaceChildren();
     for (const [index, link] of draft.links.entries()) {
       const row = el('div', 'nt-link-row');
+      row.dataset.linkId = link.id;
       row.draggable = true;
       const handle = el('span', 'nt-drag', '⠿');
       handle.setAttribute('aria-hidden', 'true');
@@ -135,10 +141,17 @@ export function createNewTabSettings({ request, demo }) {
     if (!draft.links.length)
       list.append(el('p', 'nt-empty', 'Add the websites you want close at hand.'));
     $('new-tab-add-link').disabled = draft.links.length >= 60;
-    if (focused)
-      [...list.querySelectorAll('button')]
-        .find((node) => node.getAttribute('aria-label') === focused && !node.disabled)
-        ?.focus();
+    if (focusedControl >= 0) {
+      const row = [...list.children].find((row) => row.dataset.linkId === focusedId);
+      const controls = [...(row?.querySelectorAll('button') || [])];
+      const previous = controls[focusedControl];
+      // Names need not be unique. At either end, keep focus on an enabled
+      // control for this link so keyboard reordering can continue.
+      (previous && !previous.disabled
+        ? previous
+        : controls.find((node) => !node.disabled)
+      )?.focus();
+    }
   }
 
   function render() {
