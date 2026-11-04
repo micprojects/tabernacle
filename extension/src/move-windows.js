@@ -1,9 +1,26 @@
+import { validMoveReceipt } from './move-recovery.js';
+
 export const MOVE_WINDOW_KEY = 'tabernacle.move-window.v1';
 const RECEIPT_KEY = 'tabernacle.move-receipts.v1';
 
 // Native window IDs last only for a browser process. Assign a session identity
 // lazily, before journalling a move; existing views and journals are untouched.
 export function createMoveWindows(api) {
+  async function loadReceipts() {
+    const saved = (await api.storage.local.get(RECEIPT_KEY))[RECEIPT_KEY];
+    if (saved === undefined) return {};
+    if (
+      !saved ||
+      typeof saved !== 'object' ||
+      Array.isArray(saved) ||
+      Object.entries(saved).some(
+        ([id, receipt]) => !validMoveReceipt(receipt) || String(receipt.windowId) !== id,
+      )
+    )
+      throw new Error('The saved move confirmations are unsupported. Your data has been kept.');
+    return saved;
+  }
+
   async function read(windowId) {
     const key = await api.sessions.getWindowValue(windowId, MOVE_WINDOW_KEY);
     if (key !== undefined && (typeof key !== 'string' || !key))
@@ -43,7 +60,7 @@ export function createMoveWindows(api) {
     },
 
     async receipt(windowId) {
-      const saved = (await api.storage.local.get(RECEIPT_KEY))[RECEIPT_KEY] || {};
+      const saved = await loadReceipts();
       const key = await read(windowId);
       const receipt =
         (key && Object.values(saved).find((value) => value.windowKey === key)) ||
@@ -52,7 +69,7 @@ export function createMoveWindows(api) {
     },
 
     async saveReceipt(receipt) {
-      const saved = (await api.storage.local.get(RECEIPT_KEY))[RECEIPT_KEY] || {};
+      const saved = await loadReceipts();
       const current = await windows();
       const receipts = {};
       // Retain legacy receipts while allowing keyed records to follow restored

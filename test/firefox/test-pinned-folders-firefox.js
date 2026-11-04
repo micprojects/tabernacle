@@ -317,6 +317,43 @@ try {
   console.log(
     '✓ Interrupted mixed pin moves recover in the restored window after native IDs change',
   );
+  const receiptChecks = await call(
+    `const [tabId,groupId]=arguments;
+    const windowId=(await browser.windows.getCurrent()).id;
+    const request=async(type,args={})=>browser.runtime.sendMessage({type:'tabernacle:'+type,windowId,...args});
+    const {moveSource,resolveMove}=await import(browser.runtime.getURL('src/move-plan.js'));
+    const {MODEL_KEY,TAB_KEY,VIEW_KEY}=await import(browser.runtime.getURL('src/model.js'));
+    const key='tabernacle.move-receipts.v1';
+    const saved=(await browser.storage.local.get(key))[key];
+    if(!saved)throw new Error('Expected existing move receipts');
+    const state=(await request('snapshot')).data;
+    const source=moveSource(state,'tab',tabId);
+    const destination={kind:'group',id:groupId};
+    const message={source,destination,operationId:'unsupported-receipt-check',expected:resolveMove(state,source,destination).expected};
+    const read=async()=>({model:(await browser.storage.local.get(MODEL_KEY))[MODEL_KEY],membership:await browser.sessions.getTabValue(tabId,TAB_KEY),view:await browser.sessions.getWindowValue(windowId,VIEW_KEY),pinned:(await browser.tabs.get(tabId)).pinned});
+    const before=await read();
+    const checks=[];
+    for(const unsupported of [null,{futureRecords:{version:99,token:'keep'}}]) {
+      await browser.storage.local.set({[key]:unsupported});
+      const result=await request('moveItem',message);
+      checks.push({result,kept:JSON.stringify((await browser.storage.local.get(key))[key])===JSON.stringify(unsupported),unchanged:JSON.stringify(await read())===JSON.stringify(before)});
+      await browser.storage.local.set({[key]:saved});
+    }
+    const retried=await request('moveItem',message);
+    return {checks,retried};`,
+    firstPins[0].id,
+    other,
+  );
+  for (const check of receiptChecks.checks) {
+    assert.equal(check.result.ok, false);
+    assert.match(check.result.error, /saved move confirmations.*kept/);
+    assert(check.kept && check.unchanged);
+  }
+  assert.equal(receiptChecks.retried.ok, true);
+  assert(receiptChecks.retried.data.moveResult.committed);
+  console.log(
+    '✓ Unsupported saved move confirmations block changes, preserve their records and allow retry after repair',
+  );
 } finally {
   try {
     await firefoxSession?.close();

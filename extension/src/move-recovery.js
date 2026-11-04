@@ -2,10 +2,11 @@ import { validGroups } from './model.js';
 
 export const PENDING_MOVE_KEY = 'tabernacle.pending-move.v1';
 
-function validExtras(value) {
-  const receipt = value.receipt;
+export function validMoveReceipt(receipt) {
   if (
     !receipt ||
+    typeof receipt !== 'object' ||
+    Array.isArray(receipt) ||
     !Number.isInteger(receipt.windowId) ||
     (receipt.windowKey !== undefined &&
       (typeof receipt.windowKey !== 'string' || !receipt.windowKey)) ||
@@ -21,6 +22,12 @@ function validExtras(value) {
     typeof receipt.label !== 'string'
   )
     return false;
+  return true;
+}
+
+function validExtras(value) {
+  const receipt = value.receipt;
+  if (!validMoveReceipt(receipt)) return false;
   const effects = value.effects;
   if (effects == null) return true;
   if (effects.windowId !== receipt.windowId) return false;
