@@ -5,6 +5,14 @@ import { startFirefox } from './firefox-session.js';
 import { resolve } from 'node:path';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { createTreeIndex } from '../extension/src/tree/index.js';
+import { searchTabOrder } from '../extension/src/tab-collection.js';
+import {
+  expectedSidebar,
+  observeSidebar,
+  sidebarMatches,
+  waitForStableObservation,
+} from './memory/native-settlement.js';
 
 const sizes = (process.env.FIREFOX_STRESS_SIZES || '100,500,1000').split(',').map(Number);
 assert(
@@ -63,10 +71,25 @@ async function timedRequest(type, args = {}) {
 }
 
 async function rowCount(count) {
-  await driver.wait(
-    async () =>
-      (await driver.executeScript('return document.querySelectorAll(".tab-row").length')) === count,
-    60000,
+  // Large trees mount only the viewport. Traverse the actual scroller and
+  // compare every row's identity, title and order with the controller snapshot.
+  await waitForStableObservation(
+    async () => {
+      const query = await driver.executeScript('return document.querySelector("#search").value;');
+      const state = await send('snapshot');
+      const expected = {
+        ...expectedSidebar(state, createTreeIndex(state, query), searchTabOrder, query),
+        query,
+      };
+      const observed = await call(`return (${observeSidebar.toString()})({traverse:true});`);
+      return { expected, observed };
+    },
+    {
+      matches: ({ expected, observed }) =>
+        expected.rows.length === count && sidebarMatches(observed, expected),
+      label: `Stress tree with ${count} tabs`,
+      progress: () => process.send?.({ type: 'stage', name: `verify-${count}-tabs` }),
+    },
   );
 }
 
@@ -198,14 +221,7 @@ try {
       ),
     15000,
   );
-  await driver.wait(
-    () =>
-      driver.executeScript(
-        'return arguments[0].every(id=>document.querySelector(`[data-key="tab:${id}"] .label`)?.textContent==="Live stress 5");',
-        busyIds,
-      ),
-    15000,
-  );
+  await rowCount(created);
   // Check persistence while a live page in the tested group is selected.
   await call('return browser.tabs.update(arguments[0],{active:true});', busyIds.at(-1));
   const beforeReload = (await send('snapshot')).tabs.filter((t) => t.groupId === groupId);
