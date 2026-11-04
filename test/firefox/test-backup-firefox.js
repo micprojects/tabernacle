@@ -82,7 +82,30 @@ try {
     until.elementIsVisible(await driver.findElement(By.id('backup-preview-button'))),
     5000,
   );
+  await call(`
+    const send=browser.runtime.sendMessage.bind(browser.runtime);
+    window.backupRefresh={restore:()=>browser.runtime.sendMessage=send};
+    browser.runtime.sendMessage=async message=>{
+      if(message.type==='tabernacle:getFolderBackupState'&&!backupRefresh.releaseRead){
+        const value=await send(message);
+        await new Promise(resolve=>backupRefresh.releaseRead=resolve);
+        return value;
+      }
+      if(message.type==='tabernacle:previewFolderImport'&&!backupRefresh.releasePreview)
+        await new Promise(resolve=>backupRefresh.releasePreview=resolve);
+      return send(message);
+    };
+  `);
+  await driver.findElement(By.css('nav a[href="#appearance"]')).click();
+  await driver.findElement(By.css('nav a[href="#backup"]')).click();
+  await driver.wait(() => call('return Boolean(backupRefresh.releaseRead);'), 10000);
   await driver.findElement(By.id('backup-preview-button')).click();
+  await driver.wait(() => call('return Boolean(backupRefresh.releasePreview);'), 10000);
+  assert.equal(await driver.findElement(By.id('backup-file')).isEnabled(), false);
+  await call('backupRefresh.releaseRead();await new Promise(resolve=>setTimeout(resolve,0));');
+  for (const id of ['backup-file', 'backup-destination', 'backup-preview-button', 'backup-export'])
+    assert.equal(await driver.findElement(By.id(id)).isEnabled(), false);
+  await call('backupRefresh.releasePreview();backupRefresh.restore();');
   await driver.wait(
     until.elementIsVisible(await driver.findElement(By.id('backup-preview'))),
     5000,

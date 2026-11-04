@@ -20,6 +20,7 @@ export function createSettingsBackup({ request }) {
   let busy = false,
     ready = false,
     generation = 0,
+    refreshGeneration = 0,
     parentId = null;
   const mappings = new Map();
 
@@ -29,6 +30,7 @@ export function createSettingsBackup({ request }) {
   }
 
   function setBusy(value) {
+    if (value) refreshGeneration++;
     busy = value;
     $('backup-fields').disabled = busy || !ready;
     $('backup-export').disabled = busy || !ready;
@@ -40,6 +42,7 @@ export function createSettingsBackup({ request }) {
 
   function invalidate() {
     generation++;
+    refreshGeneration++;
     preview = null;
     mappings.clear();
     $('backup-preview').hidden = true;
@@ -74,8 +77,12 @@ export function createSettingsBackup({ request }) {
 
   async function refresh() {
     if (busy) return;
+    const current = ++refreshGeneration;
     try {
-      state = await request('getFolderBackupState');
+      const next = await request('getFolderBackupState');
+      // A later source/destination change or operation owns the controls now.
+      if (current !== refreshGeneration) return;
+      state = next;
       ready = true;
       if (parentId !== null && !state.groups.some((group) => group.id === parentId)) {
         parentId = null;
@@ -84,9 +91,10 @@ export function createSettingsBackup({ request }) {
       renderPicker();
       error();
     } catch (reason) {
+      if (current !== refreshGeneration) return;
       error(reason);
     }
-    setBusy(false);
+    setBusy(busy);
   }
 
   function destination() {

@@ -54,7 +54,40 @@ try {
   await expect(page.locator('#backup-preview')).toBeHidden();
   await chooseFile(value);
   await expect(page.locator('#backup-file-status')).toContainText('3 folders');
+  // A refresh started on re-entry cannot unlock a newer, unfinished preview.
+  await page.evaluate(async () => {
+    const controller = await window.tabernacleDemoSession.ready;
+    const send = controller.request.bind(controller);
+    window.backupRefresh = { restore: () => (controller.request = send) };
+    controller.request = async (message) => {
+      if (message.type === 'getFolderBackupState' && !backupRefresh.releaseRead) {
+        const value = await send(message);
+        await new Promise((resolve) => (backupRefresh.releaseRead = resolve));
+        return value;
+      }
+      if (message.type === 'previewFolderImport' && !backupRefresh.releasePreview)
+        await new Promise((resolve) => (backupRefresh.releasePreview = resolve));
+      return send(message);
+    };
+  });
+  await page.locator('nav a[href="#appearance"]').click();
+  await page.locator('nav a[href="#backup"]').click();
+  await page.waitForFunction(() => Boolean(backupRefresh.releaseRead));
   await preview();
+  await page.waitForFunction(() => Boolean(backupRefresh.releasePreview));
+  await expect(page.locator('#backup-file')).toBeDisabled();
+  await page.evaluate(async () => {
+    backupRefresh.releaseRead();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await expect(page.locator('#backup-file')).toBeDisabled();
+  await expect(page.locator('#backup-destination')).toBeDisabled();
+  await expect(page.locator('#backup-preview-button')).toBeDisabled();
+  await expect(page.locator('#backup-export')).toBeDisabled();
+  await page.evaluate(() => {
+    backupRefresh.releasePreview();
+    backupRefresh.restore();
+  });
   await expect(page.locator('#backup-preview-counts')).toHaveText(
     '2 folders to create · 1 folder to reuse',
   );
@@ -70,6 +103,33 @@ try {
   await expect(page.locator('#backup-container-mappings')).toBeEmpty();
   expect((await send('getFolderBackupState')).groups).toEqual(before.groups);
   await expect(page.locator('#backup-preview-button')).toBeFocused();
+  // A late failed refresh must not erase the newer preview failure or its retry state.
+  await page.evaluate(async () => {
+    const controller = await window.tabernacleDemoSession.ready;
+    const send = controller.request.bind(controller);
+    window.backupRefresh = { restore: () => (controller.request = send) };
+    controller.request = async (message) => {
+      if (message.type === 'getFolderBackupState' && !backupRefresh.releaseRead) {
+        await new Promise((resolve) => (backupRefresh.releaseRead = resolve));
+        throw new Error('Old refresh failed');
+      }
+      if (message.type === 'previewFolderImport') throw new Error('Preview unavailable');
+      return send(message);
+    };
+  });
+  await page.locator('nav a[href="#appearance"]').click();
+  await page.locator('nav a[href="#backup"]').click();
+  await page.waitForFunction(() => Boolean(backupRefresh.releaseRead));
+  await preview();
+  await expect(page.locator('#backup-error')).toHaveText('Preview unavailable');
+  await page.evaluate(async () => {
+    backupRefresh.releaseRead();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await expect(page.locator('#backup-error')).toHaveText('Preview unavailable');
+  await expect(page.locator('#backup-file')).toBeEnabled();
+  await expect(page.locator('#backup-file-status')).toContainText('3 folders');
+  await page.evaluate(() => backupRefresh.restore());
   await preview();
   await expect(page.locator('#backup-preview-tree li')).toHaveCount(3);
   await expect(page.getByLabel('Archive', { exact: true })).toHaveValue('');
