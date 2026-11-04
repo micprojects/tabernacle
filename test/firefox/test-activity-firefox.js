@@ -71,8 +71,10 @@ try {
     fixtureUrl,
   );
   await driver.wait(
-    async () =>
-      (await call('return browser.tabs.get(arguments[0]);', closed.id)).status === 'complete',
+    async () => {
+      const tab = await call('return browser.tabs.get(arguments[0]);', closed.id);
+      return tab.url === fixtureUrl && tab.status === 'complete';
+    },
     5000,
     'Load the fixture tab before closing it',
   );
@@ -141,6 +143,7 @@ try {
   await driver.wait(
     async () => (await driver.findElements(By.css('.recently-closed-row'))).length === 1,
     5000,
+    'Activity search contains only the matching folder',
   );
   await clickRow(`[data-recent-key="folder:${groupId}"]`);
   assert.equal((await send('snapshot')).view.scopeId, groupId);
@@ -158,10 +161,12 @@ try {
     `${fixtureUrl}?sidebar-restore`,
   );
   await driver.wait(
-    async () =>
-      (await call('return browser.tabs.get(arguments[0]);', sidebarClosed.id)).status ===
-      'complete',
+    async () => {
+      const tab = await call('return browser.tabs.get(arguments[0]);', sidebarClosed.id);
+      return tab.url === `${fixtureUrl}?sidebar-restore` && tab.status === 'complete';
+    },
     5000,
+    'Load the sidebar restore URL before closing it',
   );
   await send('closeTab', { id: sidebarClosed.id });
   const sidebarSession = await driver.wait(
@@ -170,6 +175,7 @@ try {
         (tab) => tab.url === `${fixtureUrl}?sidebar-restore`,
       ),
     5000,
+    'Closed sidebar fixture appears in the session list',
   );
   await driver.findElement(By.id('recently-closed-toggle')).click();
   await clickRow(`[data-recent-key="closed:${sidebarSession.sessionId}"]`);
@@ -179,6 +185,7 @@ try {
         (tab) => tab.sessionId === sidebarSession.sessionId,
       ),
     5000,
+    'Restoring the sidebar fixture removes its closed-session entry',
   );
   await driver.switchTo().window(sidebar);
   await driver.findElement(By.id('recently-closed-toggle')).click();
