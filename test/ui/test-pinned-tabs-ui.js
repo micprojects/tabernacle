@@ -71,6 +71,41 @@ try {
   await expect(pin(13)).toHaveAttribute('aria-pressed', 'true');
   console.log('✓ Normal clicks, keyboard activation, context menus and self drops still work');
 
+  const containerTab = await page.evaluate(async () => {
+    await pinTest.send('setGroupAppearance', { id: 'work', appearance: { color: 'red' } });
+    const state = await pinTest.send('reopenInContainer', {
+      id: 8,
+      cookieStoreId: 'firefox-container-1',
+    });
+    return state.reopenedTabId;
+  });
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    // Cover both a tab's own blue container and its red parent-line fallback.
+    for (const id of [containerTab, 9]) {
+      const selected = page.locator(`#tree [data-key="tab:${id}"]`);
+      await selected.hover();
+      const hoverColour = await selected.evaluate((node) => getComputedStyle(node).backgroundColor);
+      const hoverBounds = await selected.boundingBox();
+      await selected.locator('.label').click();
+      await expect(selected).toHaveClass(/\bactive\b/);
+      await pin(12).click();
+      await expect(pin(12)).toHaveAttribute('aria-pressed', 'true');
+      await expect(selected).toHaveClass(/\bselected\b/);
+      await expect(selected).not.toHaveClass(/\bactive\b/);
+      expect(await selected.evaluate((node) => node.matches(':hover'))).toBe(false);
+      await expect(selected).toHaveCSS('background-color', hoverColour);
+      await expect(selected).toHaveCSS('border-start-start-radius', '0px');
+      await expect(selected).toHaveCSS('border-end-start-radius', '0px');
+      expect(await selected.boundingBox()).toEqual(hoverBounds);
+    }
+    await page.screenshot({
+      path: `test-results/pinned-tab-retained-selection-${colorScheme}.png`,
+    });
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
+  console.log('✓ Clicking a pin preserves the selected tree row’s attached shape and subtle tint');
+
   const left = await pin(11).boundingBox();
   const right = await pin(12).boundingBox();
   const gapCenter = (left.x + left.width + right.x) / 2;
