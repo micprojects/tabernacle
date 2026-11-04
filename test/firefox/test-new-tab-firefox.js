@@ -41,7 +41,13 @@ try {
     10000,
   );
   assert.equal((await send('getSettings')).newTab.enabled, false);
+  const nativeHome = await call('return browser.tabs.create({active:false});');
+  await send('snapshot');
   await send('setNewTab', { value: { enabled: true } });
+  const nativeDuplicate = await call(
+    'return browser.tabs.duplicate(arguments[0], {active:false});',
+    nativeHome.id,
+  );
   const own = await driver.getWindowHandle();
   // Exercise the actual command used by Firefox's new-tab button and shortcut.
   await driver.setContext(firefox.Context.CHROME);
@@ -57,6 +63,13 @@ try {
     10000,
   );
   await driver.setContext(firefox.Context.CONTENT);
+  assert.equal(
+    (await call('return browser.tabs.get(arguments[0]);', nativeDuplicate.id)).url,
+    'about:newtab',
+    'A recently duplicated Firefox Home tab must retain its original page',
+  );
+  await call('await browser.tabs.remove(arguments[0]);', [nativeHome.id, nativeDuplicate.id]);
+  console.log('✓ Native Home duplication stays unchanged while a fresh browser tab is redirected');
   const handles = await driver.getAllWindowHandles();
   await driver.switchTo().window(handles.find((id) => id !== own));
   await driver.wait(

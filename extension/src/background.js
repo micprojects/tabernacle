@@ -32,8 +32,10 @@ const notify = ({ windowId, revision, generation: nextGeneration } = {}) => {
   }, 16);
 };
 
-const controller = createController(browser, notify);
-createNewTabRouting(browser);
+const controller = createController(browser, notify, {
+  onFreshMembership: (id, treeId) => newTabRouting.recordFreshMembership(id, treeId),
+});
+const newTabRouting = createNewTabRouting(browser);
 const snapshots = createSnapshotEncoder();
 browser.windows.onRemoved.addListener(snapshots.forget);
 

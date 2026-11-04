@@ -7,6 +7,7 @@ export function createNewTabRouting(api) {
   let enabled = false;
   let version = 0;
   const pending = new Map();
+  const freshMemberships = new Map();
   const ready = api.storage.local
     .get(MODEL_KEY)
     .then((saved) => {
@@ -22,11 +23,12 @@ export function createNewTabRouting(api) {
   };
 
   async function redirect(tab, started) {
-    await ready;
+    // Capture membership before waiting for startup. Only an identity explicitly
+    // assigned to this fresh tab can exempt an existing record from restore checks.
+    const [saved] = await Promise.all([api.sessions.getTabValue(tab.id, TAB_KEY), ready]);
     if (!enabled || tab.incognito || tab.discarded || Date.now() - started > 5000) return;
-    const saved = await api.sessions.getTabValue(tab.id, TAB_KEY);
-    // Restores and duplicates carry prior membership, unlike a fresh blank tab.
-    if (saved && (!saved.openedAt || saved.openedAt < started - 1000)) return;
+    const fresh = freshMemberships.get(tab.id);
+    if (saved && (!fresh || saved.treeId !== fresh.treeId || fresh.expiresAt < Date.now())) return;
     const current = await api.tabs.get(tab.id);
     if (
       !enabled ||
@@ -38,6 +40,7 @@ export function createNewTabRouting(api) {
       url: api.runtime.getURL('new-tab.html?start=1'),
       loadReplace: true,
     });
+    freshMemberships.delete(tab.id);
   }
 
   const safelyRedirect = (tab, started) => redirect(tab, started).catch(() => {});
@@ -60,18 +63,32 @@ export function createNewTabRouting(api) {
     if (change.url === 'about:newtab') safelyRedirect(tab, started);
   };
 
-  const removed = (id) => pending.delete(id);
+  const removed = (id) => {
+    pending.delete(id);
+    freshMemberships.delete(id);
+  };
+
   api.storage.onChanged.addListener(changed);
   api.tabs.onCreated.addListener(created);
   api.tabs.onUpdated.addListener(updated);
   api.tabs.onRemoved.addListener(removed);
   return {
+    recordFreshMembership(id, treeId) {
+      const now = Date.now();
+      for (const [id, record] of freshMemberships)
+        if (record.expiresAt < now) freshMemberships.delete(id);
+      freshMemberships.set(id, { treeId, expiresAt: now + 5000 });
+      if (freshMemberships.size > 100)
+        freshMemberships.delete(freshMemberships.keys().next().value);
+    },
+
     dispose() {
       api.storage.onChanged.removeListener(changed);
       api.tabs.onCreated.removeListener(created);
       api.tabs.onUpdated.removeListener(updated);
       api.tabs.onRemoved.removeListener(removed);
       pending.clear();
+      freshMemberships.clear();
     },
   };
 }

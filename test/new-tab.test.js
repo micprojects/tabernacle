@@ -160,6 +160,82 @@ test('routing respects opt-in, blanks, private/discarded/restored tabs, other ov
   router.dispose();
 });
 
+test('routing preserves recently copied or restored Home tabs even with the same timestamp', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 10_000 });
+  const api = memoryBrowser({ events: true });
+  await api.storage.local.set({ [MODEL_KEY]: { newTab: { enabled: true } } });
+  const router = createNewTabRouting(api);
+  t.after(() => router.dispose());
+  const tab = await api.tabs.create({ url: 'about:blank' });
+  await api.sessions.setTabValue(tab.id, TAB_KEY, {
+    treeId: 'copied',
+    groupId: 'work',
+    openedAt: Date.now(),
+  });
+  await api.tabs.update(tab.id, { url: 'about:newtab' });
+  await tick();
+  assert.equal((await api.tabs.get(tab.id)).url, 'about:newtab');
+});
+
+test('routing captures fresh membership before slow startup and controller placement', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 10_000 });
+  const api = memoryBrowser({ events: true });
+  const get = api.storage.local.get;
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  await api.storage.local.set({ [MODEL_KEY]: { newTab: { enabled: true } } });
+  api.storage.local.get = async (...args) => {
+    await held;
+    return get(...args);
+  };
+  const router = createNewTabRouting(api);
+  t.after(() => router.dispose());
+  const tab = await api.tabs.create({});
+  t.mock.timers.tick(2000);
+  await api.sessions.setTabValue(tab.id, TAB_KEY, {
+    treeId: 'newly-assigned',
+    groupId: null,
+    openedAt: 10_000,
+  });
+  release();
+  await tick();
+  assert.equal((await api.tabs.get(tab.id)).url, api.runtime.getURL('new-tab.html?start=1'));
+});
+
+test('routing recognises controller-created records without mistaking a native copy for one', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 10_000 });
+  const api = memoryBrowser({ events: true });
+  const router = createNewTabRouting(api);
+  const controller = createController(api, () => {}, {
+    onFreshMembership: router.recordFreshMembership,
+  });
+  t.after(() => {
+    router.dispose();
+    return controller.dispose();
+  });
+  let creation;
+  api.testing.setCreatedHandler((tab) => {
+    creation = controller.created(tab);
+  });
+  await controller.request({ type: 'setNewTab', windowId: 1, value: { enabled: true } });
+  const fresh = await api.tabs.create({ url: 'about:blank' });
+  await creation;
+  const original = await api.sessions.getTabValue(fresh.id, TAB_KEY);
+  assert(original.treeId);
+  await api.tabs.update(fresh.id, { url: 'about:newtab' });
+  await tick();
+  assert.equal((await api.tabs.get(fresh.id)).url, api.runtime.getURL('new-tab.html?start=1'));
+  const copy = await api.tabs.create({ url: 'about:blank' });
+  await creation;
+  api.testing.tabValues.set(copy.id, structuredClone(original));
+  await api.tabs.update(copy.id, { url: 'about:newtab' });
+  await controller.request({ type: 'snapshot', windowId: 1 });
+  await tick();
+  assert.equal((await api.tabs.get(copy.id)).url, 'about:newtab');
+});
+
 function weatherFixture() {
   const api = memoryBrowser({ events: true });
   let allowed = false;

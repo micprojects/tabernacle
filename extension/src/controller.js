@@ -61,6 +61,7 @@ export function createController(
   {
     readCloseFilter = (windowId) =>
       api.runtime?.sendMessage?.({ type: 'tabernacle:getCloseFilter', windowId }),
+    onFreshMembership = () => {},
   } = {},
 ) {
   const receiptKey = 'tabernacle.move-receipts.v1';
@@ -512,6 +513,7 @@ export function createController(
   }
 
   async function saveMembership(tabId, value, collapsedOnly = false, repair) {
+    if (repair?.fresh) onFreshMembership(tabId, value.treeId);
     await cache.saveMembership(tabId, value);
     const previousVersion = membershipVersion;
     membershipVersion++;
@@ -682,10 +684,10 @@ export function createController(
 
   async function readRecords(tabs, closed = null) {
     const eligible = tabs.filter((tab) => !tab.incognito && !internalPage(api, tab.url));
-    const results = await mapSettledBounded(eligible, async (tab) => ({
-      tab,
-      value: (await membership(tab.id)) ?? {},
-    }));
+    const results = await mapSettledBounded(eligible, async (tab) => {
+      const value = await membership(tab.id);
+      return { tab, value: value ?? {}, missing: value == null };
+    });
     const failures = results.flatMap((result, index) =>
       result.status === 'rejected' ? [{ id: eligible[index].id, error: result.reason }] : [],
     );
@@ -842,7 +844,7 @@ export function createController(
 
       const result = [];
       const repairs = [];
-      for (const { tab, value } of records) {
+      for (const { tab, value, missing } of records) {
         let needsSave = false;
         let owner = ownerFor(value.treeId);
         if (owner !== undefined && owner !== tab.id) {
@@ -883,7 +885,7 @@ export function createController(
           value.order = tab.index ?? 0;
           needsSave = true;
         }
-        if (needsSave) repairs.push({ id: tab.id, value, windowId: tab.windowId });
+        if (needsSave) repairs.push({ id: tab.id, value, windowId: tab.windowId, fresh: missing });
         owners.set(value.treeId, tab.id);
         const { groupId: nativeGroupId, ...nativeTab } = tab;
         result.push({
@@ -903,8 +905,9 @@ export function createController(
       for (let offset = 0; offset < repairs.length; offset += 32) {
         const batch = repairs.slice(offset, offset + 32);
         const settled = await Promise.allSettled(
-          batch.map(({ id, value, windowId }) =>
+          batch.map(({ id, value, windowId, fresh }) =>
             saveMembership(id, value, false, {
+              fresh,
               windowId,
               scope,
               structureToken: state.structureToken,
