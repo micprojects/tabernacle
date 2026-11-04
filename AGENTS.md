@@ -42,6 +42,19 @@ Dated experiments in `output/docs/performance/` describe historical source layou
   requested again. Keep changes focused; avoid unrelated refactors and dependency
   churn during feature work or bug fixes.
 
+## README scope
+
+- Keep `README.md` a concise public overview of headline features, following the
+  style of the `v0.2.0` README.
+- Change the README only when the user explicitly requests README changes, except
+  for small factual corrections within its existing content. Keep those corrections
+  narrow and preserve the existing scope and structure.
+- Feature work, bug fixes, optimisation and release preparation do not authorise
+  adding feature descriptions, sections, screenshots or detailed usage instructions
+  to the README. Do not expand it automatically to catalogue the app's functionality.
+- Keep the optional new tab page out of the README unless the user explicitly asks
+  for it to be included.
+
 ## Validation
 
 - For code changes, run `npm run check` and the relevant UI and native Firefox
