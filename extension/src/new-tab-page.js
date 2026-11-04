@@ -12,6 +12,7 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const demo = !globalThis.browser?.runtime?.id && params.has('demo');
 let state, request, windowId, ownTabId, draft, weatherData, weatherKey;
+let readFailed = false;
 let disposed = false;
 let readSnapshot;
 let suspendedView;
@@ -26,7 +27,8 @@ function el(tag, className = '', text) {
   return node;
 }
 
-function error(error) {
+function error(error, readFailure = false) {
+  readFailed = readFailure;
   $('page-error').textContent = error?.message || '';
   $('page-error').hidden = !error;
 }
@@ -347,6 +349,7 @@ const scheduler = createRefreshScheduler({
       const next = await request('getNewTabState');
       if (disposed || document.hidden || version !== viewGeneration) return;
       state = next;
+      if (readFailed) error();
       render();
     } catch (err) {
       if (!disposed && !document.hidden && version === viewGeneration) throw err;
@@ -354,7 +357,7 @@ const scheduler = createRefreshScheduler({
   },
 
   onError(err) {
-    if (!disposed && !document.hidden) error(err);
+    if (!disposed && !document.hidden) error(err, true);
   },
 });
 
@@ -556,5 +559,5 @@ window.addEventListener(
 start().catch((err) => {
   if (disposed) return;
   $('loading').hidden = true;
-  error(err);
+  error(err, true);
 });

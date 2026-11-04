@@ -4,7 +4,10 @@ export function linkUrl(value) {
   let url;
   try {
     const text = String(value ?? '').trim();
-    url = new URL(/^[a-z][a-z\d+.-]*:/i.test(text) ? text : `https://${text}`);
+    // A hostname followed by a port can otherwise look like a URL scheme.
+    const hostPort = /^(?:localhost|[^\s/?#:@]+\.[^\s/?#:@]+):\d+(?:[/?#]|$)/i.test(text);
+    const scheme = !hostPort && /^[a-z][a-z\d+.-]*:/i.test(text);
+    url = new URL(scheme ? text : `https://${text}`);
   } catch {
     throw new Error('Enter a complete website address.');
   }

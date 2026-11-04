@@ -42,6 +42,14 @@ try {
   await expect(page.getByRole('button', { name: 'Edit GitHub', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Remove Wikipedia', exact: true }).click();
   await expect(page.locator('.nt-link-copy strong')).toHaveText(['GitHub', 'MDN']);
+  await add('Local dashboard', 'localhost:4173/dashboard');
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await page.getByRole('button', { name: 'Edit Local dashboard', exact: true }).click();
+  await expect(page.getByLabel('Website address', { exact: true })).toHaveValue(
+    'https://localhost:4173/dashboard',
+  );
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove Local dashboard', exact: true }).click();
   await page.locator('#new-tab-save').click();
   await expect(page.locator('#new-tab-status')).toHaveText('All changes saved');
   await page.locator('#nt-style').selectOption('list');
@@ -138,6 +146,42 @@ try {
   await expect(live.locator('html')).toHaveAttribute('data-color-scheme', 'light');
   await live.screenshot({ path: 'test-results/new-tab-light.png', fullPage: true });
   await page.screenshot({ path: 'test-results/new-tab-settings.png', fullPage: true });
+  await live.evaluate(async () => {
+    const controller = await window.tabernacleDemoSession.ready;
+    const request = controller.request;
+    const probe = (window.newTabReadRecovery = { fail: true, completed: 0 });
+    probe.restore = () => (controller.request = request);
+    controller.request = async (message) => {
+      if (message.type === 'getNewTabState' && probe.fail)
+        throw new Error('Temporary state read failure');
+      const result = await request(message);
+      if (message.type === 'getNewTabState') probe.completed++;
+      return result;
+    };
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect(live.locator('#page-error')).toHaveText('Temporary state read failure');
+  await live.evaluate(() => {
+    newTabReadRecovery.fail = false;
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect(live.locator('#page-error')).toBeHidden();
+  // A later successful refresh must preserve unrelated action errors.
+  await live.locator('#search').fill('web search');
+  await live.locator('#search').press('Enter');
+  await expect(live.locator('#page-error')).toContainText('Web search is available');
+  await live.evaluate(() => {
+    newTabReadRecovery.completed = 0;
+    window.dispatchEvent(new Event('focus'));
+  });
+  await live.waitForFunction(() => newTabReadRecovery.completed > 0);
+  await expect(live.locator('#page-error')).toContainText('Web search is available');
+  await live.evaluate(() => {
+    newTabReadRecovery.restore();
+    delete window.newTabReadRecovery;
+  });
+  await live.locator('#search').press('Escape');
+  console.log('✓ Successful new-tab refresh clears read failures and preserves action errors');
   const faviconLookup = await live.evaluate(() => {
     const art = (colour) =>
       'data:image/svg+xml,' +

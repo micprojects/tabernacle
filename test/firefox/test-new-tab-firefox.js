@@ -108,6 +108,28 @@ try {
   await driver.get(`${root}new-tab.html`);
   await driver.wait(async () => !(await driver.findElement(By.id('loading')).isDisplayed()), 10000);
 
+  await call(`
+    const send = browser.runtime.sendMessage.bind(browser.runtime);
+    window.newTabReadRecovery = { fail: true, restore: () => browser.runtime.sendMessage = send };
+    browser.runtime.sendMessage = message =>
+      newTabReadRecovery.fail && message.type === 'tabernacle:getNewTabState'
+        ? Promise.resolve({ok:false,error:'Temporary state read failure'})
+        : send(message);
+    window.dispatchEvent(new Event('focus'));
+  `);
+  await driver.wait(
+    async () =>
+      (await driver.findElement(By.id('page-error')).getText()) === 'Temporary state read failure',
+    10000,
+  );
+  await call(`newTabReadRecovery.fail = false; window.dispatchEvent(new Event('focus'));`);
+  await driver.wait(
+    async () => !(await driver.findElement(By.id('page-error')).isDisplayed()),
+    10000,
+  );
+  await call(`newTabReadRecovery.restore(); delete window.newTabReadRecovery;`);
+  console.log('✓ New tab clears a temporary read error after a successful native refresh');
+
   // Customise opens the dedicated section; saving and previewing work in Firefox.
   await driver.findElement(By.id('customise')).click();
   const settingsHandle = await driver.wait(
@@ -122,7 +144,7 @@ try {
   );
   await driver.findElement(By.id('new-tab-add-link')).click();
   await driver.findElement(By.id('nt-link-name')).sendKeys('Example');
-  await driver.findElement(By.id('nt-link-url')).sendKeys('https://example.com/');
+  await driver.findElement(By.id('nt-link-url')).sendKeys('example.com:443/path?q=test#section');
   await driver.findElement(By.id('nt-link-submit')).click();
   await driver.findElement(By.id('new-tab-save')).click();
   await driver.wait(
@@ -134,6 +156,11 @@ try {
   await driver.wait(
     async () => (await driver.findElement(By.id('new-tab-links')).getText()).includes('Example'),
     10000,
+  );
+  assert.equal(
+    (await send('getSettings')).newTab.links[0].url,
+    'https://example.com/path?q=test#section',
+    'A link entered with a port keeps its complete address after saving and reloading',
   );
   await send('openPage', { page: 'settings', section: 'new-tab' });
   assert.equal(

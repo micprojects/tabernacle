@@ -51,6 +51,35 @@ test('new tab is off by default; stored and submitted links reject unsafe URLs a
   );
 });
 
+test('new-tab links accept website ports without mistaking them for URL schemes', () => {
+  for (const [input, expected] of [
+    ['example.com:8443/path?q=test#section', 'https://example.com:8443/path?q=test#section'],
+    ['localhost:4173/dashboard', 'https://localhost:4173/dashboard'],
+    ['127.0.0.1:8080', 'https://127.0.0.1:8080/'],
+    ['[::1]:8080', 'https://[::1]:8080/'],
+    ['https://example.com:8443', 'https://example.com:8443/'],
+    ['http://localhost:4173', 'http://localhost:4173/'],
+  ]) {
+    assert.equal(linkUrl(input), expected);
+    assert.equal(
+      requireNewTab({ ...normalizeNewTab(), links: [{ ...link, url: input }] }).links[0].url,
+      expected,
+    );
+  }
+  for (const input of [
+    'javascript:123',
+    'javascript:alert(1)',
+    'data:text/html,test',
+    'file:///tmp/test',
+    'ftp://example.com:21',
+    'example.com:65536',
+    'example.com:invalid',
+    'user:secret@example.com:8443',
+    'https://user:secret@example.com:8443',
+  ])
+    assert.throws(() => linkUrl(input));
+});
+
 test('partial preferences persist across restarts and failed saves preserve every field', async () => {
   const api = memoryBrowser();
   const controller = createController(api);
