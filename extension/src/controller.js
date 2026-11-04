@@ -1,5 +1,6 @@
 import { applyTabBatch } from './tab-batch.js';
 import { createMoveRecovery } from './move-recovery.js';
+import { createMoveWindows } from './move-windows.js';
 import { resolveMove } from './move-plan.js';
 import { createBrowserCache } from './browser-cache.js';
 import { createPresentationCache, immutableCopy } from './presentation-cache.js';
@@ -64,7 +65,7 @@ export function createController(
     onFreshMembership = () => {},
   } = {},
 ) {
-  const receiptKey = 'tabernacle.move-receipts.v1';
+  const moveWindows = createMoveWindows(api);
   let model;
   // Views use normalised preferences; saves retain fields this version cannot
   // interpret until an action explicitly edits them.
@@ -189,7 +190,8 @@ export function createController(
     saveMembership,
     publish,
     applyEffects,
-    saveReceipt,
+    saveReceipt: moveWindows.saveReceipt,
+    resolveWindow: moveWindows.resolve,
 
     async saveGroups(groups, source) {
       if (source?.kind === 'group') {
@@ -213,14 +215,6 @@ export function createController(
         });
     },
   });
-
-  async function saveReceipt(receipt) {
-    const saved = (await api.storage.local.get(receiptKey))[receiptKey] || {};
-    const windows = new Set((await api.windows.getAll()).map((window) => String(window.id)));
-    const receipts = Object.fromEntries(Object.entries(saved).filter(([id]) => windows.has(id)));
-    receipts[receipt.windowId] = receipt;
-    await api.storage.local.set({ [receiptKey]: receipts });
-  }
 
   async function applyEffects(effects, direction) {
     if (effects.pin) {
@@ -1408,12 +1402,13 @@ export function createController(
     const { windowId, operationId } = message;
     if (typeof operationId !== 'string' || !operationId || operationId.length > 128)
       throw new Error('Choose a valid move operation.');
-    let receipt = ((await api.storage.local.get(receiptKey))[receiptKey] || {})[windowId];
+    let receipt = await moveWindows.receipt(windowId);
     if (receipt?.operationId !== operationId) {
       const current = await snapshot(windowId);
       const plan = resolveMove(current, message.source, message.destination);
       if (message.expected !== plan.expected)
         throw new Error('The source or destination has moved. Try again.');
+      const windowKey = await moveWindows.identify(windowId);
       const destination = plan.destination;
       let changes = [],
         groups = null,
@@ -1436,7 +1431,7 @@ export function createController(
           (tab) => tab.id === plan.source.id && plan.source.kind === 'tab',
         );
         if (destination.kind === 'pins' || tab?.pinned) {
-          effects = { windowId };
+          effects = { windowId, windowKey };
           if (tab) {
             const nativePins = current.tabs
               .filter((tab) => tab.pinned)
@@ -1481,6 +1476,7 @@ export function createController(
       }
       receipt = {
         windowId,
+        windowKey,
         operationId,
         source: plan.source,
         label: plan.noOp
@@ -1522,7 +1518,7 @@ export function createController(
     let extra = {};
     switch (type) {
       case 'moveStatus':
-        return ((await api.storage.local.get(receiptKey))[receiptKey] || {})[windowId] ?? null;
+        return moveWindows.receipt(windowId);
       case 'moveItem':
         extra.moveResult = await moveItem(message);
         break;

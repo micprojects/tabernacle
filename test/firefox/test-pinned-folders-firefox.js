@@ -234,6 +234,89 @@ try {
   await send('removeGroup', { id: work, ...(await send('getGroupContents', { id: work })) });
   assert(!(await send('snapshot')).folderPins.some((pin) => pin.id === work));
   console.log('✓ Global unpin, repin and deletion update restored windows');
+
+  const unaffected = signature(await send('snapshot'));
+  const journal = await call(
+    `const windowId=arguments[0];
+    const {moveSource,resolveMove}=await import(browser.runtime.getURL('src/move-plan.js'));
+    const {PENDING_MOVE_KEY}=await import(browser.runtime.getURL('src/move-recovery.js'));
+    const request=async(type,args={})=>{
+      const result=await browser.runtime.sendMessage({type:'tabernacle:'+type,windowId,...args});
+      if(!result.ok)throw new Error(result.error);
+      return result.data;
+    };
+    const state=await request('snapshot');
+    const pins=state.tabs.filter(tab=>tab.pinned).sort((a,b)=>a.index-b.index);
+    const source=moveSource(state,'tab',pins.at(-1).id);
+    const destination={kind:'pins',before:{kind:'tab',id:pins[0].treeId}};
+    const background=await browser.runtime.getBackgroundPage();
+    const local=background.browser.storage.local;
+    const set=local.set.bind(local);
+    let reached;
+    const pending=new Promise(resolve=>{reached=resolve;});
+    const wrapped=async(value)=>{
+      await set(value);
+      if(!value[PENDING_MOVE_KEY])return;
+      reached(value[PENDING_MOVE_KEY]);
+      return new Promise(()=>{});
+    };
+    local.set=wrapped;
+    if(local.set!==wrapped)throw new Error('Cannot intercept the pending move boundary');
+    void request('moveItem',{source,destination,operationId:'native-window-recovery',
+      expected:resolveMove(state,source,destination).expected}).catch(()=>{});
+    return pending;`,
+    restoredId,
+  );
+  assert.equal(typeof journal.receipt.windowKey, 'string');
+  await call('return browser.windows.remove(arguments[0]);', restoredId);
+  const pendingSession = await driver.wait(async () => {
+    const sessions = await call('return browser.sessions.getRecentlyClosed();');
+    return sessions.find((entry) =>
+      entry.window?.tabs?.some((tab) => tab.url?.includes('?second=')),
+    );
+  }, 10000);
+  const recoveredWindow = await call(
+    'return browser.sessions.restore(arguments[0]);',
+    pendingSession.window.sessionId,
+  );
+  const recoveredId = recoveredWindow.window.id;
+  assert.notEqual(recoveredId, restoredId);
+  await driver.wait(
+    async () =>
+      (await call('return browser.tabs.query({windowId:arguments[0],pinned:true});', recoveredId))
+        .length === 2,
+    10000,
+  );
+  await driver.get('about:blank');
+  await driver.setContext(firefox.Context.CHROME);
+  const reloaded = await driver.executeAsyncScript(
+    `const done=arguments[arguments.length-1];const {AddonManager}=ChromeUtils.importESModule('resource://gre/modules/AddonManager.sys.mjs');AddonManager.getAddonByID(arguments[0]).then(addon=>addon.reload()).then(()=>done(true),error=>done({error:error.message}));`,
+    addonId,
+  );
+  assert.equal(reloaded, true);
+  await driver.setContext(firefox.Context.CONTENT);
+  await driver.get(sidebarUrl);
+  await driver.wait(until.elementLocated(By.css('.pinned-folder')), 15000);
+  const recovered = await send('snapshot', { windowId: recoveredId });
+  assert.deepEqual(
+    signature(recovered),
+    journal.effects.layout.after.map((item) => `${item.kind}:${item.id}`),
+  );
+  assert.equal(
+    (await send('moveStatus', { windowId: recoveredId })).operationId,
+    journal.receipt.operationId,
+  );
+  assert.equal(
+    await call(
+      'return (await browser.storage.local.get("tabernacle.pending-move.v1"))["tabernacle.pending-move.v1"];',
+    ),
+    null,
+  );
+  assert.deepEqual(signature(await send('snapshot')), unaffected);
+  await assertPinMetadata(recoveredId, secondWindow.id);
+  console.log(
+    '✓ Interrupted mixed pin moves recover in the restored window after native IDs change',
+  );
 } finally {
   try {
     await firefoxSession?.close();

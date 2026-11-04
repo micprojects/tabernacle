@@ -4,7 +4,7 @@ import { createController } from '../extension/src/controller.js';
 import { resolveMove, moveSource } from '../extension/src/move-plan.js';
 import { memoryBrowser } from '../preview/browser.js';
 import { PENDING_MOVE_KEY } from '../extension/src/move-recovery.js';
-import { MODEL_KEY } from '../extension/src/model.js';
+import { MODEL_KEY, VIEW_KEY } from '../extension/src/model.js';
 
 function fixture() {
   const api = memoryBrowser({
@@ -216,7 +216,7 @@ test('a failed layout save restores native pins, tree placement and mixed slots'
   const save = f.api.sessions.setWindowValue;
   let once = true;
   f.api.sessions.setWindowValue = async (...args) => {
-    if (once) {
+    if (once && args[1] === VIEW_KEY) {
       once = false;
       throw new Error('Layout unavailable');
     }
@@ -235,8 +235,9 @@ test('reveal failures report a committed move and can be retried without moving 
   await f.send('pinTab', { id: 1 });
   const message = await f.message(1, { kind: 'group', id: 'work' });
   const save = f.api.sessions.setWindowValue;
-  f.api.sessions.setWindowValue = async () => {
-    throw new Error('View unavailable');
+  f.api.sessions.setWindowValue = async (...args) => {
+    if (args[1] === VIEW_KEY) throw new Error('View unavailable');
+    return save(...args);
   };
   const moved = await f.send('moveItem', message);
   assert(moved.moveResult.committed);

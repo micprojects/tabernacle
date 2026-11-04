@@ -48,6 +48,7 @@ export function memoryBrowser({
     Object.entries(memberships).map(([id, value]) => [Number(id), serializeMembership(value)]),
   );
   const windowValues = new Map();
+  const extraWindowValues = new Map();
   const sessionStorage = {};
   const closed = [];
   const windows = new Map(
@@ -129,10 +130,16 @@ export function memoryBrowser({
       },
 
       getWindowValue: async (id, key) =>
-        key === VIEW_KEY ? structuredClone(windowValues.get(id)) : undefined,
+        structuredClone(
+          key === VIEW_KEY ? windowValues.get(id) : extraWindowValues.get(id)?.get(key),
+        ),
 
       setWindowValue: async (id, key, value) => {
         if (key === VIEW_KEY) windowValues.set(id, structuredClone(value));
+        else {
+          if (!extraWindowValues.has(id)) extraWindowValues.set(id, new Map());
+          extraWindowValues.get(id).set(key, structuredClone(value));
+        }
       },
     },
     windows: {

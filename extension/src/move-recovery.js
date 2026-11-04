@@ -7,6 +7,8 @@ function validExtras(value) {
   if (
     !receipt ||
     !Number.isInteger(receipt.windowId) ||
+    (receipt.windowKey !== undefined &&
+      (typeof receipt.windowKey !== 'string' || !receipt.windowKey)) ||
     typeof receipt.operationId !== 'string' ||
     !receipt.operationId ||
     receipt.operationId.length > 128 ||
@@ -22,6 +24,7 @@ function validExtras(value) {
   const effects = value.effects;
   if (effects == null) return true;
   if (effects.windowId !== receipt.windowId) return false;
+  if (effects.windowKey !== receipt.windowKey) return false;
   const item = (value) =>
     ['tab', 'group'].includes(value?.kind) && typeof value.id === 'string' && value.id.length > 0;
   const items = (value) =>
@@ -54,6 +57,7 @@ export function createMoveRecovery({
   publish,
   applyEffects,
   saveReceipt,
+  resolveWindow,
 }) {
   let pending;
 
@@ -72,6 +76,7 @@ export function createMoveRecovery({
   }
 
   async function replay() {
+    const windowId = pending.effects ? await resolveWindow(pending.receipt) : undefined;
     const records = await readRecords(await api.tabs.query({}));
     const byKey = new Map();
     const needed = new Set(pending.changes.map((change) => change.treeId));
@@ -105,7 +110,7 @@ export function createMoveRecovery({
         pending.groups[pending.direction],
         pending.version === 2 ? pending.receipt.source : null,
       );
-    if (pending.effects) await applyEffects(pending.effects, pending.direction);
+    if (pending.effects) await applyEffects({ ...pending.effects, windowId }, pending.direction);
   }
 
   return {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { memoryBrowser } from '../preview/browser.js';
 import { createController } from '../extension/src/controller.js';
-import { MODEL_KEY } from '../extension/src/model.js';
+import { MODEL_KEY, VIEW_KEY } from '../extension/src/model.js';
 import { normalizePinLayout, reconcilePins } from '../extension/src/pinned-items.js';
 import { pinMoveMessage } from './helpers/pin-move.js';
 
@@ -51,8 +51,9 @@ test('folder-pin metadata survives unrelated writes, action changes, reorder rec
     { kind: 'group', id: 'work' },
   );
   const setView = api.sessions.setWindowValue;
-  api.sessions.setWindowValue = async () => {
-    throw new Error('Layout unavailable');
+  api.sessions.setWindowValue = async (...args) => {
+    if (args[1] === VIEW_KEY) throw new Error('Layout unavailable');
+    return setView(...args);
   };
   await assert.rejects(send('moveItem', message), /could not finish recovery/);
   api.sessions.setWindowValue = setView;
