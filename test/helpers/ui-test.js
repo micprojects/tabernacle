@@ -28,3 +28,18 @@ export async function startUiTest(options = {}) {
     throw error;
   }
 }
+
+// Exercise the keyboard event an active text composition owns, without relying
+// on an OS input-method installation in the browser-test environment.
+export function composingKey(locator, key) {
+  return locator.evaluate((node, key) => {
+    const event = new KeyboardEvent('keydown', {
+      key,
+      isComposing: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    node.dispatchEvent(event);
+    return event.defaultPrevented;
+  }, key);
+}

@@ -290,6 +290,7 @@ export function createNewTabSettings({ request, demo }) {
     $('nt-find-location').disabled = false;
   });
   $('nt-location-query').addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
     if (event.key === 'Enter') {
       event.preventDefault();
       $('nt-find-location').click();

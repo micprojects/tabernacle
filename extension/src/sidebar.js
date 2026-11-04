@@ -1416,7 +1416,7 @@ for (const type of ['pointerup', 'pointercancel']) {
   });
 }
 document.addEventListener('keydown', (event) => {
-  if ($('dialog').open) return;
+  if (event.isComposing || $('dialog').open) return;
   if (menuKey(event)) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();

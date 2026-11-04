@@ -409,6 +409,7 @@ $('customise').addEventListener('click', () => Promise.resolve(settings()).catch
 $('edit-links').addEventListener('click', () => Promise.resolve(settings()).catch(error));
 $('search').addEventListener('input', renderSearch);
 $('search').addEventListener('keydown', (event) => {
+  if (event.isComposing) return;
   if (event.key === 'Escape') {
     $('search').value = '';
     renderSearch();

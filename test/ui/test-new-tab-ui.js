@@ -1,7 +1,7 @@
 import { instrumentSource } from '../helpers/probes/new-tab.js';
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { startUiTest } from '../helpers/ui-test.js';
+import { composingKey, startUiTest } from '../helpers/ui-test.js';
 
 const { page, base, close } = await startUiTest({ viewport: { width: 1440, height: 1080 } });
 const errors = [];
@@ -134,6 +134,15 @@ try {
   );
   await page.goto(`${base}/extension/settings.html?demo#new-tab`);
   await expect(page.locator('#new-tab-fields')).toBeEnabled();
+  const compositionLocation = page.locator('#nt-location-query');
+  await compositionLocation.fill('東京');
+  expect(await composingKey(compositionLocation, 'Enter')).toBe(false);
+  await expect(compositionLocation).toHaveValue('東京');
+  await expect(compositionLocation).toBeFocused();
+  await expect(page.locator('#nt-weather-error')).toBeHidden();
+  await compositionLocation.press('Enter');
+  await expect(page.locator('#nt-weather-error')).toContainText('Install Tabernacle');
+  await compositionLocation.fill('');
   await expect(page.locator('[name="showLater"]')).toHaveCount(0);
   await expect(page.getByRole('switch')).not.toBeChecked();
   await expect(page.locator('#new-tab-links')).toContainText('Add the websites');
@@ -189,6 +198,11 @@ try {
     ),
   ).toBe('icons');
   await preview.getByLabel('Search the web or your tabs', { exact: true }).fill('Figma');
+  await expect(preview.locator('#search-matches')).toContainText('Figma');
+  const compositionSearch = preview.getByLabel('Search the web or your tabs', { exact: true });
+  expect(await composingKey(compositionSearch, 'Escape')).toBe(false);
+  await expect(compositionSearch).toHaveValue('Figma');
+  await expect(compositionSearch).toBeFocused();
   await expect(preview.locator('#search-matches')).toContainText('Figma');
   await preview.getByLabel('Search the web or your tabs', { exact: true }).press('Escape');
   await expect(preview.locator('#search-results')).toBeHidden();

@@ -379,6 +379,7 @@ period.addEventListener('change', render);
 folderEvent.addEventListener('change', render);
 window.addEventListener('hashchange', navigate);
 document.addEventListener('keydown', (event) => {
+  if (event.isComposing) return;
   const typing = event.target.closest('input, textarea, select, [contenteditable="true"]');
   if (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
     event.preventDefault();

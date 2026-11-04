@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { startUiTest } from '../helpers/ui-test.js';
+import { composingKey, startUiTest } from '../helpers/ui-test.js';
 
 const { page, base, close } = await startUiTest({
   viewport: { width: 360, height: 660 },
@@ -93,6 +93,19 @@ try {
   await expect(popup.getByRole('searchbox')).toBeVisible();
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toHaveAttribute('aria-label', 'Switch to Keep open');
+  const compositionSearch = popup.getByRole('searchbox');
+  await compositionSearch.fill('日本');
+  expect(await composingKey(compositionSearch, 'Escape')).toBe(false);
+  await expect(compositionSearch).toHaveValue('日本');
+  await expect(compositionSearch).toBeFocused();
+  await expect(popup).toBeVisible();
+  await compositionSearch.press('Escape');
+  await expect(compositionSearch).toHaveValue('');
+  await expect(rows).toHaveCount(1);
+  expect(await composingKey(compositionSearch, 'ArrowDown')).toBe(false);
+  await expect(compositionSearch).toBeFocused();
+  await compositionSearch.press('ArrowDown');
+  await expect(rows.first()).toBeFocused();
   await popup.getByRole('button', { name: 'Closed', exact: true }).click();
   await expect(popup.getByText('No recently closed tabs.', { exact: true })).toBeVisible();
   await popup.getByRole('button', { name: 'Folders', exact: true }).click();

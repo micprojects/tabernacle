@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { startUiTest } from '../helpers/ui-test.js';
+import { composingKey, startUiTest } from '../helpers/ui-test.js';
 
 const { page, base, close } = await startUiTest({
   viewport: { width: 1440, height: 1000 },
@@ -11,6 +11,14 @@ page.on('pageerror', (error) => errors.push(error.message));
 try {
   await page.goto(`${base}/extension/activity.html?demo&mockup`);
   await expect(page.getByRole('combobox', { name: 'Layout', exact: true })).toHaveCount(0);
+  await expect(page.locator('.activity-row')).toHaveCount(18);
+  const compositionSearch = page.getByLabel('Search recent activity');
+  await compositionSearch.fill('日本');
+  expect(await composingKey(compositionSearch, 'Escape')).toBe(false);
+  await expect(compositionSearch).toHaveValue('日本');
+  await expect(compositionSearch).toBeFocused();
+  await compositionSearch.press('Escape');
+  await expect(compositionSearch).toHaveValue('');
   await expect(page.locator('.activity-row')).toHaveCount(18);
   await page.evaluate(() => {
     window.retainedActivityRow = document.querySelectorAll('.activity-row')[1];

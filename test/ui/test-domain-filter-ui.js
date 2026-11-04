@@ -2,7 +2,7 @@ import { instrumentSource, instrumentDemo } from '../helpers/probes/domain-filte
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import sharp from 'sharp';
-import { startUiTest } from '../helpers/ui-test.js';
+import { composingKey, startUiTest } from '../helpers/ui-test.js';
 
 const { page, close, base } = await startUiTest({
   viewport: { width: 320, height: 620 },
@@ -68,6 +68,14 @@ try {
   await reset();
   await filter();
   const cachedSearch = page.locator('#domain-search');
+  await cachedSearch.fill('日本');
+  expect(await composingKey(cachedSearch, 'Escape')).toBe(false);
+  await expect(cachedSearch).toHaveValue('日本');
+  await expect(cachedSearch).toBeFocused();
+  await expect(header).toBeVisible();
+  await cachedSearch.press('Escape');
+  await expect(cachedSearch).toHaveValue('');
+  await expect(header).toBeVisible();
   const queryState = await snapshot();
   const queryBuilds = await page.evaluate(() => window.__domainIndexBuilds);
   const queryCollections = await page.evaluate(() => window.__domainCollectionBuilds);

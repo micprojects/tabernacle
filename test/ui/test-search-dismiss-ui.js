@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { startUiTest } from '../helpers/ui-test.js';
+import { composingKey, startUiTest } from '../helpers/ui-test.js';
 
 const { page, close, base } = await startUiTest({
   viewport: { width: 320, height: 820 },
@@ -29,6 +29,15 @@ const closed = async () => {
 };
 
 try {
+  await reset();
+  await open('日本');
+  expect(await composingKey(search, 'Escape')).toBe(false);
+  await expect(search).toHaveValue('日本');
+  await expect(search).toBeFocused();
+  await search.press('Escape');
+  await closed();
+  console.log('✓ Composing Escape retains sidebar search until a normal Escape dismisses it');
+
   for (const method of ['pointer', 'keyboard']) {
     await reset();
     await open('Sprint');

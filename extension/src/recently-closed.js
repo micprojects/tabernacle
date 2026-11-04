@@ -274,7 +274,7 @@ export function createRecentActivity({
   );
   dismiss.addEventListener('click', () => close(true));
   pane.addEventListener('keydown', (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.target === search && event.key !== 'ArrowDown') return;
     const rows = [...list.querySelectorAll('button')];
     const index = rows.indexOf(document.activeElement);
@@ -292,6 +292,7 @@ export function createRecentActivity({
     'keydown',
     (event) => {
       if (
+        event.isComposing ||
         event.key !== 'Escape' ||
         pane.hidden ||
         document.querySelector('dialog[open], #menu:not([hidden])')
