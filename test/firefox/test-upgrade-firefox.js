@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import firefox from 'selenium-webdriver/firefox.js';
-import { startFirefox } from "../../scripts/firefox-session.js";
-import { previewServer } from "../../scripts/preview.js";
-import { upgradeOrganisation } from "../helpers/upgrade-state.js";
+import { startFirefox } from '../../scripts/firefox-session.js';
+import { previewServer } from '../../scripts/preview.js';
+import { upgradeOrganisation } from '../helpers/upgrade-state.js';
 
 // This checks a real same-ID update and extension reload. Temporary add-ons do
 // not survive a whole Firefox restart; this suite makes no claim to cover that.
@@ -165,7 +165,11 @@ function preserved(before, after) {
     withoutRetiredMarker(before.raw.memberships),
     'Every membership field except the retired Later marker must survive',
   );
-  assert(after.snapshots.every((state) => state.tabs.every((tab) => !Object.hasOwn(tab, 'savedForLaterAt'))));
+  assert(
+    after.snapshots.every((state) =>
+      state.tabs.every((tab) => !Object.hasOwn(tab, 'savedForLaterAt')),
+    ),
+  );
   assert.deepEqual(after.raw.views, before.raw.views, 'Window views must survive');
   assert.deepEqual(after.raw.containers, before.raw.containers, 'Firefox containers must survive');
   assert.deepEqual(after.raw.storage[sentinelKey], before.raw.storage[sentinelKey]);
@@ -326,16 +330,20 @@ try {
   });
   // The published version predates Later. Add its raw session marker to the
   // representative fixture, including pins, both windows and a delayed restore.
-  await call(async (ids, key) => {
-    for (const id of ids) {
-      const value = await browser.sessions.getTabValue(id, key);
-      await browser.sessions.setTabValue(id, key, {
-        ...value,
-        savedForLaterAt: 1700000100000 + id,
-        retirementOpaque: { retained: id },
-      });
-    }
-  }, [ids[0], ids[3], ids[4], ids[6], ids[7]], tabKey);
+  await call(
+    async (ids, key) => {
+      for (const id of ids) {
+        const value = await browser.sessions.getTabValue(id, key);
+        await browser.sessions.setTabValue(id, key, {
+          ...value,
+          savedForLaterAt: 1700000100000 + id,
+          retirementOpaque: { retained: id },
+        });
+      }
+    },
+    [ids[0], ids[3], ids[4], ids[6], ids[7]],
+    tabKey,
+  );
   const all = (await capture(windowIds, [])).snapshots.flatMap((state) => state.tabs);
   const treeIds = ids.map((id) => all.find((tab) => tab.id === id).treeId);
   const delayed = all.find((tab) => tab.id === ids[4]);
@@ -361,14 +369,21 @@ try {
       model.stashes = value.opaque;
       model.upgradeOpaque = value.opaque;
       model.look.upgradeOpaque = value.opaque;
-      model.folderPins = model.folderPins.map(pin => ({ ...pin, upgradeOpaque: value.opaque }));
+      model.folderPins = model.folderPins.map((pin) => ({ ...pin, upgradeOpaque: value.opaque }));
       // Unknown preferences may come from another extension version. The old
       // release must retain these raw records before the candidate receives them.
       model.newTab = {
         enabled: false,
         upgradeOpaque: value.opaque,
         unit: 'future-unit',
-        links: [{ id: 'upgrade-link', name: 'Example', url: 'https://example.test/', upgradeOpaque: value.opaque }],
+        links: [
+          {
+            id: 'upgrade-link',
+            name: 'Example',
+            url: 'https://example.test/',
+            upgradeOpaque: value.opaque,
+          },
+        ],
         location: { name: 'Place', latitude: 50, longitude: 1, upgradeOpaque: value.opaque },
       };
       await browser.storage.local.set({ [modelKey]: model, [sentinelKey]: value });
@@ -378,15 +393,26 @@ try {
     sentinel,
   );
   await reload();
-  await call(async (ids, key, opaque, folderId) => {
-    for (const id of ids) {
-      const view = await browser.sessions.getWindowValue(id, key);
-      view.upgradeOpaque = opaque;
-      view.recentFolders = (view.recentFolders || []).map(entry => ({ ...entry, upgradeOpaque: opaque }));
-      view.recentExpandedFolders = [{ id: folderId, expandedAt: 1700000000000, upgradeOpaque: opaque }];
-      await browser.sessions.setWindowValue(id, key, view);
-    }
-  }, windowIds, viewKey, sentinel.opaque, work);
+  await call(
+    async (ids, key, opaque, folderId) => {
+      for (const id of ids) {
+        const view = await browser.sessions.getWindowValue(id, key);
+        view.upgradeOpaque = opaque;
+        view.recentFolders = (view.recentFolders || []).map((entry) => ({
+          ...entry,
+          upgradeOpaque: opaque,
+        }));
+        view.recentExpandedFolders = [
+          { id: folderId, expandedAt: 1700000000000, upgradeOpaque: opaque },
+        ];
+        await browser.sessions.setWindowValue(id, key, view);
+      }
+    },
+    windowIds,
+    viewKey,
+    sentinel.opaque,
+    work,
+  );
   const before = await capture(windowIds, treeIds);
   assert.deepEqual(before.raw.storage[modelKey].upgradeOpaque, sentinel.opaque);
   checkpoint('published-source fixture, distinct window views and opaque storage created');
@@ -397,7 +423,7 @@ try {
   for (const [index, state] of expectedUpgrade.organisation.entries()) {
     state.look = { ...state.look, sidebarSize: 'default' };
     // The candidate retains opaque pin fields in its normalised records too.
-    state.folderPins = state.folderPins.map(pin => ({ ...pin, upgradeOpaque: sentinel.opaque }));
+    state.folderPins = state.folderPins.map((pin) => ({ ...pin, upgradeOpaque: sentinel.opaque }));
     const savedView = before.raw.views[windowIds[index]];
     assert.deepEqual(savedView.upgradeOpaque, sentinel.opaque);
     state.view.upgradeOpaque = savedView.upgradeOpaque;
@@ -479,7 +505,9 @@ try {
   await send('setLook', { partial: true, value: { domains: false } });
   await send('setNewTab', { value: { showRecent: false } });
   const preferences = (await send('getSettings')).newTab;
-  await send('setNewTab', { value: { links: [{ ...preferences.links[0], name: 'Renamed link' }] } });
+  await send('setNewTab', {
+    value: { links: [{ ...preferences.links[0], name: 'Renamed link' }] },
+  });
   const beforeRecovery = await capture(windowIds, treeIds);
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].upgradeOpaque, sentinel.opaque);
   assert.deepEqual(beforeRecovery.raw.storage[modelKey].stashes, sentinel.opaque);
@@ -487,9 +515,14 @@ try {
   for (const id of windowIds) {
     const view = beforeRecovery.raw.views[id];
     assert.deepEqual(view.upgradeOpaque, sentinel.opaque);
-    for (const entry of view.recentFolders.filter(entry => before.raw.views[id].recentFolders.some(prior => prior.id === entry.id)))
+    for (const entry of view.recentFolders.filter((entry) =>
+      before.raw.views[id].recentFolders.some((prior) => prior.id === entry.id),
+    ))
       assert.deepEqual(entry.upgradeOpaque, sentinel.opaque);
-    assert.deepEqual(view.recentExpandedFolders.find(entry => entry.id === work).upgradeOpaque, sentinel.opaque);
+    assert.deepEqual(
+      view.recentExpandedFolders.find((entry) => entry.id === work).upgradeOpaque,
+      sentinel.opaque,
+    );
   }
   assert.deepEqual(saved.look.upgradeOpaque, sentinel.opaque);
   assert.deepEqual(saved.newTab.upgradeOpaque, sentinel.opaque);
@@ -525,20 +558,44 @@ try {
   const validModel = recovered.raw.storage[modelKey];
   const unsupportedModels = [
     null,
-    { ...validModel, folderPins: validModel.folderPins.map((pin, index) => index ? pin : { ...pin, action: 'future-action' }) },
-    { ...validModel, domainPins: [...(validModel.domainPins || []), { futureDomain: 'keep.example' }] },
+    {
+      ...validModel,
+      folderPins: validModel.folderPins.map((pin, index) =>
+        index ? pin : { ...pin, action: 'future-action' },
+      ),
+    },
+    {
+      ...validModel,
+      domainPins: [...(validModel.domainPins || []), { futureDomain: 'keep.example' }],
+    },
   ];
   for (const invalid of unsupportedModels) {
-    await call(async (key, value) => browser.storage.local.set({ [key]: value }), modelKey, invalid);
+    await call(
+      async (key, value) => browser.storage.local.set({ [key]: value }),
+      modelKey,
+      invalid,
+    );
     await assert.rejects(reload(), /stored data has not been changed/);
-    await assert.rejects(send('createGroup', { name: 'Must not overwrite unsupported data' }), /stored data has not been changed/);
+    await assert.rejects(
+      send('createGroup', { name: 'Must not overwrite unsupported data' }),
+      /stored data has not been changed/,
+    );
     await assert.rejects(send('closeTab', { id: ids[0] }), /stored data has not been changed/);
-    assert.deepEqual(await call(async key => (await browser.storage.local.get(key))[key], modelKey), invalid);
+    assert.deepEqual(
+      await call(async (key) => (await browser.storage.local.get(key))[key], modelKey),
+      invalid,
+    );
     // Explicitly repair only this isolated fixture, then exercise load retry.
-    await call(async (key, value) => browser.storage.local.set({ [key]: value }), modelKey, validModel);
+    await call(
+      async (key, value) => browser.storage.local.set({ [key]: value }),
+      modelKey,
+      validModel,
+    );
     preserved(recovered, await capture(windowIds, treeIds));
   }
-  checkpoint('unsupported saved model and pin records block writes without resetting data and can retry after repair');
+  checkpoint(
+    'unsupported saved model and pin records block writes without resetting data and can retry after repair',
+  );
   assert.deepEqual(
     await hashes(resolve('extension')),
     initialHashes,

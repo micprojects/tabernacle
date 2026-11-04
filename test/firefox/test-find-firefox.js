@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
-import { ScreenshotBrowser } from "../../scripts/screenshot-browser.js";
+import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
 
 // Use Firefox's own Finder against the actual sidebar and extension tabs.
 // New Tab already rebuilds on visible refresh; its first Find Again can lose
@@ -144,9 +144,7 @@ const selection = (target) =>
     return {
       text: value?.toString(),
       collapsed: value?.isCollapsed,
-      key:
-        element?.closest('[data-key]')?.dataset.key ||
-        null,
+      key: element?.closest('[data-key]')?.dataset.key || null,
       connected: Boolean(range?.startContainer.isConnected),
     };
   });

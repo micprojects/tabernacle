@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { Button, By, Key, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { startFirefox } from "../../scripts/firefox-session.js";
+import { startFirefox } from '../../scripts/firefox-session.js';
 import { resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { previewServer } from "../../scripts/preview.js";
-import { MODEL_KEY, TAB_KEY } from "../../extension/src/model.js";
-import { PENDING_MOVE_KEY } from "../../extension/src/move-recovery.js";
+import { previewServer } from '../../scripts/preview.js';
+import { MODEL_KEY, TAB_KEY } from '../../extension/src/model.js';
+import { PENDING_MOVE_KEY } from '../../extension/src/move-recovery.js';
 
 const server = await previewServer(0);
 const url = `http://127.0.0.1:${server.address().port}/preview/index.html`;
@@ -118,7 +118,11 @@ try {
   );
   await driver.findElement(By.css('#container-editor button[type="button"]')).click();
   await driver.findElement(By.css('a[href="#appearance"]')).click();
-  await driver.wait(async () => (await driver.findElement(By.id('appearance-status')).getText()) === 'All changes saved', 5000);
+  await driver.wait(
+    async () =>
+      (await driver.findElement(By.id('appearance-status')).getText()) === 'All changes saved',
+    5000,
+  );
   assert.equal((await driver.findElements(By.id('appearance-save'))).length, 0);
   await driver.wait(async () => (await send('getSettings')).look.domains, 5000);
   await driver.navigate().refresh();
@@ -140,9 +144,13 @@ try {
     5000,
   );
   const tabCount = (await driver.getAllWindowHandles()).length;
-  await driver.wait(async () => (await driver.executeScript(
-    'return getComputedStyle(document.querySelector(".tab-row .label")).fontSize;'
-  )) === '14px', 5000);
+  await driver.wait(
+    async () =>
+      (await driver.executeScript(
+        'return getComputedStyle(document.querySelector(".tab-row .label")).fontSize;',
+      )) === '14px',
+    5000,
+  );
   await browserCall('await browser.runtime.openOptionsPage(); return true;');
   await driver.wait(async () => (await driver.getAllWindowHandles()).length === tabCount, 5000);
   assert.equal((await driver.getAllWindowHandles()).length, tabCount);
@@ -167,12 +175,23 @@ try {
   assert.equal((await send('getSettings')).look.colorScheme, 'dark');
   await driver.findElement(By.id('appearance-defaults')).click();
   await driver.findElement(By.css('#appearance-confirm [value="reset"]')).click();
-  await driver.wait(async () => (await driver.findElement(By.id('appearance-status')).getText()) === 'All changes saved', 5000);
+  await driver.wait(
+    async () =>
+      (await driver.findElement(By.id('appearance-status')).getText()) === 'All changes saved',
+    5000,
+  );
   assert.deepEqual((await send('getSettings')).look, {
-    connectingLines: true, domains: false, folderCounts: false, tintFavicons: false,
-    animations: true, colorScheme: 'default', sidebarSize: 'default',
+    connectingLines: true,
+    domains: false,
+    folderCounts: false,
+    tintFavicons: false,
+    animations: true,
+    colorScheme: 'default',
+    sidebarSize: 'default',
   });
-  console.log('✓ Appearance applies immediately; individual and page resets restore saved defaults');
+  console.log(
+    '✓ Appearance applies immediately; individual and page resets restore saved defaults',
+  );
   await driver.close();
   await driver.switchTo().window(sidebarHandle);
   assert.equal(
@@ -512,7 +531,12 @@ try {
   );
   await send('enterGroup', { id: design });
   await send('setLook', {
-    value: { connectingLines: true, domains: true, colorScheme: 'dark', sidebarSize: 'comfortable' },
+    value: {
+      connectingLines: true,
+      domains: true,
+      colorScheme: 'dark',
+      sidebarSize: 'comfortable',
+    },
   });
   // Legacy saved records stay opaque, even if a newer/older format is unfamiliar.
   const legacy = await browserCall(
@@ -554,9 +578,14 @@ try {
   );
   await driver.wait(until.elementLocated(By.css('.tab-row .row-detail')), 5000);
   console.log('✓ Look preferences persist through extension reload');
-  assert.equal(await driver.executeScript('return document.documentElement.dataset.sidebarSize;'), 'comfortable');
+  assert.equal(
+    await driver.executeScript('return document.documentElement.dataset.sidebarSize;'),
+    'comfortable',
+  );
   for (const [sidebarSize, font, height, detailHeight] of [
-    ['large', 14, 34, 42], ['comfortable', 13, 30, 38], ['default', 12, 28, 36],
+    ['large', 14, 34, 42],
+    ['comfortable', 13, 30, 38],
+    ['default', 12, 28, 36],
   ]) {
     for (const domains of [false, true]) {
       await send('setLook', { partial: true, value: { sidebarSize, domains } });
@@ -566,12 +595,16 @@ try {
           return {font: getComputedStyle(row.querySelector('.label')).fontSize,
             height: row.getBoundingClientRect().height};
         `);
-        return rendered.font === `${font}px` && rendered.height === (domains ? detailHeight : height);
+        return (
+          rendered.font === `${font}px` && rendered.height === (domains ? detailHeight : height)
+        );
       }, 5000);
     }
   }
   state = await send('snapshot');
-  console.log('✓ Native Firefox applies all sidebar sizes and subtitle heights; saved size survives reload');
+  console.log(
+    '✓ Native Firefox applies all sidebar sizes and subtitle heights; saved size survives reload',
+  );
   for (const colorScheme of ['light', 'default', 'dark']) {
     await send('setLook', { value: { ...state.look, colorScheme } });
     await driver.wait(async () => {

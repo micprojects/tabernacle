@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Button, Key } from 'selenium-webdriver';
-import { ScreenshotBrowser } from "../../scripts/screenshot-browser.js";
-import { previewServer } from "../../scripts/preview.js";
+import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
+import { previewServer } from '../../scripts/preview.js';
 
 // Use the real browser accelerator and enable close animations: tabs.remove()
 // and reduced motion miss the interval where query() still lists an invalid ID.

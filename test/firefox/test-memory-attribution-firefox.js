@@ -43,7 +43,8 @@ async function allocate(background, sidebar) {
         if (
           owner[key].byteLength !== size ||
           Object.getPrototypeOf(owner[key]) !== owner.ArrayBuffer.prototype ||
-          bytes[0] !== 91 || bytes[size - 1] !== 91
+          bytes[0] !== 91 ||
+          bytes[size - 1] !== 91
         )
           throw Error('Allocation was not held in the expected document realm');
       }
@@ -58,11 +59,14 @@ try {
   ({ profile } = await browser.open());
   await browser.install(repositoryRoot);
   await browser.show();
-  [panel] = (await waitForStableObservation(() => browser.panels(), {
-    matches: (panels) => panels.length === 1 && panels.every((row) => row.isTarget && row.open && !row.watched),
-    stableSamples: 1,
-    label: 'single allocation-test sidebar',
-  })).observation;
+  [panel] = (
+    await waitForStableObservation(() => browser.panels(), {
+      matches: (panels) =>
+        panels.length === 1 && panels.every((row) => row.isTarget && row.open && !row.watched),
+      stableSamples: 1,
+      label: 'single allocation-test sidebar',
+    })
+  ).observation;
   await waitForStableObservation(
     () => browser.frame(panel.browserId, () => !document.getElementById('new-tab').disabled),
     { matches: Boolean, stableSamples: 1, label: 'ready allocation-test sidebar' },
@@ -70,11 +74,15 @@ try {
   const unicode = 'Close… café 日本 🦊 é';
   const payload = { 'clé…': { text: `${unicode} "quotes" \\ % #\nnext` } };
   assert.deepEqual(
-    await browser.frame(panel.browserId, (value) => ({
-      literal: 'Close… café 日本 🦊 é',
-      argument: value,
-      nested: value['clé…'],
-    }), payload),
+    await browser.frame(
+      panel.browserId,
+      (value) => ({
+        literal: 'Close… café 日本 🦊 é',
+        argument: value,
+        nested: value['clé…'],
+      }),
+      payload,
+    ),
     { literal: unicode, argument: payload, nested: payload['clé…'] },
   );
   await assert.rejects(
@@ -111,9 +119,12 @@ try {
     [0, 0],
   ]) {
     await allocate(background, sidebar);
-    const delta = await capture() - baseline;
+    const delta = (await capture()) - baseline;
     const expected = background + sidebar;
-    assert(Math.abs(delta - expected) <= tolerance, `Attributed ${delta} bytes; expected ${expected}`);
+    assert(
+      Math.abs(delta - expected) <= tolerance,
+      `Attributed ${delta} bytes; expected ${expected}`,
+    );
     checks.push({ expected, delta, tolerance });
   }
 } finally {

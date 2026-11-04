@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { By, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { startFirefox } from "../../scripts/firefox-session.js";
+import { startFirefox } from '../../scripts/firefox-session.js';
 import { resolve } from 'node:path';
-import { previewServer } from "../../scripts/preview.js";
+import { previewServer } from '../../scripts/preview.js';
 
 const server = await previewServer(0);
 const fixtureUrl = `http://127.0.0.1:${server.address().port}/preview/index.html`;
@@ -148,20 +148,26 @@ try {
   );
 
   const beforeReload = signature(await send('snapshot'));
-  await call(`
+  await call(
+    `
     for (const id of arguments[0]) {
       const view = await browser.sessions.getWindowValue(id, 'tabernacle.view.v1');
       view.opaque = { window: id };
       view.pinLayout = view.pinLayout.map(item => ({ ...item, opaque: {identity: item.kind + ':' + item.id} }));
       await browser.sessions.setWindowValue(id, 'tabernacle.view.v1', view);
     }
-  `, [firstWindow, secondWindow.id]);
+  `,
+    [firstWindow, secondWindow.id],
+  );
 
   const assertPinMetadata = async (windowId, savedWindowId = windowId) => {
-    const view = await call('return browser.sessions.getWindowValue(arguments[0], "tabernacle.view.v1");', windowId);
+    const view = await call(
+      'return browser.sessions.getWindowValue(arguments[0], "tabernacle.view.v1");',
+      windowId,
+    );
     assert.deepEqual(view.opaque, { window: savedWindowId });
     for (const item of view.pinLayout)
-      assert.deepEqual(item.opaque, {identity: `${item.kind}:${item.id}`});
+      assert.deepEqual(item.opaque, { identity: `${item.kind}:${item.id}` });
   };
 
   await driver.get('about:blank');

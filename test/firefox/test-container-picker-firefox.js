@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { ScreenshotBrowser } from "../../scripts/screenshot-browser.js";
+import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
 
 const session = new ScreenshotBrowser();
 const fixture = {

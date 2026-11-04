@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { startFirefox } from "../../scripts/firefox-session.js";
+import { startFirefox } from '../../scripts/firefox-session.js';
 import { resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';

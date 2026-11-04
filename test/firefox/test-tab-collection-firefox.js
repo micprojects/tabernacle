@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { ScreenshotBrowser } from "../../scripts/screenshot-browser.js";
+import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
 
 const browser = new ScreenshotBrowser();
 const server = createServer((_request, response) => {
@@ -103,7 +103,10 @@ try {
   await setup();
   let snapshot = await browser.evaluate(() => collectionSend('snapshot'));
   assert.equal(snapshot.tabs.filter((tab) => tab.groupId === fixture.folder).length, 4);
-  assert.equal(snapshot.tabs.find((tab) => tab.id === fixture.tabs[2]).cookieStoreId, fixture.container);
+  assert.equal(
+    snapshot.tabs.find((tab) => tab.id === fixture.tabs[2]).cookieStoreId,
+    fixture.container,
+  );
   // Same URL in a different container cannot serve as the duplicate keeper.
   const wrong = await browser.evaluate(
     async (targetId, keeperId) => {

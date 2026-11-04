@@ -9,7 +9,7 @@ if (process.platform !== 'darwin') {
 } else {
   const child = spawn(
     process.execPath,
-    [fileURLToPath(new URL("../../scripts/benchmark-optimisation.js", import.meta.url)), '--pilot'],
+    [fileURLToPath(new URL('../../scripts/benchmark-optimisation.js', import.meta.url)), '--pilot'],
     { stdio: 'inherit' },
   );
   const code = await new Promise((resolve, reject) => {

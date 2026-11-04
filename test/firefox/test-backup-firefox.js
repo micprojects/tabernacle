@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { By, until } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { startFirefox } from "../../scripts/firefox-session.js";
+import { startFirefox } from '../../scripts/firefox-session.js';
 import { join, resolve } from 'node:path';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { MODEL_KEY, TAB_KEY } from "../../extension/src/model.js";
+import { MODEL_KEY, TAB_KEY } from '../../extension/src/model.js';
 
 let driver, session, downloads;
 try {

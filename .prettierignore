@@ -2,7 +2,7 @@ node_modules/
 dist/
 test-results/
 output/
-firefox/
+/firefox/
 package-lock.json
 # Preserve original website favicon bytes used by screenshot fixtures.
 assets/screenshots/favicons/*.svg

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { By, Key } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
-import { startFirefox } from "../../scripts/firefox-session.js";
+import { startFirefox } from '../../scripts/firefox-session.js';
 import { resolve, join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { WEATHER_ACCESS } from "../../extension/src/new-tab/weather.js";
+import { WEATHER_ACCESS } from '../../extension/src/new-tab/weather.js';
 
 const session = await startFirefox();
 const driver = session.driver;
@@ -270,12 +270,19 @@ try {
       return result;
     };
   `);
-  await driver.actions().move({ origin: await driver.findElement(By.css('#links a')) }).press().perform();
+  await driver
+    .actions()
+    .move({ origin: await driver.findElement(By.css('#links a')) })
+    .press()
+    .perform();
   assert(await call('return Boolean(newTabPress.target);'), 'The native pointer must press a link');
   await call('newTabPress.completed = 0;');
   await send('renameGroup', { id: group.createdGroupId, name: 'Work updated' });
   await driver.wait(() => call('return newTabPress.completed > 0;'), 10000);
-  assert(await call('return newTabPress.target.isConnected;'), 'A refresh must retain the pressed link');
+  assert(
+    await call('return newTabPress.target.isConnected;'),
+    'A refresh must retain the pressed link',
+  );
   await driver.actions().release().perform();
   await driver.wait(
     async () => (await driver.getCurrentUrl()).startsWith('https://example.com/'),

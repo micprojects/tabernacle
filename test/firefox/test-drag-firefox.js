@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Button, Key } from 'selenium-webdriver';
-import { ScreenshotBrowser } from "../../scripts/screenshot-browser.js";
-import { previewServer } from "../../scripts/preview.js";
+import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
+import { previewServer } from '../../scripts/preview.js';
 
 // Exercise the actual native sidebar, whose viewport and pointer capture differ
 // from opening sidebar.html as a normal extension tab. This browser owns its profile.
