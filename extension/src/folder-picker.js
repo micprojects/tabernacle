@@ -240,6 +240,7 @@ export function createFolderPicker({
   });
   search.addEventListener('input', () => render());
   search.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       focusRow(event.key === 'ArrowDown' ? 0 : rows.length - 1);
@@ -255,6 +256,7 @@ export function createFolderPicker({
   dialog.addEventListener(
     'keydown',
     (event) => {
+      if (event.isComposing) return;
       if (event.key === 'Escape' && !popup.hidden) {
         event.preventDefault();
         event.stopPropagation();

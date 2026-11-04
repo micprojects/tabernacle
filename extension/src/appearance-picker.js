@@ -173,6 +173,7 @@ export function createAppearancePicker({ group, container, state }) {
   search.addEventListener('input', filter);
   category.addEventListener('change', filter);
   search.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
     if (event.key === 'Enter') event.preventDefault();
     if (event.key === 'ArrowDown') {
       event.preventDefault();

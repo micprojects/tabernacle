@@ -1,7 +1,7 @@
 import { instrumentSource } from '../helpers/probes/folder-picker.js';
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { startUiTest } from '../helpers/ui-test.js';
+import { composingKey, startUiTest } from '../helpers/ui-test.js';
 
 const { page, close, base } = await startUiTest({
   viewport: { width: 360, height: 720 },
@@ -32,6 +32,18 @@ try {
   await destination.click();
   await expect(search).toBeFocused();
   await expect(folder('Home')).toHaveAttribute('aria-selected', 'true');
+  await search.fill('Research');
+  for (const key of ['ArrowDown', 'ArrowUp', 'Enter', 'Escape']) {
+    expect(await composingKey(search, key)).toBe(false);
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue('Research');
+    await expect(destination).toHaveText('Home');
+    await expect(tree).toBeVisible();
+    await expect(name).toHaveValue('Reading');
+  }
+  await search.fill('');
+  await search.press('ArrowDown');
+  await expect(folder('Home')).toBeFocused();
   await tree.getByRole('button', { name: 'Expand Work' }).click();
   await expect(folder('Design')).toBeVisible();
   await expect(destination).toHaveText('Home');

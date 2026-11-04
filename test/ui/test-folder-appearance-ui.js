@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { startUiTest } from '../helpers/ui-test.js';
+import { composingKey, startUiTest } from '../helpers/ui-test.js';
 
 const { page, base, close } = await startUiTest({ viewport: { width: 320, height: 820 } });
 
@@ -46,6 +46,15 @@ try {
   await page.getByRole('searchbox', { name: 'Find an icon' }).fill('holiday');
   await expect(choice('Plane')).toBeVisible();
   await expect(choice('Keyboard')).toBeHidden();
+  const iconSearch = page.getByRole('searchbox', { name: 'Find an icon' });
+  for (const key of ['Enter', 'ArrowDown']) {
+    expect(await composingKey(iconSearch, key)).toBe(false);
+    await expect(iconSearch).toBeFocused();
+    await expect(iconSearch).toHaveValue('holiday');
+    await expect(choice('Folder icon')).toHaveAttribute('aria-checked', 'true');
+  }
+  await iconSearch.press('ArrowDown');
+  await expect(choice('Plane')).toBeFocused();
   await choice('Plane').click();
   await choice('Purple').click();
   await expect(page.locator('.appearance-sample svg')).toHaveAttribute('data-icon', 'plane-16');
