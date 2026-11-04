@@ -448,7 +448,7 @@ const refreshScheduler = createRefreshScheduler({
       if (disposed) return;
       settingsState = next;
       acceptLook(next.look, next);
-      newTabSettings.accept(next.newTab);
+      newTabSettings.accept(next.newTab, next);
       $('appearance-fields').disabled = false;
       errorAt('page-error');
       if (!$('containers').hidden) await loadContainers();
@@ -543,7 +543,7 @@ async function start() {
   $('extension-version').textContent = `Version ${manifest.version}`;
   settingsState = await request('getSettings');
   acceptLook(settingsState.look, settingsState);
-  newTabSettings.accept(settingsState.newTab);
+  newTabSettings.accept(settingsState.newTab, settingsState);
   $('appearance-fields').disabled = false;
   navigate();
 }

@@ -119,12 +119,62 @@ try {
     await dragLink('reorder-0', 'reorder-1', false);
     await reorder.locator('#new-tab-discard').click();
     expect(await linkOrder()).toEqual(['reorder-1', 'reorder-2', 'reorder-0']);
+
+    // A delayed read cannot replace a completed save, even when the next read fails.
+    await reorder.evaluate(async () => {
+      const controller = await window.tabernacleDemoSession.ready;
+      const send = controller.request.bind(controller);
+      window.staleSettings = { hold: true, fail: false, send };
+      controller.request = async (message) => {
+        if (message.type === 'getSettings') {
+          if (staleSettings.fail) throw new Error('Temporary follow-up read failure');
+          if (staleSettings.hold) {
+            staleSettings.hold = false;
+            const value = await send(message);
+            await new Promise((resolve) => (staleSettings.release = resolve));
+            return value;
+          }
+        }
+        return send(message);
+      };
+      window.dispatchEvent(new Event('focus'));
+    });
+    await reorder.waitForFunction(() => Boolean(staleSettings.release));
+    await reorder.locator('#nt-style').selectOption('list');
+    await reorder.locator('#new-tab-save').click();
+    await expect(reorder.locator('#new-tab-status')).toHaveText('All changes saved');
+    await reorder.locator('[name="showSearch"]').uncheck();
+    await reorder.evaluate(() => {
+      staleSettings.fail = true;
+      staleSettings.release();
+    });
+    await expect(reorder.locator('#page-error')).toHaveText('Temporary follow-up read failure');
+    await expect(reorder.locator('#nt-style')).toHaveValue('list');
+    await expect(reorder.locator('[name="showSearch"]')).not.toBeChecked();
+    await expect(reorder.locator('#new-tab-status')).toHaveText('Unsaved changes');
+    await reorder.locator('#new-tab-discard').click();
+    await expect(reorder.locator('#nt-style')).toHaveValue('list');
+    await expect(reorder.locator('[name="showSearch"]')).toBeChecked();
+    await reorder.evaluate(async () => {
+      (await window.tabernacleDemoSession.ready).request = staleSettings.send;
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect(reorder.locator('#page-error')).toBeHidden();
+    await expect(reorder.locator('#nt-style')).toHaveValue('list');
+    expect(
+      await reorder.evaluate(
+        async () =>
+          (await staleSettings.send({ type: 'getSettings', windowId: 1 })).newTab.linkStyle,
+      ),
+    ).toBe('list');
+    expect(await linkOrder()).toEqual(['reorder-1', 'reorder-2', 'reorder-0']);
   } finally {
     await reorderContext.close();
   }
   console.log(
     '✓ Keyboard and pointer link reordering reach both list ends and retain identity, saved order and drafts',
   );
+  console.log('✓ Delayed Settings reads preserve newer saved choices and unrelated drafts');
   const source = await readFile('extension/src/new-tab-page.js', 'utf8');
   await page.context().route('**/extension/src/new-tab-page.js', (route) =>
     route.fulfill({

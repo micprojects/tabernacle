@@ -7,7 +7,9 @@ export function createNewTabSettings({ request, demo }) {
   const form = $('new-tab-form');
   const fields = form.elements;
   const dirty = new Set();
+  const retiredGenerations = new Set();
   let saved,
+    savedState,
     draft,
     saving = false,
     disposed = false,
@@ -182,7 +184,17 @@ export function createNewTabSettings({ request, demo }) {
     status();
   }
 
-  function accept(value) {
+  function accept(value, next) {
+    // Reads may arrive after a newer save, including from a retired background.
+    if (
+      next?.generation &&
+      (retiredGenerations.has(next.generation) ||
+        (next.generation === savedState?.generation && next.revision < savedState.revision))
+    )
+      return;
+    if (savedState?.generation && next?.generation && savedState.generation !== next.generation)
+      retiredGenerations.add(savedState.generation);
+    savedState = next && { generation: next.generation, revision: next.revision };
     saved = normalizeNewTab(value);
     draft ??= structuredClone(saved);
     for (const [key, value] of Object.entries(saved)) {
@@ -227,7 +239,7 @@ export function createNewTabSettings({ request, demo }) {
         throw new Error('Use Find location to allow weather access first.');
       const value = Object.fromEntries([...dirty].map((key) => [key, draft[key]]));
       const result = await request('setNewTab', { value });
-      if (!disposed) accept(result.newTab);
+      if (!disposed) accept(result.newTab, result);
     } catch (error) {
       if (!disposed) errorAt('new-tab-error', error);
     } finally {
@@ -354,7 +366,7 @@ export function createNewTabSettings({ request, demo }) {
       await browser.permissions.remove(WEATHER_ACCESS);
       const result = await request('setNewTab', { value: { weatherEnabled: false } });
       change('weatherEnabled', false);
-      accept(result.newTab);
+      accept(result.newTab, result);
       $('nt-location-status').textContent = 'Weather access removed.';
     } catch (error) {
       errorAt('nt-weather-error', error);

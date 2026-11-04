@@ -215,6 +215,86 @@ try {
     '✓ Settings section changes close idle editors and preserve an in-progress container save',
   );
 
+  for (const restart of [false, true]) {
+    const before = (await send('getSettings')).newTab;
+    await call(`
+      const send = browser.runtime.sendMessage.bind(browser.runtime);
+      window.staleSettings = { hold:true, fail:false, send, restore:()=>browser.runtime.sendMessage=send };
+      browser.runtime.sendMessage = async message => {
+        if (message.type === 'tabernacle:getSettings') {
+          if (staleSettings.fail) return {ok:false,error:'Temporary follow-up read failure'};
+          if (staleSettings.hold) {
+            staleSettings.hold=false;
+            const value=await send(message);
+            staleSettings.read=value.data;
+            await new Promise(resolve=>staleSettings.release=resolve);
+            return value;
+          }
+        }
+        const value=await send(message);
+        if (message.type === 'tabernacle:setNewTab') staleSettings.saved=value.data;
+        return value;
+      };
+      window.dispatchEvent(new Event('focus'));
+    `);
+    await driver.wait(() => call('return Boolean(staleSettings.release);'), 10000);
+    if (restart) {
+      await driver.setContext(firefox.Context.CHROME);
+      await driver.wait(
+        () =>
+          driver.executeAsyncScript(
+            `
+            const done=arguments[arguments.length-1];
+            const extension=WebExtensionPolicy.getByID(arguments[0]).extension;
+            extension.terminateBackground().then(()=>done(extension.backgroundState==='stopped'),()=>done(false));
+          `,
+            addonId,
+          ),
+        10000,
+      );
+      await driver.setContext(firefox.Context.CONTENT);
+    }
+    await driver.findElement(By.css('#nt-style option[value="list"]')).click();
+    await driver.findElement(By.id('new-tab-save')).click();
+    await driver.wait(
+      () =>
+        call(
+          "return Boolean(staleSettings.saved) && document.getElementById('new-tab-status').textContent==='All changes saved';",
+        ),
+      10000,
+    );
+    assert.equal(
+      await call('return staleSettings.saved.generation !== staleSettings.read.generation;'),
+      restart,
+    );
+    await call('staleSettings.fail=true;staleSettings.release();');
+    await driver.wait(
+      () =>
+        call(
+          "return document.getElementById('page-error').textContent==='Temporary follow-up read failure';",
+        ),
+      10000,
+    );
+    assert.equal(await driver.findElement(By.id('nt-style')).getAttribute('value'), 'list');
+    assert.equal(await driver.findElement(By.id('new-tab-status')).getText(), 'All changes saved');
+    await call("staleSettings.restore();window.dispatchEvent(new Event('focus'));");
+    await driver.wait(() => call("return document.getElementById('page-error').hidden;"), 10000);
+    assert.deepEqual((await send('getSettings')).newTab, { ...before, linkStyle: 'list' });
+    await driver.navigate().refresh();
+    await driver.wait(
+      async () => (await driver.findElement(By.id('nt-style')).getAttribute('value')) === 'list',
+      10000,
+    );
+    assert.deepEqual((await send('getSettings')).newTab, { ...before, linkStyle: 'list' });
+    await send('setNewTab', { value: before });
+    await driver.wait(
+      async () =>
+        (await driver.findElement(By.id('nt-style')).getAttribute('value')) === before.linkStyle,
+      10000,
+    );
+  }
+  console.log('✓ Delayed Settings reads cannot revert new-tab saves across background restarts');
+
   await driver.findElement(By.id('new-tab-add-link')).click();
   await driver.findElement(By.id('nt-link-name')).sendKeys('Example');
   await driver.findElement(By.id('nt-link-url')).sendKeys('example.com:443/path?q=test#section');
