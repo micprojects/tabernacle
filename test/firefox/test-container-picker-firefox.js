@@ -129,6 +129,65 @@ try {
   console.log(
     '✓ Native Firefox searches, preserves the current marker and reopens only on confirmation',
   );
+  for (const width of [220, 240]) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const actual = await session.evaluate(() => innerWidth);
+      if (actual === width) break;
+      await session.chrome((delta) => {
+        const box = document.getElementById('sidebar-box');
+        box.style.width = `${parseFloat(box.style.width) + delta}px`;
+      }, width - actual);
+      await session.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      );
+    }
+    assert.equal(await session.evaluate(() => innerWidth), width);
+    const summary = await session.evaluate(async () => {
+      const { waitFor } = window.containerPickerTest;
+      document.querySelector('#new-group').click();
+      await waitFor(() => document.activeElement?.id === 'dialog-input');
+      const input = document.querySelector('#dialog-input');
+      input.value = 'Narrow folder';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const details = document.querySelector('.group-container-details');
+      const name = details.querySelector('.container-name');
+      const note = details.querySelector('.group-container-note');
+      const text = note.firstChild;
+      const wholeWords = [...text.textContent.matchAll(/\S+/g)].every((word) => {
+        const range = document.createRange();
+        range.setStart(text, word.index);
+        range.setEnd(text, word.index + word[0].length);
+        return range.getClientRects().length === 1;
+      });
+      const result = {
+        name: name.textContent,
+        nameFits: name.scrollWidth <= name.clientWidth,
+        wholeWords,
+      };
+      document.querySelector('#change-group-container').click();
+      await waitFor(() => document.querySelector('.group-container-choice'));
+      [...document.querySelectorAll('.group-container-choice')]
+        .find((item) => item.textContent === 'projects')
+        .click();
+      await waitFor(() => document.activeElement?.id === 'change-group-container');
+      result.selected = document.querySelector(
+        '.group-container-details .container-name',
+      ).textContent;
+      result.draft = document.querySelector('#dialog-input').value;
+      document.querySelector('#dialog-cancel').click();
+      return result;
+    });
+    assert.deepEqual(summary, {
+      name: 'No container',
+      nameFits: true,
+      wholeWords: true,
+      selected: 'projects',
+      draft: 'Narrow folder',
+    });
+  }
+  console.log(
+    '✓ Native narrow folder summaries remain readable and retain container selection and focus',
+  );
 } finally {
   await session.close();
 }

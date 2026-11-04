@@ -431,6 +431,14 @@ dialog .group-container-help {
   outline-offset: -1px;
 }
 @media (max-width: 270px) {
+  .group-container-summary {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .group-container-change {
+    grid-column: 2;
+    justify-self: start;
+  }
   header {
     padding-left: 10px;
     padding-right: 10px;

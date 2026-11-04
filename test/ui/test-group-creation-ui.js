@@ -291,6 +291,44 @@ try {
   console.log(
     '✓ Narrow dark dialogs fit, late list responses cannot replace the group form, and new drafts reset',
   );
+  for (const width of [220, 240]) {
+    await page.setViewportSize({ width, height: 360 });
+    await page.locator('#new-group').click();
+    await name.fill('Narrow folder');
+    await chooseDestination('Home');
+    const summary = page.locator('.group-container-summary');
+    const details = summary.locator('.group-container-details');
+    await expect(details.locator('.container-name')).toHaveText('No container');
+    expect(
+      await details
+        .locator('.container-name')
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    expect(
+      await details.locator('.group-container-note').evaluate((node) => {
+        const text = node.firstChild;
+        return [...text.textContent.matchAll(/\S+/g)].every((word) => {
+          const range = document.createRange();
+          range.setStart(text, word.index);
+          range.setEnd(text, word.index + word[0].length);
+          return range.getClientRects().length === 1;
+        });
+      }),
+    ).toBe(true);
+    await change.focus();
+    await page.keyboard.press('Enter');
+    await button('Work').click();
+    await expect(change).toBeFocused();
+    await expect(details.locator('.container-name')).toHaveText('Work');
+    await expect(name).toHaveValue('Narrow folder');
+    expect(await summary.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+  }
+  expect(errors).toEqual([]);
+  console.log(
+    '✓ Narrow container summaries keep short names and words readable and retain keyboard selection',
+  );
 } catch (error) {
   await page.screenshot({ path: 'test-results/group-creation-failure.png' });
   throw error;
