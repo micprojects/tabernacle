@@ -151,7 +151,7 @@ try {
     ['new-tab.html', 'getNewTabState'],
   ]) {
     await page.goto(`${base}/extension/${path}`);
-    const rows = page.locator(path === 'activity.html' ? '.activity-row' : '#folders .folder');
+    const rows = page.locator(path === 'activity.html' ? '.activity-row' : '#links a');
     await expect(rows.first()).toBeVisible();
     const first = await page.evaluate(() => transportFixture.replies.at(-1));
     expect(first).toMatchObject({ type, incremental: 3, full: true, hasGroups: true });
@@ -263,7 +263,7 @@ try {
           transportFixture.notify();
           return text;
         },
-        { selected, selector: path === 'activity.html' ? '.activity-row' : '#folders .folder' },
+        { selected, selector: path === 'activity.html' ? '.activity-row' : '#links a' },
       );
       await expect(rows).toHaveCount(selected ? rowCount : 0);
       if (selected) {

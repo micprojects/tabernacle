@@ -14,17 +14,18 @@
       <div class="brand">
         <img src="icons/tabernacle.svg" alt="" width="30" height="30" />Tabernacle
       </div>
-      <button id="customise" class="page-button">
-        <span data-icon="settings"></span>Customise
-      </button>
+      <div class="page-tools">
+        <aside id="weather" aria-label="Weather" hidden></aside>
+        <button id="customise" class="page-button">
+          <span data-icon="settings"></span>Customise
+        </button>
+      </div>
     </div>
     <main id="new-tab-content">
       <div class="intro">
-        <div>
-          <p id="date" class="date"></p>
-          <h1>New tab</h1>
-        </div>
-        <aside id="weather" aria-label="Weather" hidden></aside>
+        <h1 class="sr-only">New tab</h1>
+        <time id="clock" aria-label="Current time"></time>
+        <p id="date" class="date"></p>
       </div>
       <p id="preview-notice" class="notice" hidden>
         Preview of your settings. This does not change Firefox’s new tab page.
@@ -38,6 +39,7 @@
             id="search"
             type="search"
             aria-label="Search the web or your tabs"
+            aria-describedby="search-help"
             placeholder="Search the web or your tabs…"
             autocomplete="off"
             maxlength="2048"
@@ -45,7 +47,7 @@
             <span data-icon="enter"></span>
           </button>
         </form>
-        <p class="search-help">
+        <p id="search-help" class="sr-only">
           Enter searches the web with your Firefox search engine, or opens a website address.
         </p>
         <div id="search-results" hidden>
@@ -54,29 +56,19 @@
           <div id="search-matches"></div>
         </div>
       </section>
-      <section id="links-section" class="page-section" hidden>
-        <div class="section-heading">
-          <h2>Favourite links</h2>
-          <button id="edit-links" class="text-button">Edit</button>
-        </div>
+      <section id="links-section" class="page-section" aria-labelledby="links-title" hidden>
+        <h2 id="links-title" class="sr-only">Favourite links</h2>
         <div id="links" class="links"></div>
       </section>
-      <section id="folders-section" class="page-section" hidden>
+      <section id="recent-section" class="page-section" aria-labelledby="recent-title" hidden>
         <div class="section-heading">
-          <h2>Your folders</h2>
-          <button id="all-folders" class="text-button" aria-expanded="false">View all</button>
+          <h2 id="recent-title" tabindex="-1">Recently closed</h2>
+          <button id="all-recent" class="text-button" aria-expanded="false" aria-controls="recent">
+            View all
+          </button>
         </div>
-        <div id="folders" class="folders"></div>
+        <div id="recent"></div>
       </section>
-      <div class="lower-sections">
-        <section id="recent-section" class="page-section" hidden>
-          <div class="section-heading">
-            <h2>Recently closed</h2>
-            <button id="all-recent" class="text-button" aria-expanded="false">View all</button>
-          </div>
-          <div id="recent"></div>
-        </section>
-      </div>
       <p id="page-status" role="status" class="status"></p>
     </main>
   </body>

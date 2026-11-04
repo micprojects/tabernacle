@@ -419,12 +419,14 @@ $('shortcut-settings').addEventListener('click', async () => {
 });
 
 function navigate(focus = false) {
-  const sections = ['appearance', 'new-tab', 'containers', 'backup', 'shortcuts', 'about'];
-  const section = sections.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'appearance';
+  const sections = ['appearance', 'features', 'containers', 'backup', 'shortcuts', 'about'];
+  // Keep bookmarks and existing Customise links to the old section working.
+  const requested = location.hash.slice(1) === 'new-tab' ? 'features' : location.hash.slice(1);
+  const section = sections.includes(requested) ? requested : 'appearance';
   for (const id of sections) $(id).hidden = id !== section;
   if (section !== 'appearance' && $('appearance-confirm').open)
     $('appearance-confirm').close('cancel');
-  if (section !== 'new-tab' && $('new-tab-link-editor').open) $('new-tab-link-editor').close();
+  if (section !== 'features' && $('new-tab-link-editor').open) $('new-tab-link-editor').close();
   if (section !== 'containers' && $('container-editor').open && !savingContainer) closeEditor();
   for (const link of document.querySelectorAll('nav a')) {
     if (link.hash === `#${section}`) link.setAttribute('aria-current', 'page');
@@ -529,9 +531,9 @@ async function start() {
       if (
         message.type === 'tabernacle:showSettingsSection' &&
         message.tabId === tab.id &&
-        message.section === 'new-tab'
+        ['features', 'new-tab'].includes(message.section)
       )
-        location.hash = 'new-tab';
+        location.hash = message.section;
     };
 
     browser.runtime.onMessage.addListener(changed);

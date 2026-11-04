@@ -37,7 +37,8 @@ export async function openInternalPage(api, page, windowId, { claimingTabId, sec
       }
     }
   }
-  const suffix = page === 'settings' && section === 'new-tab' ? '#new-tab' : '';
+  const suffix =
+    page === 'settings' && ['features', 'new-tab'].includes(section) ? `#${section}` : '';
   tab ??= await api.tabs.create({
     windowId,
     url: api.runtime.getURL(paths[page]) + suffix,

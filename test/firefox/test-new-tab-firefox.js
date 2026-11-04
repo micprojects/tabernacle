@@ -43,7 +43,29 @@ try {
   assert.equal((await send('getSettings')).newTab.enabled, false);
   const nativeHome = await call('return browser.tabs.create({active:false});');
   await send('snapshot');
-  await send('setNewTab', { value: { enabled: true } });
+  await driver.get(`${root}settings.html#features`);
+  await driver.wait(
+    () => driver.findElement(By.css('#features input[name="enabled"]')).isEnabled(),
+    10000,
+  );
+  assert.equal(
+    await driver.findElement(By.css('#features input[name="enabled"]')).isSelected(),
+    false,
+  );
+  await driver.findElement(By.css('#features input[name="enabled"]')).click();
+  await driver.findElement(By.id('new-tab-save')).click();
+  await driver.wait(
+    async () =>
+      (await driver.findElement(By.id('new-tab-status')).getText()) === 'All changes saved',
+    10000,
+  );
+  await driver.navigate().refresh();
+  await driver.wait(
+    () => driver.findElement(By.css('#features input[name="enabled"]')).isSelected(),
+    10000,
+  );
+  await driver.get(`${root}new-tab.html?preview=1`);
+  await driver.wait(async () => !(await driver.findElement(By.id('loading')).isDisplayed()), 10000);
   const nativeDuplicate = await call(
     'return browser.tabs.duplicate(arguments[0], {active:false});',
     nativeHome.id,
@@ -150,7 +172,7 @@ try {
     10000,
   );
   await driver.switchTo().window(settingsHandle);
-  assert.equal(await driver.getCurrentUrl(), `${root}settings.html#new-tab`);
+  assert.equal(await driver.getCurrentUrl(), `${root}settings.html#features`);
   await driver.wait(
     async () => await driver.findElement(By.id('new-tab-add-link')).isEnabled(),
     10000,
@@ -173,7 +195,10 @@ try {
     const destination = external ? 'new-tab' : 'appearance';
     await driver.wait(() => driver.findElement(By.id(destination)).isDisplayed(), 10000);
     assert.equal(await call('return document.getElementById(arguments[0]).open;', dialog), false);
-    assert.equal(await call('return document.activeElement.id;'), `${destination}-title`);
+    assert.equal(
+      await call('return document.activeElement.id;'),
+      `${external ? 'features' : destination}-title`,
+    );
     await driver.findElement(By.css('nav a[href="#about"]')).click();
     await driver.wait(() => driver.findElement(By.id('about')).isDisplayed(), 10000);
   }
@@ -706,6 +731,50 @@ try {
   const navigated = (await send('snapshot')).tabs.find((item) => item.id === tab.id);
   assert.equal(navigated.groupId, group.createdGroupId);
   assert.equal(navigated.cookieStoreId, container.cookieStoreId);
+  const toClose = await send('newTab', { groupId: group.createdGroupId });
+  const closedUrl = 'https://example.com/?closed-from-new-tab=1';
+  await call(
+    'await browser.tabs.update(arguments[0], {url:arguments[1], active:false});',
+    toClose.createdTabId,
+    closedUrl,
+  );
+  await driver.wait(async () => {
+    const tab = await call('return browser.tabs.get(arguments[0]);', toClose.createdTabId);
+    return tab.url === closedUrl && tab.status === 'complete';
+  }, 15000);
+  await send('snapshot');
+  await send('closeTab', { id: toClose.createdTabId });
+  let closure;
+  await driver.wait(
+    async () => {
+      closure = (await send('snapshot')).recentlyClosed.find((item) => item.url === closedUrl);
+      return Boolean(closure);
+    },
+    10000,
+    'Firefox must record the closed tab before it can be restored',
+  );
+  await driver.switchTo().window(activeHandle);
+  await driver.navigate().refresh();
+  const closedRow = By.css(`[data-key="closed-${closure.sessionId}"]`);
+  await driver.wait(async () => {
+    const rows = await driver.findElements(closedRow);
+    return rows.length > 0 && (await rows[0].isDisplayed());
+  }, 10000);
+  assert.equal((await driver.findElements(By.id('folders-section'))).length, 0);
+  assert.equal(await driver.findElement(By.css('.recent-day-heading')).getText(), 'Today');
+  await driver.findElement(closedRow).click();
+  let restored;
+  await driver.wait(async () => {
+    restored = (await send('snapshot')).tabs.find((item) => item.url === closedUrl);
+    return Boolean(restored);
+  }, 10000);
+  assert.equal(restored.groupId, group.createdGroupId);
+  assert.equal(restored.cookieStoreId, container.cookieStoreId);
+  assert.equal(
+    (await send('snapshot')).recentlyClosed.some((item) => item.sessionId === closure.sessionId),
+    false,
+  );
+  console.log('✓ Grouped recently closed list restores the original folder and Firefox container');
   const blank = await call('return browser.tabs.create({url:"about:blank",active:false});');
   assert.equal((await call('return browser.tabs.get(arguments[0]);', blank.id)).url, 'about:blank');
   // A different extension's native override must win over the optional redirect.
@@ -740,7 +809,33 @@ try {
     10000,
   );
   await driver.uninstallAddon(otherId);
-  await send('setNewTab', { value: { enabled: false } });
+  await driver.switchTo().window(settingsHandle);
+  await call("location.hash = 'features';");
+  await driver.wait(
+    () => driver.findElement(By.css('#features input[name="enabled"]')).isDisplayed(),
+    10000,
+  );
+  assert.equal(
+    await driver.findElement(By.css('#features input[name="enabled"]')).isSelected(),
+    true,
+  );
+  await driver.findElement(By.css('#features input[name="enabled"]')).click();
+  await driver.findElement(By.id('new-tab-save')).click();
+  await driver.wait(
+    async () =>
+      (await driver.findElement(By.id('new-tab-status')).getText()) === 'All changes saved',
+    10000,
+  );
+  await driver.navigate().refresh();
+  await driver.wait(
+    () => driver.findElement(By.css('#features input[name="enabled"]')).isEnabled(),
+    10000,
+  );
+  assert.equal(
+    await driver.findElement(By.css('#features input[name="enabled"]')).isSelected(),
+    false,
+  );
+  await driver.switchTo().window(activeHandle);
   const off = await call('return browser.tabs.create({active:false});');
   await driver.wait(
     async () =>

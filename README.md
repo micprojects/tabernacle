@@ -11,6 +11,7 @@ Tabernacle is a Firefox extension I made to help me navigate and organise my tab
 - Choose Automatic, Light or Dark colour mode for the neutral appearance.
 - Access pinned tabs and folders, mute audio and reopen recently closed tabs.
 - Revisit viewed tabs, recently opened folders and closed tabs in one searchable timeline.
+- Optionally use Tabernacle’s new tab page for a clock, favourite links, search and closed tabs grouped by day. Enable it in Settings → Features; it is off by default.
 
 Requires Firefox 142 or newer.
 

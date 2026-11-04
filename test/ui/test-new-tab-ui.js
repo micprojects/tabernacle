@@ -182,7 +182,10 @@ try {
       body: instrumentSource(source),
     }),
   );
-  await page.goto(`${base}/extension/settings.html?demo#new-tab`);
+  await page.goto(`${base}/extension/settings.html?demo`);
+  await page.getByRole('link', { name: 'Features', exact: true }).click();
+  await expect(page.locator('#features')).toBeVisible();
+  await expect(page.locator('nav a[aria-current]')).toHaveText('Features');
   await expect(page.locator('#new-tab-fields')).toBeEnabled();
   const compositionLocation = page.locator('#nt-location-query');
   await compositionLocation.fill('東京');
@@ -193,7 +196,7 @@ try {
   await compositionLocation.press('Enter');
   await expect(page.locator('#nt-weather-error')).toContainText('Install Tabernacle');
   await compositionLocation.fill('');
-  await expect(page.locator('[name="showLater"]')).toHaveCount(0);
+  await expect(page.locator('[name="showLater"], [name="showFolders"]')).toHaveCount(0);
   await expect(page.getByRole('switch')).not.toBeChecked();
   await expect(page.locator('#new-tab-links')).toContainText('Add the websites');
 
@@ -256,8 +259,8 @@ try {
   await expect(preview.locator('#search-matches')).toContainText('Figma');
   await preview.getByLabel('Search the web or your tabs', { exact: true }).press('Escape');
   await expect(preview.locator('#search-results')).toBeHidden();
-  await preview.locator('#all-folders').click();
-  await expect(preview.locator('.folder')).toHaveCount(5);
+  await expect(preview.locator('#folders-section')).toHaveCount(0);
+  await expect(preview.locator('#clock')).toHaveText(/\d{2}:\d{2}/);
   await preview.getByLabel('Search the web or your tabs', { exact: true }).fill('Figma');
   await preview.evaluate(() => {
     window.lifecycleHidden = true;
@@ -271,7 +274,7 @@ try {
   });
   await expect(preview.locator('#links')).toHaveClass(/list-style/);
   await expect(preview.locator('#links a')).toHaveText(['GitHub', 'MDN']);
-  await expect(preview.locator('.folder')).toHaveCount(5);
+  await expect(preview.locator('#folders-section')).toHaveCount(0);
   await expect(preview.getByLabel('Search the web or your tabs', { exact: true })).toHaveValue(
     'Figma',
   );
@@ -280,8 +283,7 @@ try {
   await preview.evaluate(() => {
     delete document.hidden;
   });
-  await preview.locator('#all-folders').click();
-  await expect(preview.locator('.folder')).toHaveCount(3);
+
   await page.locator('#new-tab-discard').click();
   await expect(page.locator('#nt-style')).toHaveValue('icons');
   await page.getByLabel('Show weather', { exact: true }).check();
@@ -297,11 +299,12 @@ try {
   const live = await liveOpened;
   await expect(live.locator('#links a')).toHaveCount(2);
   await page.locator('#nt-colour').selectOption('dark');
-  await page.locator('[name=showFolders]').uncheck();
+  await page.locator('[name=showRecent]').uncheck();
   await page.locator('#new-tab-save').click();
   await live.bringToFront();
   await expect(live.locator('html')).toHaveAttribute('data-color-scheme', 'dark');
-  await expect(live.locator('#folders-section')).toBeHidden();
+  await expect(live.locator('#recent-section')).toBeHidden();
+  await expect(live.locator('#recent .entry')).toHaveCount(0);
   for (const [width, height] of [
     [1440, 960],
     [720, 900],
@@ -320,7 +323,7 @@ try {
   await page.screenshot({ path: 'test-results/new-tab-settings-320.png', fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.locator('#nt-colour').selectOption('light');
-  await page.locator('[name=showFolders]').check();
+  await page.locator('[name=showRecent]').check();
   await page.locator('#new-tab-save').click();
   await live.setViewportSize({ width: 1440, height: 960 });
   await live.bringToFront();
@@ -373,11 +376,20 @@ try {
       return result;
     };
   });
+  const folderQuery = await live.evaluate(
+    async () =>
+      (
+        await (
+          await window.tabernacleDemoSession.ready
+        ).request({ type: 'getNewTabState', windowId: 1 })
+      ).groups[0].name,
+  );
+  await live.locator('#search').fill(folderQuery);
   for (const input of ['pointer', 'Space']) {
-    const folder = live.locator('#folders .folder').first();
+    const folder = live.locator('#search-matches [data-key^="search-group-"]').first();
     await folder.focus();
     await live.evaluate(() => {
-      newTabPress.target = document.querySelector('#folders .folder');
+      newTabPress.target = document.querySelector('#search-matches [data-key^="search-group-"]');
       newTabPress.completed = 0;
       document.getElementById('page-status').textContent = '';
     });
@@ -400,10 +412,12 @@ try {
     if (input === 'pointer') await live.mouse.up();
     else await live.keyboard.up(input);
     await expect(live.locator('#page-status')).toContainText('Opened');
-    await expect(live.locator('#folders .folder').first()).toContainText(updatedName);
+    await expect(live.locator('#search-matches [data-key^="search-group-"]').first()).toContainText(
+      updatedName,
+    );
   }
   for (const release of ['pointercancel', 'blur', 'hidden']) {
-    const folder = live.locator('#folders .folder').first();
+    const folder = live.locator('#search-matches [data-key^="search-group-"]').first();
     const box = await folder.boundingBox();
     await live.evaluate(() => {
       document.addEventListener(
@@ -413,7 +427,7 @@ try {
           once: true,
         },
       );
-      newTabPress.target = document.querySelector('#folders .folder');
+      newTabPress.target = document.querySelector('#search-matches [data-key^="search-group-"]');
       newTabPress.completed = 0;
     });
     await live.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -438,7 +452,7 @@ try {
         delete document.hidden;
         document.dispatchEvent(new Event('visibilitychange'));
       });
-    await expect(live.locator('#folders .folder').first()).toBeVisible();
+    await expect(live.locator('#search-matches [data-key^="search-group-"]').first()).toBeVisible();
   }
   await live.evaluate(() => {
     newTabPress.restore();
@@ -561,6 +575,144 @@ try {
       `${tabCount + folderCount} matching tabs and folders${tabCount > 12 || folderCount > 6 ? '; showing the first matches' : ''}.`,
     );
   }
+
+  // Exercise calendar grouping and restoration independently of the current date.
+  await live.clock.setFixedTime(new Date(2026, 10, 4, 9, 41));
+  await live.locator('#search').fill('');
+  await live.evaluate(async () => {
+    const controller = await window.tabernacleDemoSession.ready;
+    const request = controller.request;
+    const now = Date.now();
+    const titles = [
+      'CSS grid layout',
+      'Nyhavn — Wikipedia',
+      'Copenhagen Metro',
+      'Louisiana Museum of Modern Art',
+      'Firefox release notes',
+      'A guide to web typography',
+      'Train times to Copenhagen',
+      'CSS container queries',
+      'Unknown time',
+      'Invalid time',
+    ];
+    const times = [
+      now - 5 * 60000,
+      now - 18 * 60000,
+      now - 3600000,
+      now - 7200000,
+      new Date(2026, 10, 3, 21, 14).getTime(),
+      new Date(2026, 10, 3, 19, 42).getTime(),
+      new Date(2026, 10, 3, 17, 6).getTime(),
+      new Date(2026, 10, 2, 16).getTime(),
+      0,
+      NaN,
+    ];
+    const probe = (window.recentPageProbe = {
+      items: titles.map((title, i) => ({
+        title,
+        sessionId: `recent-${i}`,
+        closedAt: times[i],
+        url: `https://example.com/${i}`,
+      })),
+      restored: [],
+      fail: true,
+      unavailable: false,
+      restore: () => (controller.request = request),
+    });
+    controller.request = async (message) => {
+      if (message.type === 'restoreClosedTab') {
+        if (probe.fail) throw new Error('Restore unavailable');
+        probe.restored.push(message.sessionId);
+        probe.items = probe.items.filter((item) => item.sessionId !== message.sessionId);
+        window.dispatchEvent(new Event('focus'));
+        return {};
+      }
+      const result = await request(message);
+      if (message.type === 'getNewTabState')
+        return {
+          ...result,
+          recentlyClosed: [...probe.items].reverse(),
+          recentlyClosedError: probe.unavailable,
+        };
+      return result;
+    };
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(live.locator('#clock')).toHaveText('09:41');
+  await expect(live.locator('#recent .entry')).toHaveCount(8);
+  await expect(live.locator('.recent-day-heading').nth(0)).toHaveText('Today');
+  await expect(live.locator('.recent-day-heading').nth(1)).toHaveText('Yesterday');
+  await expect(live.locator('.recent-title').first()).toHaveText('CSS grid layout');
+  await expect(live.locator('.recent-time').first()).toHaveText('5m ago');
+  await expect(live.locator('.recent-time').nth(4)).toHaveText('21:14');
+  await live.screenshot({ path: 'test-results/new-tab-grouped-light.png', fullPage: true });
+  await live.locator('#all-recent').click();
+  await expect(live.locator('#all-recent')).toHaveAttribute('aria-expanded', 'true');
+  await expect(live.locator('#recent .entry')).toHaveCount(10);
+  await expect(live.locator('.recent-day-heading').last()).toHaveText('Earlier');
+  await expect(live.locator('.recent-time').last()).toHaveText('');
+  await live.locator('#all-recent').click();
+  await expect(live.locator('#recent .entry')).toHaveCount(8);
+  const reopen = live.getByRole('button', { name: 'Reopen CSS grid layout', exact: true });
+  await reopen.focus();
+  await live.keyboard.press('Enter');
+  await expect(live.locator('#page-error')).toHaveText('Restore unavailable');
+  await expect(reopen).toBeFocused();
+  await expect(live.locator('#recent .entry')).toHaveCount(8);
+  await live.evaluate(() => {
+    recentPageProbe.fail = false;
+  });
+  await live.keyboard.press('Space');
+  await expect(reopen).toHaveCount(0);
+  expect(await live.evaluate(() => recentPageProbe.restored)).toEqual(['recent-0']);
+  await expect(
+    live.getByRole('button', { name: 'Reopen Nyhavn — Wikipedia', exact: true }),
+  ).toBeFocused();
+  await live.clock.setFixedTime(new Date(2026, 10, 5, 0, 1));
+  await live.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(live.locator('#clock')).toHaveText('00:01');
+  await expect(live.locator('.recent-day-heading').first()).toHaveText('Yesterday');
+  await expect(live.locator('.recent-time').first()).toHaveText('09:23');
+  await live.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await live.clock.setFixedTime(new Date(2026, 10, 5, 0, 2));
+  await expect(live.locator('#recent .entry')).toHaveCount(0);
+  await expect(live.locator('#clock')).toHaveText('00:01');
+  await live.evaluate(() => {
+    delete document.hidden;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(live.locator('#clock')).toHaveText('00:02');
+  await expect(live.locator('#recent .entry')).toHaveCount(8);
+  await live.setViewportSize({ width: 320, height: 900 });
+  await live.evaluate(() => (document.documentElement.dataset.colorScheme = 'dark'));
+  await expect
+    .poll(() => live.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await live.screenshot({ path: 'test-results/new-tab-grouped-dark-320.png', fullPage: true });
+  await live.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
+  await expect(live.locator('.recent-entry').first()).toBeVisible();
+  await expect
+    .poll(() => live.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await live.emulateMedia({ forcedColors: 'none' });
+  await live.evaluate(() => {
+    recentPageProbe.items = [];
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect(live.locator('#recent')).toHaveText('Tabs closed in this window appear here.');
+  await expect(live.locator('#all-recent')).toBeHidden();
+  await live.evaluate(() => {
+    recentPageProbe.unavailable = 'Read failed';
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect(live.locator('#recent')).toContainText('Recently closed tabs are unavailable');
+  await live.evaluate(() => recentPageProbe.restore());
+  console.log(
+    '✓ Recently closed: day groups, full list, unknown dates, midnight, keyboard restore/retry, focus, hidden lifecycle and forced colours',
+  );
 
   expect(errors).toEqual([]);
   console.log(

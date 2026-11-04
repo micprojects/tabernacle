@@ -42,6 +42,26 @@ test('concurrent Settings launches reuse one page across windows without resetti
   controller.dispose();
 });
 
+test('Features and legacy new-tab links reuse Settings across windows without reloading drafts', async () => {
+  const { api, controller, send } = setup();
+  const notices = [];
+  api.runtime.sendMessage = async (message) => notices.push(message);
+  const first = await send('openPage', { page: 'settings', section: 'features' });
+  assert.equal((await api.tabs.get(first.tabId)).url, `${getURL('settings.html')}#features`);
+  await api.tabs.update(first.tabId, { url: `${getURL('settings.html')}#appearance` });
+  for (const section of ['features', 'new-tab']) {
+    assert.deepEqual(await send('openPage', { page: 'settings', section, windowId: 2 }), first);
+    assert.equal((await api.tabs.get(first.tabId)).url, `${getURL('settings.html')}#appearance`);
+    assert.deepEqual(notices.at(-1), {
+      type: 'tabernacle:showSettingsSection',
+      tabId: first.tabId,
+      section,
+    });
+  }
+  assert.equal((await send('getSettings')).newTab.enabled, false);
+  controller.dispose();
+});
+
 test('History reuses its page only in the relevant window', async () => {
   const { api, controller, send } = setup();
   const first = await send('openPage', { page: 'activity' });

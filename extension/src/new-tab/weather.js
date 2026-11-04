@@ -52,7 +52,7 @@ export function createWeatherService(api, fetcher = fetch) {
 
   async function access() {
     if (!(await api.permissions.contains(WEATHER_ACCESS)))
-      throw new Error('Allow weather access in Settings → New tab.');
+      throw new Error('Allow weather access in Settings → Features.');
   }
 
   async function json(url) {

@@ -1,8 +1,8 @@
 import { createSnapshotReader } from './snapshot-transfer.js';
 import { icon } from './icons.js';
-import { folderIcon } from './folder-icons.js';
 import { groupPath } from './model.js';
-import { createFolderIndex } from './folder-index.js';
+import { activityDay, activityTime } from './activity-data.js';
+import { recentItems, recentActivityDays } from './recent-history.js';
 import { normalizeNewTab, isNewTabPage, searchAddress } from './new-tab/preferences.js';
 import { createRefreshScheduler } from './refresh-scheduler.js';
 import { weatherLabel } from './new-tab/weather.js';
@@ -115,10 +115,10 @@ function domain(url) {
 
 function settings() {
   if (demo) {
-    window.open(new URL('../settings.html?demo#new-tab', import.meta.url), 'tabernacle-settings');
+    window.open(new URL('../settings.html?demo#features', import.meta.url), 'tabernacle-settings');
     return;
   }
-  return request('openPage', { page: 'settings', section: 'new-tab' });
+  return request('openPage', { page: 'settings', section: 'features' });
 }
 
 async function openFolder(group) {
@@ -186,14 +186,70 @@ function renderSearch() {
     `${count} matching tabs and folders${foundTabs.length > 12 || groups.length > 6 ? '; showing the first matches' : ''}.`;
 }
 
-function showRows(id, items, limit, render, empty) {
-  const container = $(id);
-  container.replaceChildren(...(expanded.has(id) ? items : items.slice(0, limit)).map(render));
-  if (!items.length) container.append(el('p', 'empty', empty));
-  const toggle = $(`all-${id}`);
+function renderRecent(now = Date.now()) {
+  const container = $('recent');
+  container.replaceChildren();
+  if (!prefs().showRecent) return;
+  const items = recentItems(state, 'closed');
+  const limit = 8;
+  const shown = expanded.has('recent') ? items : items.slice(0, limit);
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  for (const [index, day] of recentActivityDays(shown).entries()) {
+    const section = el('section', 'recent-day');
+    const label = activityDay(day.timestamp, now);
+    const heading = el('h3', 'recent-day-heading', label);
+    heading.id = `recent-day-${index}`;
+    section.setAttribute('aria-labelledby', heading.id);
+    const list = el('div', 'recent-day-list');
+    for (const { items } of day.sessions) {
+      for (const item of items) {
+        const row = button(
+          `Reopen ${item.title}`,
+          'entry recent-entry',
+          () => request('restoreClosedTab', { sessionId: item.sessionId }),
+          `closed-${item.sessionId}`,
+        );
+        const time = el(
+          'time',
+          'recent-time',
+          item.timestamp
+            ? label === 'Today'
+              ? activityTime(item.timestamp, now)
+              : formatter.format(item.timestamp)
+            : '',
+        );
+        if (item.timestamp) {
+          time.dateTime = new Date(item.timestamp).toISOString();
+          time.title = new Date(item.timestamp).toLocaleString();
+        }
+        row.title = [item.title, item.url, time.title].filter(Boolean).join('\n');
+        row.append(
+          favicon(item, 'entry-icon'),
+          el('span', 'recent-title', item.title),
+          el('span', 'recent-domain', item.detail),
+          time,
+          icon('undo'),
+        );
+        list.append(row);
+      }
+    }
+    section.append(heading, list);
+    container.append(section);
+  }
+  if (state.recentlyClosedError)
+    container.append(
+      el('p', 'error', 'Recently closed tabs are unavailable. Try reloading this page.'),
+    );
+  else if (!items.length)
+    container.append(el('p', 'empty', 'Tabs closed in this window appear here.'));
+  const toggle = $('all-recent');
   toggle.hidden = items.length <= limit;
-  toggle.textContent = expanded.has(id) ? 'Show fewer' : 'View all';
-  toggle.setAttribute('aria-expanded', String(expanded.has(id)));
+  toggle.textContent = expanded.has('recent') ? 'Show fewer' : 'View all';
+  toggle.setAttribute('aria-expanded', String(expanded.has('recent')));
 }
 
 function render() {
@@ -201,13 +257,13 @@ function render() {
   if (deferRender()) return;
   renderPending = false;
   const focused = document.activeElement?.dataset.key;
+  const recentIndex = [...$('recent').querySelectorAll('button')].indexOf(document.activeElement);
   const value = prefs();
   document.documentElement.dataset.colorScheme =
     value.colorScheme === 'inherit' ? state.look.colorScheme : value.colorScheme;
   $('loading').hidden = true;
   $('links-section').hidden = false;
   $('search-section').hidden = !value.showSearch;
-  $('folders-section').hidden = !value.showFolders;
   $('recent-section').hidden = !value.showRecent;
   $('preview-notice').hidden = !params.has('preview') && !demo;
   if (demo)
@@ -223,13 +279,6 @@ function render() {
     if (!remainingDomains.size) break;
     const key = domain(tab.url);
     if (remainingDomains.delete(key)) tabsByDomain.set(key, tab);
-  }
-  const folderIndex = createFolderIndex(state);
-  const counts = new Map();
-  for (const tab of available) counts.set(tab.groupId, (counts.get(tab.groupId) || 0) + 1);
-  for (const group of [...folderIndex.order].reverse()) {
-    const parent = folderIndex.parents.get(group.id);
-    counts.set(parent, (counts.get(parent) || 0) + (counts.get(group.id) || 0));
   }
   $('links').classList.toggle('list-style', value.linkStyle === 'list');
   $('links').replaceChildren(
@@ -247,50 +296,7 @@ function render() {
   plus.append(icon('plus'));
   add.append(plus, el('span', 'site-label', 'Add link'));
   $('links').append(add);
-  const pinned = new Set(state.folderPins.map((item) => item.id));
-  const groups = [...state.groups].sort(
-    (a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)),
-  );
-  showRows(
-    'folders',
-    groups,
-    3,
-    (group) => {
-      const node = button(
-        `Open ${group.name} in the sidebar`,
-        'folder',
-        () => openFolder(group),
-        `folder-${group.id}`,
-      );
-      const art = el('span', 'folder-icon-wrap');
-      const details = folderIndex.details.get(group.id);
-      art.append(folderIcon(group, details.container, { state, appearance: details.appearance }));
-      const count = counts.get(group.id) || 0;
-      const copy = el('span', 'item-copy');
-      copy.append(
-        el('strong', '', group.name),
-        el('small', '', `${count} ${count === 1 ? 'tab' : 'tabs'}`),
-      );
-      node.append(art, copy, icon('chevron'));
-      return node;
-    },
-    'Folders you create in the sidebar appear here.',
-  );
-  showRows(
-    'recent',
-    state.recentlyClosed,
-    3,
-    (tab) =>
-      entry(
-        tab,
-        domain(tab.url),
-        () => request('restoreClosedTab', { sessionId: tab.sessionId }),
-        `closed-${tab.sessionId}`,
-      ),
-    state.recentlyClosedError
-      ? 'Recently closed tabs are unavailable. Try reloading this page.'
-      : 'Tabs closed in this window appear here.',
-  );
+  renderRecent();
   renderSearch();
   renderWeather();
   if (suspendedView) {
@@ -298,10 +304,17 @@ function render() {
     if (document.activeElement === document.body) restoreFocusToken(suspendedView.focus);
     suspendedView = undefined;
   }
-  if (focused)
-    [...document.querySelectorAll('[data-key]')]
-      .find((node) => node.dataset.key === focused)
-      ?.focus();
+  if (focused) {
+    const matching = [...document.querySelectorAll('[data-key]')].find(
+      (node) => node.dataset.key === focused,
+    );
+    const recentRows = [...$('recent').querySelectorAll('button')];
+    const fallback =
+      recentIndex >= 0
+        ? recentRows[Math.min(recentIndex, recentRows.length - 1)] || $('recent-title')
+        : null;
+    (matching || fallback)?.focus({ preventScroll: true });
+  }
 }
 
 function renderWeather() {
@@ -351,13 +364,14 @@ function renderWeather() {
   const current = el('div', 'weather-current');
   const location = el('div', 'weather-location');
   location.append(
-    el('strong', '', value.location.name),
+    el('strong', '', value.location.name.split(',')[0]),
     el(
       'span',
       '',
       `${weatherLabel(weatherData.code)} · High ${degrees(weatherData.high)} / Low ${degrees(weatherData.low)}`,
     ),
   );
+  current.title = `${value.location.name} · ${weatherLabel(weatherData.code)} · High ${degrees(weatherData.high)} / Low ${degrees(weatherData.low)}`;
   current.append(
     el(
       'span',
@@ -406,7 +420,6 @@ const scheduler = createRefreshScheduler({
 
 for (const node of document.querySelectorAll('[data-icon]')) node.append(icon(node.dataset.icon));
 $('customise').addEventListener('click', () => Promise.resolve(settings()).catch(error));
-$('edit-links').addEventListener('click', () => Promise.resolve(settings()).catch(error));
 $('search').addEventListener('input', renderSearch);
 $('search').addEventListener('keydown', (event) => {
   if (event.isComposing) return;
@@ -430,12 +443,11 @@ $('search-form').addEventListener('submit', async (event) => {
     error(err);
   }
 });
-for (const id of ['folders', 'recent'])
-  $(`all-${id}`).addEventListener('click', () => {
-    if (expanded.has(id)) expanded.delete(id);
-    else expanded.add(id);
-    render();
-  });
+$('all-recent').addEventListener('click', () => {
+  if (expanded.has('recent')) expanded.delete('recent');
+  else expanded.add('recent');
+  render();
+});
 
 async function start() {
   if (demo) {
@@ -529,14 +541,31 @@ async function start() {
 }
 
 function date() {
-  $('date').textContent = new Date().toLocaleDateString(undefined, {
+  const now = new Date();
+  $('clock').dateTime = now.toISOString();
+  $('clock').textContent = now.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  $('date').textContent = now.toLocaleDateString(undefined, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   });
 }
 
-date();
+let clockTimer;
+
+function updateClock() {
+  clearTimeout(clockTimer);
+  if (disposed || document.hidden) return;
+  date();
+  render();
+  clockTimer = setTimeout(updateClock, 60_000 - (Date.now() % 60_000));
+}
+
+updateClock();
 const timer = setInterval(() => {
   if (!document.hidden) {
     date();
@@ -556,6 +585,7 @@ function hasResultSelection() {
 }
 
 function suspend() {
+  clearTimeout(clockTimer);
   presses.clear();
   renderPending = false;
   viewGeneration++;
@@ -577,14 +607,14 @@ function suspend() {
   state = undefined;
   weatherKey = undefined;
   weatherData = null;
-  for (const id of ['links', 'folders', 'recent', 'search-matches']) $(id).replaceChildren();
+  for (const id of ['links', 'recent', 'search-matches']) $(id).replaceChildren();
   $('loading').hidden = false;
 }
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) suspend();
   else {
-    date();
+    updateClock();
     weatherKey = undefined;
     scheduler.schedule();
   }
