@@ -25,7 +25,7 @@ playwright-report/
 coverage/
 output/
 outputs/
-firefox/
+/firefox/
 design/
 mockups/
 plans/
@@ -50,3 +50,19 @@ SKILL.md
 
 # Retired exploratory previews.
 /preview/activity-mockups.*
+
+# Reviewed project instructions and reusable skills; generated skill notes stay local.
+!/AGENTS.md
+!/.agents/
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/tabernacle-benchmark/
+/.agents/skills/tabernacle-benchmark/*
+!/.agents/skills/tabernacle-benchmark/SKILL.md
+!/.agents/skills/tabernacle-optimise/
+/.agents/skills/tabernacle-optimise/*
+!/.agents/skills/tabernacle-optimise/SKILL.md
+!/.agents/skills/tabernacle-optimise/agents/
+/.agents/skills/tabernacle-optimise/agents/*
+!/.agents/skills/tabernacle-optimise/agents/openai.yaml
