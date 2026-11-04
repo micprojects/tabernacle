@@ -671,7 +671,14 @@ try {
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(work).toHaveAccessibleName('Work, 9 tabs');
-  check('Folder close confirms the total including subfolders; Cancel and Escape preserve tabs');
+  await openGroupClose(work);
+  await expect(page.locator('#dialog-icon')).toBeHidden();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(work).toHaveAccessibleName('Work, 9 tabs');
+  check(
+    'Folder close confirms the total; Cancel, Escape and the header close button preserve tabs',
+  );
 
   await page.evaluate(() => {
     window.failGroupClose = true;

@@ -42,6 +42,7 @@ export function createDialogs({
     choices,
     input = true,
     compact = false,
+    closeButton = false,
     label = 'Folder name',
     cancel = 'Cancel',
     content,
@@ -61,6 +62,7 @@ export function createDialogs({
     dialogContext = Symbol();
     dialogBusy = false;
     $('dialog').classList.toggle('compact-container-dialog', compact);
+    $('dialog').classList.toggle('dialog-with-close', closeButton);
     $('dialog').classList.remove(
       'folder-appearance-dialog',
       'picker-dialog',
@@ -68,7 +70,7 @@ export function createDialogs({
       'container-picker-dialog',
     );
     $('dialog').removeAttribute('aria-describedby');
-    $('dialog-close').hidden = true;
+    $('dialog-close').hidden = !closeButton;
     $('dialog-icon').replaceChildren(icon('groupPlus'));
     $('dialog-back').hidden = !onBack;
     $('dialog-back').replaceChildren(icon('back'), document.createTextNode(backLabel));
@@ -415,13 +417,13 @@ export function createDialogs({
       title: `Close all tabs in “${group.name}”?`,
       description: `Close ${count} in this folder and its subfolders in this window.${pinned ? ` This includes ${pinned} pinned ${pinned === 1 ? 'tab' : 'tabs'}.` : ''} The folders will stay.`,
       input: false,
+      closeButton: true,
       submit: `Close ${count}`,
 
       onSubmit: async () => {
         onChange(await request('closeGroupTabs', { id, tabIds: tabs.map((tab) => tab.id) }));
       },
     });
-    $('dialog-icon').replaceChildren(icon('close'));
     $('dialog-submit').disabled = tabs.length === 0;
     $('dialog-cancel').focus();
   }
@@ -435,13 +437,13 @@ export function createDialogs({
       title: 'Close tab and nested tabs?',
       description: `“${tabs[0].title || 'New tab'}” and its ${nested} nested ${nested === 1 ? 'tab' : 'tabs'} will close.${pinned ? ` This includes ${pinned} pinned ${pinned === 1 ? 'tab' : 'tabs'}.` : ''}`,
       input: false,
+      closeButton: true,
       submit: `Close ${tabs.length} tabs`,
 
       onSubmit: async () => {
         onChange(await request('closeTabTree', { id, tabIds: tabs.map((tab) => tab.id) }));
       },
     });
-    $('dialog-icon').replaceChildren(icon('close'));
     $('dialog-cancel').focus();
   }
 

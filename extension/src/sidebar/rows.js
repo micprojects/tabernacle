@@ -43,6 +43,7 @@ export function createSidebarRows({
   count,
   selectRow,
   closeTab,
+  getCloseTabTreeDialog,
   activateTab,
   getTreeRenderer,
   moveTreeFocus,
@@ -315,7 +316,9 @@ export function createSidebarRows({
     if (event.button !== 1 || target?.kind !== 'tab' || !currentRow(target)) return;
     event.preventDefault();
     event.stopPropagation();
-    closeTab(target.id);
+    // Use the visible fold: search results and pins do not hide a branch.
+    if (target.row.getAttribute('aria-expanded') === 'false') getCloseTabTreeDialog()(target.id);
+    else closeTab(target.id);
   });
 
   tree.addEventListener('click', (event) => {

@@ -193,6 +193,77 @@ try {
     '✓ Native middle click and close button promote the first child, preserve descendants and support undo',
   );
 
+  console.log('Tab close: checking collapsed middle-click confirmation');
+  const collapsedBranch = await browser.evaluate(async (groupId) => {
+    const parent = (await window.closeCheckSend('newTab', { groupId })).createdTabId;
+    const newChild = async (id) =>
+      (await window.closeCheckSend('newChildTab', { id })).tabs.find((tab) => tab.active).id;
+    const child = await newChild(parent);
+    const grandchild = await newChild(child);
+    const sibling = await newChild(parent);
+    await window.closeCheckSend('toggleTab', { id: parent });
+    return [parent, child, grandchild, sibling];
+  }, fixture.groupId);
+  const collapsedSelector = `[data-key="tab:${collapsedBranch[0]}"]`;
+  await browser.driver.wait(
+    () =>
+      browser.evaluate(
+        (selector) => document.querySelector(selector)?.getAttribute('aria-expanded') === 'false',
+        collapsedSelector,
+      ),
+    7000,
+  );
+  const beforeCollapsedClose = await read();
+
+  async function clickSidebar(selector, button = Button.LEFT) {
+    const rect = await browser.evaluate((selector) => {
+      const node = document.querySelector(selector);
+      node.scrollIntoView({ block: 'nearest' });
+      const rect = node.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }, selector);
+    await browser.driver
+      .actions()
+      .move({ x: Math.round(offset.x + rect.x), y: Math.round(offset.y + rect.y) })
+      .press(button)
+      .release(button)
+      .perform();
+  }
+
+  for (const button of ['dialog-cancel', 'dialog-close', 'dialog-submit']) {
+    await clickSidebar(`${collapsedSelector} .label`, Button.MIDDLE);
+    await browser.driver.wait(
+      () => browser.evaluate(() => document.getElementById('dialog').open),
+      7000,
+    );
+    assert.equal(
+      await browser.evaluate(() => document.getElementById('dialog-submit').textContent),
+      'Close 4 tabs',
+    );
+    assert.match(
+      await browser.evaluate(() => document.getElementById('dialog-description').textContent),
+      /and its 3 nested tabs/,
+    );
+    assert.deepEqual((await read()).tabs, beforeCollapsedClose.tabs);
+    await clickSidebar(`#${button}`);
+    await browser.driver.wait(
+      () => browser.evaluate(() => !document.getElementById('dialog').open),
+      7000,
+    );
+    if (button !== 'dialog-submit')
+      assert.deepEqual((await read()).tabs, beforeCollapsedClose.tabs);
+  }
+  await visible(collapsedBranch[0], false);
+  const afterCollapsedClose = await read();
+  assert.deepEqual(
+    afterCollapsedClose.tabs.map((tab) => tab.id),
+    beforeCollapsedClose.tabs
+      .filter((tab) => !collapsedBranch.includes(tab.id))
+      .map((tab) => tab.id),
+  );
+  assert.deepEqual(afterCollapsedClose.groups, beforeCollapsedClose.groups);
+  console.log('✓ Collapsed middle click confirms the total, cancels safely and closes every depth');
+
   console.log('Tab close: checking folder-aware successor selection');
   const selection = await browser.evaluate(async (outsideId) => {
     const groupId = (await window.closeCheckSend('createGroup', { name: 'Folder-aware close' }))

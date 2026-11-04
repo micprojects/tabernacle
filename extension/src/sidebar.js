@@ -300,6 +300,7 @@ const rows = createSidebarRows({
   count,
   selectRow,
   closeTab,
+  getCloseTabTreeDialog: () => closeTabTreeDialog,
   activateTab,
   getTreeRenderer: () => treeRenderer,
   moveTreeFocus,

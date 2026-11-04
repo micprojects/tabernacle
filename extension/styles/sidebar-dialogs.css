@@ -24,6 +24,21 @@ dialog h2 {
   margin: 0 0 8px;
   font-weight: 600;
 }
+.dialog-with-close .dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.dialog-with-close .dialog-icon {
+  display: none;
+}
+.dialog-with-close h2 {
+  flex: 1;
+  min-width: 0;
+}
+.dialog-with-close #dialog-close {
+  flex-shrink: 0;
+}
 .compact-container-dialog {
   padding: 19px;
 }
