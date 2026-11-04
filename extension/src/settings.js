@@ -250,7 +250,9 @@ function closeEditor() {
       button.dataset.store === editorTrigger?.store &&
       button.dataset.action === editorTrigger?.action,
   );
-  (trigger || $('container-new')).focus();
+  const target = trigger || $('container-new');
+  if (target.getClientRects().length) target.focus();
+  else document.querySelector('main > section:not([hidden]) h2')?.focus();
 }
 
 function editorForm(title, submitLabel, onSubmit) {
@@ -422,6 +424,8 @@ function navigate(focus = false) {
   for (const id of sections) $(id).hidden = id !== section;
   if (section !== 'appearance' && $('appearance-confirm').open)
     $('appearance-confirm').close('cancel');
+  if (section !== 'new-tab' && $('new-tab-link-editor').open) $('new-tab-link-editor').close();
+  if (section !== 'containers' && $('container-editor').open && !savingContainer) closeEditor();
   for (const link of document.querySelectorAll('nav a')) {
     if (link.hash === `#${section}`) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');

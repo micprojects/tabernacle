@@ -423,11 +423,6 @@
           </button>
           <p id="containers-status" role="status" aria-live="polite"></p>
           <div id="container-list" class="settings-card" aria-label="Firefox containers"></div>
-          <dialog
-            id="container-editor"
-            class="settings-card"
-            aria-labelledby="container-editor-title"
-          ></dialog>
           <p class="settings-note">
             To set a folder’s default container, right-click the folder in the sidebar and choose
             “Default container…”.
@@ -593,5 +588,11 @@
         </section>
       </main>
     </div>
+    <!-- Keep a pending container save visible when the section changes. -->
+    <dialog
+      id="container-editor"
+      class="settings-card"
+      aria-labelledby="container-editor-title"
+    ></dialog>
   </body>
 </html>

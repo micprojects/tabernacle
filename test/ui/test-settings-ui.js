@@ -343,6 +343,29 @@ try {
     '✓ Automatic saves survive reload; failed initial reads leave storage and defaults untouched',
   );
 
+  const beforeNavigation = await send('getSettings');
+  const beforeContainers = await send('getContainers');
+  for (const [section, button, dialog, input] of [
+    ['containers', 'container-new', 'container-editor', 'Container name'],
+    ['new-tab', 'new-tab-add-link', 'new-tab-link-editor', 'Name'],
+  ]) {
+    await settings.evaluate(() => (location.hash = 'appearance'));
+    await expect(settings.locator('#appearance')).toBeVisible();
+    await settings.evaluate((section) => (location.hash = section), section);
+    await settings.locator(`#${button}`).click();
+    await settings.locator(`#${dialog}`).getByLabel(input, { exact: true }).fill('Unsaved draft');
+    await settings.goBack();
+    await expect(settings.locator('#appearance')).toBeVisible();
+    await expect(settings.locator(`#${dialog}`)).toHaveJSProperty('open', false);
+    await expect(settings.locator('#appearance-title')).toBeFocused();
+    await settings.getByRole('link', { name: 'About', exact: true }).click();
+    await expect(settings.locator('#about')).toBeVisible();
+  }
+  expect((await send('getSettings')).newTab).toEqual(beforeNavigation.newTab);
+  expect(await send('getContainers')).toEqual(beforeContainers);
+  await settings.getByRole('link', { name: 'Appearance', exact: true }).click();
+  console.log('✓ Browser Back closes idle Settings editors without saving their drafts');
+
   await settings.getByRole('link', { name: 'Containers', exact: true }).click();
   await settings.getByRole('button', { name: 'New container', exact: true }).click();
   await expect(settings.getByLabel('Container name', { exact: true })).toBeFocused();
@@ -358,12 +381,18 @@ try {
   await expect(containerEditor.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
   await settings.keyboard.press('Escape');
   await expect(containerEditor).toBeVisible();
+  await settings.goBack();
+  await expect(settings.locator('#appearance')).toBeVisible();
+  await expect(containerEditor).toBeVisible();
+  await expect(containerEditor.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
   await page.evaluate(() => {
     window.holdContainerSave = false;
     window.releaseContainerSave();
   });
   await expect(containerEditor.getByRole('alert')).toHaveText('Could not create container');
   await expect(settings.getByLabel('Container name', { exact: true })).toHaveValue('Reading');
+  await settings.evaluate(() => (location.hash = 'containers'));
+  await expect(settings.locator('#containers')).toBeVisible();
   await page.evaluate(() => (window.failContainerSave = false));
   await settings.getByRole('button', { name: 'Create container', exact: true }).click();
   await expect(settings.getByRole('button', { name: 'Edit Reading', exact: true })).toBeVisible();

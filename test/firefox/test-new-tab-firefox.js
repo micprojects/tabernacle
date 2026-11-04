@@ -155,6 +155,66 @@ try {
     async () => await driver.findElement(By.id('new-tab-add-link')).isEnabled(),
     10000,
   );
+  const beforeNavigation = (await send('getSettings')).newTab;
+  const beforeContainers = await send('getContainers');
+  for (const [section, button, dialog, input, external] of [
+    ['containers', 'container-new', 'container-editor', 'container-name', false],
+    ['new-tab', 'new-tab-add-link', 'new-tab-link-editor', 'nt-link-name', false],
+    ['containers', 'container-new', 'container-editor', 'container-name', true],
+  ]) {
+    await call("location.hash = 'appearance';");
+    await driver.wait(() => driver.findElement(By.id('appearance')).isDisplayed(), 10000);
+    await call('location.hash = arguments[0];', section);
+    await driver.wait(() => driver.findElement(By.id(button)).isDisplayed(), 10000);
+    await driver.findElement(By.id(button)).click();
+    await driver.findElement(By.id(input)).sendKeys('Unsaved draft');
+    if (external) await send('openPage', { page: 'settings', section: 'new-tab' });
+    else await driver.navigate().back();
+    const destination = external ? 'new-tab' : 'appearance';
+    await driver.wait(() => driver.findElement(By.id(destination)).isDisplayed(), 10000);
+    assert.equal(await call('return document.getElementById(arguments[0]).open;', dialog), false);
+    assert.equal(await call('return document.activeElement.id;'), `${destination}-title`);
+    await driver.findElement(By.css('nav a[href="#about"]')).click();
+    await driver.wait(() => driver.findElement(By.id('about')).isDisplayed(), 10000);
+  }
+  assert.deepEqual((await send('getSettings')).newTab, beforeNavigation);
+  assert.deepEqual(await send('getContainers'), beforeContainers);
+
+  await call("location.hash = 'appearance';");
+  await driver.wait(() => driver.findElement(By.id('appearance')).isDisplayed(), 10000);
+  await driver.findElement(By.css('nav a[href="#containers"]')).click();
+  await driver.findElement(By.id('container-new')).click();
+  await driver.findElement(By.id('container-name')).sendKeys('Navigation save');
+  await call(`
+    const send = browser.runtime.sendMessage.bind(browser.runtime);
+    window.navigationSave = { restore: () => browser.runtime.sendMessage = send };
+    browser.runtime.sendMessage = async message => {
+      if (message.type === 'tabernacle:createContainer')
+        await new Promise(resolve => navigationSave.release = resolve);
+      return send(message);
+    };
+  `);
+  await driver.findElement(By.css('#container-editor button[type="submit"]')).click();
+  await driver.wait(() => call('return Boolean(navigationSave.release);'), 10000);
+  await driver.navigate().back();
+  await driver.wait(() => driver.findElement(By.id('appearance')).isDisplayed(), 10000);
+  assert(await driver.findElement(By.id('container-editor')).isDisplayed());
+  await call('navigationSave.release();');
+  await driver.wait(() => call('return !document.getElementById("container-editor").open;'), 10000);
+  assert.equal(await call('return document.activeElement.id;'), 'appearance-title');
+  const createdContainer = (await send('getContainers')).containers.find(
+    (container) => container.name === 'Navigation save',
+  );
+  assert(createdContainer);
+  await call('navigationSave.restore(); delete window.navigationSave;');
+  await send('removeContainer', { cookieStoreId: createdContainer.cookieStoreId });
+  assert.deepEqual(await send('getContainers'), beforeContainers);
+  await call("location.hash = 'new-tab';");
+  await driver.wait(() => driver.findElement(By.id('new-tab-add-link')).isDisplayed(), 10000);
+  console.log(
+    '✓ Settings section changes close idle editors and preserve an in-progress container save',
+  );
+
   await driver.findElement(By.id('new-tab-add-link')).click();
   await driver.findElement(By.id('nt-link-name')).sendKeys('Example');
   await driver.findElement(By.id('nt-link-url')).sendKeys('example.com:443/path?q=test#section');
