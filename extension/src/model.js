@@ -144,6 +144,28 @@ export function removeGroup(model, id) {
   return group.parentId;
 }
 
+// Missing/null views are legacy Home values. Known fields may contain stale
+// folder IDs, but an unsupported shape must not become an empty saved view.
+export function validView(view) {
+  if (view == null) return true;
+  const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
+  const id = (value) => typeof value === 'string' && value.length > 0;
+  const entries = (value, valid) =>
+    value === undefined || (Array.isArray(value) && value.every(valid));
+  const activity = (field) => (entry) =>
+    record(entry) && id(entry.id) && Number.isFinite(entry[field]) && entry[field] > 0;
+  return Boolean(
+    record(view) &&
+    (view.scopeId == null || id(view.scopeId)) &&
+    entries(view.collapsed, id) &&
+    entries(view.recentFolders, activity('enteredAt')) &&
+    entries(view.recentExpandedFolders, activity('expandedAt')) &&
+    (view.pinLayout === undefined ||
+      (Array.isArray(view.pinLayout) &&
+        normalizePinLayout(view.pinLayout).length === view.pinLayout.length)),
+  );
+}
+
 export function normalizeView(model, view = {}, index) {
   view ??= {};
   const {

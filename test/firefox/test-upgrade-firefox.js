@@ -596,6 +596,43 @@ try {
   checkpoint(
     'unsupported saved model and pin records block writes without resetting data and can retry after repair',
   );
+  const invalidWindowId = await call(async () => (await browser.windows.getCurrent()).id);
+  const validView = recovered.raw.views[invalidWindowId];
+  for (const extra of [
+    { collapsed: { ids: [work], future: true } },
+    { recentFolders: { entries: [work], future: true } },
+    { pinLayout: [{ kind: 'future-pin', id: 'retained', future: true }] },
+  ]) {
+    const invalid = { ...validView, ...extra };
+    await call(
+      async (id, key, value) => browser.sessions.setWindowValue(id, key, value),
+      invalidWindowId,
+      viewKey,
+      invalid,
+    );
+    await assert.rejects(send('enterGroup', { id: work }), /stored view has not been changed/);
+    await assert.rejects(reload(), /stored view has not been changed/);
+    await assert.rejects(send('toggleGroup', { id: work }), /stored view has not been changed/);
+    assert.deepEqual(
+      await call(
+        async (id, key) => browser.sessions.getWindowValue(id, key),
+        invalidWindowId,
+        viewKey,
+      ),
+      invalid,
+    );
+    // A malformed view belongs to its window; other windows remain readable.
+    for (const windowId of windowIds.filter((id) => id !== invalidWindowId))
+      await send('snapshot', { windowId });
+    await call(
+      async (id, key, value) => browser.sessions.setWindowValue(id, key, value),
+      invalidWindowId,
+      viewKey,
+      validView,
+    );
+    preserved(recovered, await capture(windowIds, treeIds));
+  }
+  checkpoint('unsupported window views survive navigation and reload and can retry after repair');
   assert.deepEqual(
     await hashes(resolve('extension')),
     initialHashes,

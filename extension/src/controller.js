@@ -24,6 +24,7 @@ import {
   VIEW_KEY,
   emptyModel,
   validGroups,
+  validView,
   groupById,
   requireGroup,
   groupPath,
@@ -404,11 +405,12 @@ export function createController(
   const viewFor = async (windowId) => {
     const pending = beginPinLayout(windowId);
     try {
-      const view = normalizeView(
-        model,
-        await api.sessions.getWindowValue(windowId, VIEW_KEY),
-        folderIndex,
-      );
+      const saved = await api.sessions.getWindowValue(windowId, VIEW_KEY);
+      if (!validView(saved))
+        throw new Error(
+          'The saved window view contains unsupported data. Your stored view has not been changed.',
+        );
+      const view = normalizeView(model, saved, folderIndex);
       rememberPinLayout(windowId, pending, view);
       return view;
     } finally {
