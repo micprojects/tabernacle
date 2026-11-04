@@ -364,11 +364,12 @@ try {
     opaque: { version: 99, values: ['untouched', { data: true }] },
   };
   await call(
-    async (modelKey, sentinelKey, value) => {
+    async (modelKey, sentinelKey, value, folderId) => {
       const model = (await browser.storage.local.get(modelKey))[modelKey];
       model.stashes = value.opaque;
       model.upgradeOpaque = value.opaque;
       model.look.upgradeOpaque = value.opaque;
+      model.groups.find((group) => group.id === folderId).appearance.upgradeOpaque = value.opaque;
       model.folderPins = model.folderPins.map((pin) => ({ ...pin, upgradeOpaque: value.opaque }));
       // Unknown preferences may come from another extension version. The old
       // release must retain these raw records before the candidate receives them.
@@ -391,6 +392,7 @@ try {
     modelKey,
     sentinelKey,
     sentinel,
+    work,
   );
   await reload();
   await call(
@@ -502,6 +504,18 @@ try {
   const afterRename = await capture(windowIds, treeIds);
   for (const key of ['look', 'newTab'])
     assert.deepEqual(afterRename.raw.storage[modelKey][key], before.raw.storage[modelKey][key]);
+  await send('setGroupAppearance', { id: work, appearance: { icon: 'book', color: 'teal' } });
+  const appearanceEdited = await capture(windowIds, treeIds);
+  assert.deepEqual(
+    appearanceEdited.raw.storage[modelKey].groups.find((group) => group.id === work).appearance,
+    {
+      icon: 'book',
+      color: 'teal',
+      upgradeOpaque: sentinel.opaque,
+    },
+  );
+  assert.deepEqual(appearanceEdited.raw.memberships, afterRename.raw.memberships);
+  await send('setGroupAppearance', { id: work, appearance: {} });
   await send('setLook', { partial: true, value: { domains: false } });
   await send('setNewTab', { value: { showRecent: false } });
   const preferences = (await send('getSettings')).newTab;
@@ -524,6 +538,9 @@ try {
       sentinel.opaque,
     );
   }
+  assert.deepEqual(saved.groups.find((group) => group.id === work).appearance, {
+    upgradeOpaque: sentinel.opaque,
+  });
   assert.deepEqual(saved.look.upgradeOpaque, sentinel.opaque);
   assert.deepEqual(saved.newTab.upgradeOpaque, sentinel.opaque);
   assert.deepEqual(saved.newTab.links[0].upgradeOpaque, sentinel.opaque);
@@ -533,7 +550,7 @@ try {
   assert.equal(saved.look.domains, false);
   assert.equal(saved.newTab.showRecent, false);
   assert.equal(saved.newTab.links[0].name, 'Renamed link');
-  checkpoint('unrelated saves and preference edits retain opaque preferences and link metadata');
+  checkpoint('unrelated saves and appearance/preference edits retain opaque saved metadata');
   const changes = await interruptedMove(ids.slice(0, 3), nested);
   console.log('Reloading the candidate after another interrupted move…');
   await reload();

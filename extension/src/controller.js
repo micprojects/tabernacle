@@ -1695,7 +1695,14 @@ export function createController(
         const appearance = requireGroupAppearance(message.appearance);
         await changeModel((next) => {
           const target = groupById(next, group.id);
-          if (Object.keys(appearance).length) target.appearance = appearance;
+          const stored = target.appearance;
+          const nextAppearance =
+            stored && typeof stored === 'object' && !Array.isArray(stored) ? { ...stored } : {};
+          // This editor owns icon and colour only, including when resetting them.
+          delete nextAppearance.icon;
+          delete nextAppearance.color;
+          Object.assign(nextAppearance, appearance);
+          if (Object.keys(nextAppearance).length) target.appearance = nextAppearance;
           else delete target.appearance;
         });
         break;
