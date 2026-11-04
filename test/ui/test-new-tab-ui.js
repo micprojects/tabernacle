@@ -343,6 +343,44 @@ try {
     '✓ New tab favicon matching stays linear and preserves first-match, reorder, edit and removal behaviour',
   );
 
+  for (const [tabCount, folderCount] of [
+    [13, 0],
+    [0, 7],
+    [12, 6],
+    [13, 5],
+    [1, 1],
+  ]) {
+    await live.evaluate(
+      ({ tabCount, folderCount }) => {
+        document.getElementById('search').value = 'Match';
+        faviconLookupTest({
+          tabs: Array.from({ length: tabCount }, (_, id) => ({
+            id,
+            title: `Match ${id}`,
+            url: `https://example.test/${id}`,
+          })),
+          groups: Array.from({ length: folderCount }, (_, id) => ({
+            id: `match-${id}`,
+            name: `Match ${id}`,
+            parentId: null,
+          })),
+          folderPins: [],
+          containers: [],
+          recentlyClosed: [],
+          look: {},
+          newTab: {},
+        });
+      },
+      { tabCount, folderCount },
+    );
+    await expect(live.locator('#search-matches .entry')).toHaveCount(
+      Math.min(tabCount, 12) + Math.min(folderCount, 6),
+    );
+    await expect(live.locator('#search-status')).toHaveText(
+      `${tabCount + folderCount} matching tabs and folders${tabCount > 12 || folderCount > 6 ? '; showing the first matches' : ''}.`,
+    );
+  }
+
   expect(errors).toEqual([]);
   console.log(
     '✓ New tab UI: links CRUD/reorder, unsafe URL validation, drafts/preview/discard, local search, live preferences, weather setup, light/dark and 320px layout',

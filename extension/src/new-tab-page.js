@@ -183,7 +183,7 @@ function renderSearch() {
   if (!count)
     matches.append(el('p', 'empty', 'No matching tabs or folders. Press Enter to search the web.'));
   $('search-status').textContent =
-    `${count} matching tabs and folders${count > 18 ? '; showing the first matches' : ''}.`;
+    `${count} matching tabs and folders${foundTabs.length > 12 || groups.length > 6 ? '; showing the first matches' : ''}.`;
 }
 
 function showRows(id, items, limit, render, empty) {
