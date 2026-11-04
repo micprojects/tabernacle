@@ -7,8 +7,8 @@ import { ScreenshotBrowser } from '../../scripts/screenshot-browser.js';
 import { newTabTestExtension } from '../helpers/new-tab-feature.js';
 
 // Use Firefox's own Finder against the actual sidebar and extension tabs.
-// New Tab already rebuilds on visible refresh; its first Find Again can lose
-// selection. Fresh Find must still discover the complete rendered collection.
+// Refreshes must keep unchanged selected text connected and let Find Again
+// continue in order through the complete rendered collection.
 const sourceRoot = resolve('.');
 const output = resolve('test-results/find-firefox/report.json');
 const expectRelease = true;
@@ -520,8 +520,6 @@ try {
         'Find Again refreshes all matches immediately after resume',
       );
       const againSelection = await selection(target);
-      // Compare this explicitly with baseline. New Tab already replaces rows on
-      // ordinary visible refresh, so its first Find Again can retain no selection.
       const againSelectsCurrentDOM = againSelection.text === 'LifecycleNeedle';
       const expectedNextKey =
         before.discovery.keys[
@@ -534,8 +532,7 @@ try {
         passive.selection.connected &&
         !passive.selection.collapsed;
       assert(passiveSelectionPreserved, name + ' keeps the current native Find selection');
-      if (name === 'activity')
-        assert(againFollowsOrder, 'Activity Find Again advances to the same next record');
+      assert(againFollowsOrder, name + ' Find Again advances to the same next record');
       const after = await discoverEveryRow(target, 'LifecycleNeedle', fixture.count);
       assert.equal(passive.bar.query, before.bar.query, 'Find query survives switching tabs');
       assert.equal(
