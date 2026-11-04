@@ -100,8 +100,19 @@ export function createController(
   const publish = (windowId) => notify({ windowId, revision: ++revision, generation });
   const cache = createBrowserCache(
     api,
-    ({ windowId, removedTabId, detachedTabId, removedWindowId, removedTabIds = [] }) => {
+    ({
+      windowId,
+      removedTabId,
+      detachedTabId,
+      removedWindowId,
+      membershipTabId,
+      removedTabIds = [],
+    }) => {
       requestTabs.clear();
+      if (membershipTabId !== undefined) {
+        resolvedTabs.delete(windowId);
+        resolvedTabs.delete(null);
+      }
       if (windowId != null) {
         const resolved = resolvedTabs.get(windowId);
         const structureToken = resolved?.structureToken;
@@ -863,8 +874,9 @@ export function createController(
           // Placement still belongs to the queued onCreated handler.
           needsSave = true;
         }
-        if (!(Number.isFinite(value.openedAt) && value.openedAt > 0) && openedTimes.has(tab.id)) {
-          value.openedAt = openedTimes.get(tab.id);
+        const openedAt = openedTimes.get(tab.id) ?? cache.creationTime(tab.id);
+        if (!(Number.isFinite(value.openedAt) && value.openedAt > 0) && openedAt !== undefined) {
+          value.openedAt = openedAt;
           needsSave = true;
         }
         if (!Number.isFinite(value.order)) {
@@ -951,7 +963,10 @@ export function createController(
             rememberIdentity(id, moved.key, moved.windowId);
       }
       for (const tab of result)
-        if (!closed.has(tab.id)) rememberIdentity(tab.id, tab.treeId, tab.windowId);
+        if (!closed.has(tab.id)) {
+          rememberIdentity(tab.id, tab.treeId, tab.windowId);
+          cache.finishCreation(tab.id);
+        }
       ownershipVersion++;
       initializedTabs = true;
       if (closed.size) {
@@ -2095,6 +2110,13 @@ export function createController(
     }
     const source = context.byId.get(tab.id);
     if (!source) throw new Error('That tab has closed or moved to another window.');
+    // Session restoration can finish while the initial native reads are in flight.
+    // An assigned record now belongs to that restore, not to new-tab placement.
+    if (Object.hasOwn((await membership(tab.id)) ?? {}, 'groupId')) {
+      contexts.delete(tab.windowId);
+      publish(tab.windowId);
+      return;
+    }
     const candidate = context.byId.get(tab.openerTabId);
     const opener = candidate && candidate.id !== tab.id && !candidate.pinned ? candidate : null;
     const groupId = opener ? opener.groupId : context.view.scopeId;

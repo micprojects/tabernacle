@@ -485,6 +485,29 @@ try {
   assert(reopenedPin.pinned && reopenedPin.mutedInfo.muted);
   assert.equal(reopenedPin.cookieStoreId, identity.cookieStoreId);
   console.log('✓ Real container replacements preserve trees, native groups, pins and mute state');
+  await driver.wait(async () => {
+    const current = await browserCall('return browser.tabs.get(arguments[0]);', tab.id);
+    return current.url === url && current.status === 'complete';
+  }, 10000);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const duplicate = await browserCall(
+      'return browser.tabs.duplicate(arguments[0], {active:false});',
+      tab.id,
+    );
+    await driver.wait(async () => {
+      const current = await browserCall('return browser.tabs.get(arguments[0]);', duplicate.id);
+      return current.url === url && current.status === 'complete';
+    }, 10000);
+    const duplicated = await send('snapshot');
+    const copy = duplicated.tabs.find((item) => item.id === duplicate.id);
+    assert.equal(copy.groupId, design);
+    assert.equal(copy.cookieStoreId, identity.cookieStoreId);
+    assert.notEqual(copy.treeId, tab.treeId);
+    assert(Number.isFinite(copy.openedAt));
+    assert.equal(duplicated.tabs.find((item) => item.id === child.id).parentTabId, tab.id);
+    await browserCall('await browser.tabs.remove(arguments[0]);', duplicate.id);
+  }
+  console.log('✓ Native duplication retains folders and containers without stealing children');
   await driver.switchTo().window(sidebarHandle);
   const parentRow = await driver.wait(
     until.elementLocated(By.css(`[data-key="tab:${tab.id}"] .tab-disclosure`)),

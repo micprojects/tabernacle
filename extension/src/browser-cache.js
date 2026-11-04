@@ -7,6 +7,7 @@ import { httpUrl } from './tab-source.js';
 // extension; native tabs, containers and closed sessions have Firefox events.
 export function createBrowserCache(api, changed = () => {}) {
   const memberships = new Map();
+  const pendingMemberships = new Map();
   const tabLists = new Map();
   const tabSnapshots = new WeakMap();
   const pendingRefreshes = new WeakMap();
@@ -469,6 +470,16 @@ export function createBrowserCache(api, changed = () => {}) {
     'lastAccessed',
   ]);
   watch(api.tabs.onUpdated, (id, properties, tab) => {
+    // Native duplication first exposes an empty about:blank tab. Firefox copies
+    // its session values when restoring the page, after onCreated has fired.
+    const pendingMembership = pendingMemberships.get(id);
+    if (pendingMembership && !pendingMembership.settled && (properties.status || properties.url)) {
+      pendingMembership.revision++;
+      memberships.delete(id);
+      invalidateTabs(tab.windowId);
+      changed({ windowId: tab.windowId, membershipTabId: id });
+      if (tab.url && tab.url !== 'about:blank') pendingMembership.settled = true;
+    }
     const keys = Object.keys(properties);
     if (
       keys.some((key) => selectionProperties.has(key)) &&
@@ -489,10 +500,20 @@ export function createBrowserCache(api, changed = () => {}) {
       changed({ windowId: tab.windowId });
   });
   watch(api.tabs.onCreated, (tab) => {
+    if (!tab.url || tab.url === 'about:blank')
+      pendingMemberships.set(tab.id, {
+        windowId: tab.windowId,
+        openedAt: Date.now(),
+        settled: false,
+        revision: 0,
+      });
     if (!appendCreated(tab)) invalidateTabs(tab.windowId);
     changed({ windowId: tab.windowId });
   });
-  watch(api.tabs.onRemoved, (id, info) => tabChanged(info.windowId, id));
+  watch(api.tabs.onRemoved, (id, info) => {
+    pendingMemberships.delete(id);
+    tabChanged(info.windowId, id);
+  });
   watch(api.tabs.onActivated, (info) => {
     selectionChanged(info.windowId, [info.tabId, info.previousTabId]);
     changed({ windowId: info.windowId });
@@ -502,7 +523,11 @@ export function createBrowserCache(api, changed = () => {}) {
     changed({ windowId: info.windowId });
   });
   watch(api.tabs.onMoved, (_id, info) => tabChanged(info.windowId));
-  watch(api.tabs.onAttached, (_id, info) => tabChanged(info.newWindowId));
+  watch(api.tabs.onAttached, (id, info) => {
+    const pending = pendingMemberships.get(id);
+    if (pending) pending.windowId = info.newWindowId;
+    tabChanged(info.newWindowId);
+  });
   watch(api.tabs.onDetached, (id, info) => {
     invalidateTabs(info.oldWindowId);
     changed({ windowId: info.oldWindowId, detachedTabId: id });
@@ -514,6 +539,8 @@ export function createBrowserCache(api, changed = () => {}) {
       ...(cached?.additions?.keys() || []),
     ];
     for (const id of removedTabIds) memberships.delete(id);
+    for (const [id, pending] of pendingMemberships)
+      if (pending.windowId === windowId) pendingMemberships.delete(id);
     invalidateTabs(windowId);
     changed({ windowId, removedWindowId: windowId, removedTabIds });
   });
@@ -569,8 +596,14 @@ export function createBrowserCache(api, changed = () => {}) {
     },
 
     async membership(id) {
-      const value = await read(memberships, id, async () =>
-        deserializeMembership(await api.sessions.getTabValue(id, TAB_KEY)),
+      const value = await read(
+        memberships,
+        id,
+        async () => deserializeMembership(await api.sessions.getTabValue(id, TAB_KEY)),
+        (value) => {
+          if (value == null && pendingMemberships.has(id)) memberships.delete(id);
+          return value;
+        },
       );
       // Memberships contain scalar fields and an ancestry array. Copy those
       // explicitly: deep cloning every record dominates large tab-creation bursts.
@@ -583,16 +616,28 @@ export function createBrowserCache(api, changed = () => {}) {
     },
 
     async saveMembership(id, value) {
+      const pending = pendingMemberships.get(id);
+      const revision = pending?.revision;
       await api.sessions.setTabValue(id, TAB_KEY, serializeMembership(value));
-      if (!disposed) memberships.set(id, Promise.resolve(structuredClone(value)));
+      // A restore can replace this write before its reply reaches the event page.
+      // Its invalidation must survive the older save completing.
+      if (!disposed && pending?.revision === revision)
+        memberships.set(id, Promise.resolve(structuredClone(value)));
     },
 
     forgetMembership: (id) => memberships.delete(id),
 
+    creationTime: (id) => pendingMemberships.get(id)?.openedAt,
+
+    finishCreation(id) {
+      if (pendingMemberships.get(id)?.settled) pendingMemberships.delete(id);
+    },
+
     pruneMemberships(tabs) {
-      if (!memberships.size) return;
+      if (!memberships.size && !pendingMemberships.size) return;
       const live = new Set(tabs.map((tab) => tab.id));
       for (const id of memberships.keys()) if (!live.has(id)) memberships.delete(id);
+      for (const id of pendingMemberships.keys()) if (!live.has(id)) pendingMemberships.delete(id);
     },
 
     containers() {
@@ -615,6 +660,7 @@ export function createBrowserCache(api, changed = () => {}) {
 
     stats: () => ({
       memberships: memberships.size,
+      pendingMemberships: pendingMemberships.size,
       nativeLists: tabLists.size,
       ancillary: ancillary.size,
     }),
@@ -624,6 +670,7 @@ export function createBrowserCache(api, changed = () => {}) {
       for (const stop of listeners) stop();
       listeners.length = 0;
       memberships.clear();
+      pendingMemberships.clear();
       tabLists.clear();
       ancillary.clear();
     },

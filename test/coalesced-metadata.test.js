@@ -407,5 +407,10 @@ test('disposing during a native read preserves its result without retaining cach
   const state = await reading;
   assert.equal(state.tabs[0].title, 'Before');
   assert.equal((await f.cache.tabs(1))[0].title, 'Before');
-  assert.deepEqual(f.cache.stats(), { memberships: 0, nativeLists: 0, ancillary: 0 });
+  assert.deepEqual(f.cache.stats(), {
+    memberships: 0,
+    pendingMemberships: 0,
+    nativeLists: 0,
+    ancillary: 0,
+  });
 });

@@ -330,7 +330,12 @@ test('disposal during added-tab reads cannot repopulate caches', async () => {
   f.cache.dispose();
   release();
   assert.deepEqual(await reading, await f.query({ windowId: 1 }));
-  assert.deepEqual(f.cache.stats(), { memberships: 0, nativeLists: 0, ancillary: 0 });
+  assert.deepEqual(f.cache.stats(), {
+    memberships: 0,
+    pendingMemberships: 0,
+    nativeLists: 0,
+    ancillary: 0,
+  });
 });
 
 test('disposal after an append read is invalidated cannot expose its discarded result', async () => {
@@ -341,5 +346,10 @@ test('disposal after an append read is invalidated cannot expose its discarded r
   await f.api.tabs.update(tab.id, { url: 'https://changed.test/' });
   f.cache.dispose();
   assert.deepEqual(await reading, await f.query({ windowId: 1 }));
-  assert.deepEqual(f.cache.stats(), { memberships: 0, nativeLists: 0, ancillary: 0 });
+  assert.deepEqual(f.cache.stats(), {
+    memberships: 0,
+    pendingMemberships: 0,
+    nativeLists: 0,
+    ancillary: 0,
+  });
 });
