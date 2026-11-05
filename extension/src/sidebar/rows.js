@@ -116,16 +116,25 @@ export function createSidebarRows({
   // Overlapping keys retain their existing controls and loaded favicon.
   function prepareViewportRows(rows, pins, owners) {
     const virtual = getTreeRenderer().virtual;
+    let collapsedParents = false;
     recycleFullScope =
       !virtual &&
-      rows.every(
-        ({ row }) =>
-          row.kind === 'new-tab' ||
-          (row.kind === 'tab' && !row.stats.descendants && !childAudioCount(row.tab)) ||
-          (row.kind === 'group' && !row.expanded),
-      );
-    // Audio leaves keep their own identity cache while quiet siblings can reuse
-    // controls. Parent rows and expanded folders keep the complex-scope cache.
+      rows.every(({ row }) => {
+        if (row.kind !== 'tab')
+          return row.kind === 'new-tab' || (row.kind === 'group' && !row.expanded);
+        if (childAudioCount(row.tab)) return false;
+        if (!row.stats.descendants) return true;
+        if (row.expanded) return false;
+        collapsedParents = true;
+        return true;
+      }) &&
+      (!collapsedParents ||
+        rows.some(
+          ({ row }) =>
+            row.kind === 'group' || (row.kind === 'tab' && plainLeaf(row.tab, row.stats)),
+        ));
+    // Audio leaves and collapsed parents keep their identities while eligible
+    // siblings reuse controls. Expanded branches keep the complex-scope cache.
     if (!reuseControls()) return;
     const keep = new Set([
       ...rows.map(({ row }) => row.key),
@@ -136,7 +145,7 @@ export function createSidebarRows({
     ]);
     const departing = [];
     const creations = [];
-    let audioDepartures;
+    let retainedDepartures;
     // A full render consumes every incoming row synchronously. Views needed by
     // that update may pass through the pool beyond its unused-view budget.
     const needed = virtual
@@ -155,18 +164,26 @@ export function createSidebarRows({
       const kind = folder ? 'group' : 'tab';
       const poolFull = pooledCount() + departing.length >= pooledViewLimit && !(needed?.[kind] > 0);
       if ((virtual && poolFull) || keep.has(key)) return;
-      if (!folder && wrapper.branch) return;
       const row = wrapper.node.firstElementChild;
       if (!row) return;
-      if (!virtual && folder && row.getAttribute('aria-expanded') !== 'false') return;
-      const audio = !folder && !pooledLeafParts.has(row);
-      // Audio departures help only when tab or folder controls could stay in place.
+      const parent = !folder && Boolean(wrapper.branch);
       if (
-        (poolFull && !audio) ||
-        (audio &&
+        parent &&
+        (virtual ||
+          row.getAttribute('aria-expanded') !== 'false' ||
+          wrapper.branch.isConnected ||
+          wrapper.branch.childNodes.length)
+      )
+        return;
+      if (!virtual && folder && row.getAttribute('aria-expanded') !== 'false') return;
+      const retained = parent || (!folder && !pooledLeafParts.has(row));
+      // Detaching cached roots helps only when sibling controls can stay in place.
+      if (
+        (poolFull && !retained) ||
+        (retained &&
           (virtual ||
             (!departing.length && needed.tab <= 0 && needed.group <= 0) ||
-            !row.querySelector('.audio-button'))) ||
+            (!parent && !row.querySelector('.audio-button')))) ||
         wrapper.node.contains(document.activeElement)
       )
         return;
@@ -177,8 +194,8 @@ export function createSidebarRows({
         )
       )
         return;
-      if (audio) {
-        (audioDepartures ??= new Set()).add(wrapper.node);
+      if (retained) {
+        (retainedDepartures ??= new Set()).add(wrapper.node);
         return;
       }
       const entry = rowCache.take(key);
@@ -217,7 +234,7 @@ export function createSidebarRows({
     const creationNodes = new Set(creations.map(({ row }) => row));
     const inPlace =
       children.every(
-        (node) => reusable.has(node) || creationNodes.has(node) || audioDepartures?.has(node),
+        (node) => reusable.has(node) || creationNodes.has(node) || retainedDepartures?.has(node),
       ) &&
       departing.every(({ folder, wrapper }) =>
         folder ? !wrapper.branch.isConnected && !wrapper.branch.childNodes.length : !wrapper.branch,
@@ -226,11 +243,14 @@ export function createSidebarRows({
       rows.every(
         ({ row }) =>
           !rowCache.has(row.key) ||
-          (row.kind === 'tab' && (row.tab.audible || row.tab.mutedInfo?.muted)),
+          (row.kind === 'tab' &&
+            (row.tab.audible ||
+              row.tab.mutedInfo?.muted ||
+              (row.stats.descendants && !row.expanded))),
       );
-    // Remove only unowned audio leaves before the cursor-based reconciliation;
-    // quiet siblings can then stay in place while audio rows keep their identity.
-    if (inPlace && audioDepartures) for (const node of audioDepartures) node.remove();
+    // Unowned cached roots leave before reconciliation, so recyclable siblings
+    // stay in place while audio and parent rows preserve their own controls.
+    if (inPlace && retainedDepartures) for (const node of retainedDepartures) node.remove();
     // The full renderer builds children from last to first. Pool in DOM order
     // so a flat scope can reassign safe controls in place.
     const released = inPlace

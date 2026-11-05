@@ -2734,6 +2734,136 @@ try {
   });
   console.log('✓ Larger flat scopes leave quiet controls connected with audio at either end');
 
+  for (const domains of [false, true])
+    for (const parentPosition of [0, 48]) {
+      const collapsedParents = await page.evaluate(
+        ({ domains, parentPosition }) => {
+          document.getElementById('home').focus();
+          const next = structuredClone(fixture);
+          next.groups = Array.from({ length: 20 }, (_, i) => ({
+            id: `parent-${i}`,
+            name: `Parent folder ${i}`,
+            parentId: null,
+          }));
+          // Toggle actions retain selection. Give each reuse case independent identities.
+          const firstId = 10001 + Number(domains) * 2000 + Number(parentPosition > 0) * 1000;
+          next.tabs = next.tabs.map((tab, i) => ({
+            ...tab,
+            id: firstId + i,
+            treeId: `parent-test-${firstId + i}`,
+            groupId: `parent-${Math.floor(i / 50)}`,
+            parentTabId: i % 50 === parentPosition + 1 ? firstId + i - 1 : null,
+            collapsed: true,
+            audible: false,
+            mutedInfo: { muted: false },
+          }));
+          next.look.domains = domains;
+          next.view.scopeId = 'parent-0';
+          viewportTest.set(structuredClone(next));
+          viewportTest.resetRows();
+          const keys = next.tabs.map((tab) => `tab:${tab.id}`);
+          const parents = new Map();
+          const quiet = [...document.querySelectorAll('#tree .tab-row:not([aria-expanded])')];
+          let maximumCached = 0;
+          for (let pass = 0; pass < 2; pass++)
+            for (let i = 0; i < 20; i++) {
+              next.view.scopeId = `parent-${i}`;
+              viewportTest.set(structuredClone(next));
+              const logical = next.tabs.filter((tab) => tab.groupId === next.view.scopeId);
+              const visible = logical.filter((tab) => tab.parentTabId === null);
+              const rows = [...document.querySelectorAll('#tree .tab-row')];
+              if (
+                rows.length !== 49 ||
+                rows.some((row, n) => {
+                  const tab = visible[n];
+                  return (
+                    Number(row.dataset.id) !== tab.id ||
+                    row.querySelector('.label').textContent !== tab.title ||
+                    row.querySelector('.close-tab').getAttribute('aria-label') !==
+                      `Close ${tab.title}` ||
+                    (domains
+                      ? row.querySelector('.row-detail')?.textContent !== 'example.com'
+                      : Boolean(row.querySelector('.row-detail')))
+                  );
+                }) ||
+                JSON.stringify(viewportTest.targets()) !==
+                  JSON.stringify(logical.map((tab) => tab.id)) ||
+                quiet.some((row) => !row.isConnected || !rows.includes(row))
+              )
+                throw Error(
+                  `Collapsed-parent reuse lost siblings, labels or hidden logical tabs: ${JSON.stringify(
+                    {
+                      domains,
+                      parentPosition,
+                      pass,
+                      scope: i,
+                      mounted: rows.length,
+                      unavailable: quiet
+                        .filter((row) => !row.isConnected || !rows.includes(row))
+                        .map((row) => ({
+                          key: row.dataset.key,
+                          selected: row.classList.contains('selected'),
+                        })),
+                      logicalMatch:
+                        JSON.stringify(viewportTest.targets()) ===
+                        JSON.stringify(logical.map((tab) => tab.id)),
+                    },
+                  )}`,
+                );
+              const id = logical[parentPosition].id;
+              const row = rows.find((node) => Number(node.dataset.id) === id);
+              const button = row.querySelector('.tab-disclosure');
+              const previous = parents.get(id);
+              if (
+                button?.getAttribute('aria-expanded') !== 'false' ||
+                (previous && (previous.row !== row || previous.button !== button))
+              )
+                throw Error('Sibling reuse changed the collapsed parent control');
+              parents.set(id, { row, button });
+              maximumCached = Math.max(maximumCached, viewportTest.cached(keys).keys.length);
+              if (sidebarRowsProbe().totalPooled > 64)
+                throw Error('Collapsed-parent reuse exceeded the unused pool budget');
+            }
+          const lastId = next.tabs[950 + parentPosition].id;
+          const owner = parents.get(lastId);
+          owner.button.focus();
+          for (const extraGroups of [1, 2, 0]) {
+            const changed = structuredClone(next);
+            for (const tab of changed.tabs)
+              if (Number(tab.groupId.slice('parent-'.length)) >= 19 - extraGroups)
+                tab.groupId = 'parent-19';
+            viewportTest.set(changed);
+            const expected = changed.tabs.filter((tab) => tab.groupId === 'parent-19');
+            // Leaving the virtual renderer uses the existing row-focus fallback.
+            const focused = extraGroups === 0 ? owner.row : owner.button;
+            if (
+              document.activeElement !== focused ||
+              document.querySelector(`#tree .tab-row[data-id="${lastId}"]`) !== owner.row ||
+              owner.row.querySelector('.tab-disclosure') !== owner.button ||
+              JSON.stringify(viewportTest.targets()) !==
+                JSON.stringify(expected.map((tab) => tab.id)) ||
+              document.getElementById('tree').classList.contains('viewport-tree') !==
+                (extraGroups === 2)
+            )
+              throw Error('Full/virtual parent transition lost focus, identity or logical tabs');
+          }
+          document.getElementById('home').focus();
+          return { maximumCached, parents: parents.size, lastId };
+        },
+        { domains, parentPosition },
+      );
+      expect(collapsedParents.maximumCached).toBeLessThanOrEqual(100);
+      expect(collapsedParents.parents).toBe(20);
+      const beforeToggle = await page.evaluate(() => viewportTest.calls.length);
+      await page
+        .locator(`#tree .tab-row[data-id="${collapsedParents.lastId}"] .tab-disclosure`)
+        .click();
+      expect(
+        await page.evaluate((before) => viewportTest.calls.slice(before), beforeToggle),
+      ).toEqual([{ type: 'toggleTab', id: collapsedParents.lastId, activate: true }]);
+    }
+  console.log('✓ Collapsed parents retain identity and focus while quiet siblings reuse controls');
+
   const complexRevisits = await page.evaluate(() => {
     document.getElementById('home').focus();
     return ['parents', 'audio'].map((mode) => {
