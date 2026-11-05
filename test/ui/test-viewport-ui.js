@@ -1204,13 +1204,26 @@ try {
   });
   expect((await dormantBudget()).pooled).toBe(0);
   expect((await dormantBudget()).dormant).toBeLessThanOrEqual(96);
+  await page.evaluate(async () => {
+    const tree = document.getElementById('tree');
+    for (const offset of [tree.scrollHeight, 0, tree.scrollHeight / 2]) {
+      tree.scrollTop = offset;
+      tree.dispatchEvent(new Event('scroll'));
+      await new Promise(requestAnimationFrame);
+      for (const row of tree.querySelectorAll('.tab-row'))
+        if (row.querySelector('.row-detail')?.textContent !== 'example.com')
+          throw Error('Two-line virtual reuse lost a domain label');
+    }
+  });
+  expect((await dormantBudget()).pooled).toBeLessThanOrEqual(64);
+  expect((await dormantBudget()).dormant).toBeLessThanOrEqual(96);
   await page.evaluate(() => {
     delete window.budgetFixture;
     viewportTest.set(structuredClone(fixture));
   });
   await page.setViewportSize(beforeBudgetViewport);
   console.log(
-    '✓ Recycling and identity caching share the dormant budget; two-line views release unused pooled rows',
+    '✓ Recycling and identity caching share the dormant budget; line-mode switches clear old views and preserve both dormant budgets',
   );
 
   await page.evaluate(() => {
@@ -1909,59 +1922,156 @@ try {
     '✓ Full folder scopes preserve focused, pressed and menu owners and cached expanded branches',
   );
 
-  const smallFolders = await page.evaluate(() => {
+  const twoLineRebuilds = await page.evaluate(() => {
     document.getElementById('home').focus();
     const next = structuredClone(fixture);
-    next.groups = Array.from({ length: 20 }, (_, i) => ({
-      id: `small-${i}`,
-      name: `Small folder ${i}`,
-      parentId: null,
-    }));
-    next.tabs = next.tabs.map((tab, i) => ({
+    next.groups = next.groups.slice(0, 2);
+    next.tabs = next.tabs.slice(0, 6).map((tab, i) => ({
       ...tab,
-      groupId: `small-${Math.floor(i / 50)}`,
-      parentTabId: null,
-      audible: false,
-      mutedInfo: { muted: false },
+      groupId: `g${Math.floor(i / 3)}`,
     }));
-    next.look.domains = false;
-    next.view.scopeId = 'small-0';
-    viewportTest.set(next);
+    next.look.domains = true;
+    next.view.scopeId = 'g0';
+    viewportTest.set(structuredClone(next));
     viewportTest.resetRows();
-    const keys = next.tabs.map((tab) => `tab:${tab.id}`);
-    let maximumCached = 0;
-    for (let pass = 0; pass < 2; pass++)
-      for (let i = 0; i < 20; i++) {
-        viewportTest.set({ ...next, view: { ...next.view, scopeId: `small-${i}` } });
-        const expected = next.tabs.filter((tab) => tab.groupId === `small-${i}`);
+    const row = document.querySelector('#tree .tab-row');
+    const close = row.querySelector('.close-tab');
+    close.focus();
+    const checked = [];
+    for (const shape of ['audio', 'parent']) {
+      // Prime detail reuse, rebuild children in the same row, then change URLs.
+      next.tabs[0].url = `https://before-${shape}.example.test/`;
+      viewportTest.patch(structuredClone(next));
+      const previousDetail = row.querySelector('.row-detail');
+      const complex = structuredClone(next);
+      if (shape === 'audio') complex.tabs[0].audible = true;
+      else complex.tabs[1].parentTabId = complex.tabs[0].id;
+      viewportTest.patch(complex);
+      if (!row.querySelector(shape === 'audio' ? '.audio-button' : '.tab-disclosure'))
+        throw Error('Two-line row did not gain its complex controls');
+      viewportTest.patch(structuredClone(next));
+      if (row.querySelector('.row-detail') === previousDetail)
+        throw Error('Fixture did not rebuild the row children');
+      for (const [url, domain] of [
+        ['https://www.current.example.test/page', 'current.example.test'],
+        ['https://different.example.test/page', 'different.example.test'],
+        ['about:blank', 'New tab'],
+        ['file:///example.html', 'New tab'],
+        ['invalid-url', ''],
+        [undefined, ''],
+      ]) {
+        next.tabs[0].url = url;
+        viewportTest.patch(structuredClone(next));
+        if (
+          document.querySelector('#tree .tab-row') !== row ||
+          row.querySelector('.row-detail')?.textContent !== domain ||
+          row.querySelector('.row-detail')?.getAttribute('aria-hidden') !== 'true' ||
+          row.querySelector('.audio-button, .tab-disclosure') ||
+          row.querySelector('.close-tab') !== close ||
+          document.activeElement !== close
+        )
+          throw Error('Two-line rebuild retained stale children or lost focus');
+        checked.push({ shape, domain });
+      }
+    }
+    next.tabs[0].url = 'https://example.com/final';
+    for (const domains of [false, true, false, true]) {
+      const currentClose = document.activeElement;
+      next.look.domains = domains;
+      viewportTest.patch(structuredClone(next));
+      if (document.activeElement !== currentClose)
+        throw Error('Line-mode change lost the focused close control');
+      document.getElementById('home').focus();
+      for (const scopeId of ['g1', 'g0']) {
+        next.view.scopeId = scopeId;
+        viewportTest.set(structuredClone(next));
+        const expected = next.tabs.filter((tab) => tab.groupId === scopeId);
         const rows = [...document.querySelectorAll('#tree .tab-row')];
         if (
-          document.getElementById('tree').classList.contains('viewport-tree') ||
           rows.length !== expected.length ||
           rows.some(
-            (row, n) =>
-              Number(row.dataset.id) !== expected[n].id ||
-              row.querySelector('.label').textContent !== expected[n].title ||
-              row.querySelector('.close-tab').getAttribute('aria-label') !==
-                `Close ${expected[n].title}`,
-          ) ||
-          JSON.stringify(viewportTest.targets()) !== JSON.stringify(expected.map((tab) => tab.id))
+            (node, i) =>
+              Number(node.dataset.id) !== expected[i].id ||
+              node.querySelector('.label').textContent !== expected[i].title ||
+              (domains
+                ? node.querySelector('.row-detail')?.textContent !== 'example.com'
+                : Boolean(node.querySelector('.row-copy, .row-detail'))),
+          )
         )
-          throw new Error('Small-folder reuse changed complete rows or action labels');
-        maximumCached = Math.max(maximumCached, viewportTest.cached(keys).keys.length);
+          throw Error('Revisiting a scope retained the previous line mode');
       }
-    return { maximumCached, built: viewportTabBuilds, lastId: next.tabs.at(-1).id };
+      // The focused owner may be reused after navigating; check the current one.
+      document.querySelector('#tree .tab-row .close-tab').focus();
+    }
+    document.getElementById('home').focus();
+    viewportTest.set(structuredClone(fixture));
+    return checked;
   });
-  expect(smallFolders.maximumCached).toBeLessThanOrEqual(146);
-  expect(smallFolders.built).toBeLessThan(150);
-  const callsBeforeClose = await page.evaluate(() => viewportTest.calls.length);
-  await page.locator(`#tree .tab-row[data-id="${smallFolders.lastId}"] .close-tab`).click();
-  expect(
-    await page.evaluate((before) => viewportTest.calls.slice(before), callsBeforeClose),
-  ).toEqual([{ type: 'closeTab', id: smallFolders.lastId, promoteFirstChild: true }]);
+  expect(twoLineRebuilds).toHaveLength(12);
   console.log(
-    '✓ Small-folder visits bound dormant controls and preserve all rows and action targets',
+    '✓ Two-line rebuilds refresh domains and preserve focused controls across line modes',
   );
+
+  for (const domains of [false, true]) {
+    const smallFolders = await page.evaluate((domains) => {
+      document.getElementById('home').focus();
+      const next = structuredClone(fixture);
+      next.groups = Array.from({ length: 20 }, (_, i) => ({
+        id: `small-${i}`,
+        name: `Small folder ${i}`,
+        parentId: null,
+      }));
+      next.tabs = next.tabs.map((tab, i) => ({
+        ...tab,
+        groupId: `small-${Math.floor(i / 50)}`,
+        url: `https://www.folder-${Math.floor(i / 50)}.example.test/${i}`,
+        parentTabId: null,
+        audible: false,
+        mutedInfo: { muted: false },
+      }));
+      next.look.domains = domains;
+      next.view.scopeId = 'small-0';
+      viewportTest.set(next);
+      viewportTest.resetRows();
+      const keys = next.tabs.map((tab) => `tab:${tab.id}`);
+      let maximumCached = 0;
+      for (let pass = 0; pass < 2; pass++)
+        for (let i = 0; i < 20; i++) {
+          viewportTest.set({ ...next, view: { ...next.view, scopeId: `small-${i}` } });
+          const expected = next.tabs.filter((tab) => tab.groupId === `small-${i}`);
+          const rows = [...document.querySelectorAll('#tree .tab-row')];
+          if (
+            document.getElementById('tree').classList.contains('viewport-tree') ||
+            rows.length !== expected.length ||
+            rows.some(
+              (row, n) =>
+                Number(row.dataset.id) !== expected[n].id ||
+                row.querySelector('.label').textContent !== expected[n].title ||
+                (domains
+                  ? row.querySelector('.row-detail')?.textContent !== `folder-${i}.example.test` ||
+                    row.querySelector('.row-detail')?.getAttribute('aria-hidden') !== 'true'
+                  : Boolean(row.querySelector('.row-detail'))) ||
+                row.querySelector('.close-tab').getAttribute('aria-label') !==
+                  `Close ${expected[n].title}`,
+            ) ||
+            JSON.stringify(viewportTest.targets()) !== JSON.stringify(expected.map((tab) => tab.id))
+          )
+            throw new Error('Small-folder reuse changed complete rows or action labels');
+          maximumCached = Math.max(maximumCached, viewportTest.cached(keys).keys.length);
+        }
+      return { maximumCached, built: viewportTabBuilds, lastId: next.tabs.at(-1).id };
+    }, domains);
+    expect(smallFolders.maximumCached).toBeLessThanOrEqual(146);
+    expect(smallFolders.built).toBeLessThan(150);
+    const callsBeforeClose = await page.evaluate(() => viewportTest.calls.length);
+    await page.locator(`#tree .tab-row[data-id="${smallFolders.lastId}"] .close-tab`).click();
+    expect(
+      await page.evaluate((before) => viewportTest.calls.slice(before), callsBeforeClose),
+    ).toEqual([{ type: 'closeTab', id: smallFolders.lastId, promoteFirstChild: true }]);
+    console.log(
+      `✓ ${domains ? 'Two-line' : 'One-line'} small-folder visits bound dormant controls and preserve complete rows and actions`,
+    );
+  }
   const mixedFolders = await page.evaluate(() => {
     document.getElementById('home').focus();
     const next = structuredClone(fixture);
@@ -2017,6 +2127,9 @@ try {
           const tab = tabs.find((tab) => tab.id === Number(row.dataset.id));
           if (
             row.querySelector('.label').textContent !== tab.title ||
+            (next.look.domains
+              ? row.querySelector('.row-detail')?.textContent !== 'example.com'
+              : Boolean(row.querySelector('.row-copy, .row-detail'))) ||
             row.querySelector('.close-tab').getAttribute('aria-label') !== `Close ${tab.title}`
           )
             throw Error('Stale mixed tab control');
@@ -2055,9 +2168,25 @@ try {
     viewportTest.resetRows();
     const fresh = checkMixedScope(next);
     window.mixedScopeFixture = structuredClone(next);
-    return { maximumCached, builds, reused, fresh };
+    let maximumSwitchedCached = 0;
+    for (const domains of [true, false, true, false]) {
+      next.look.domains = domains;
+      for (let i = 0; i < 20; i++) {
+        next.view.scopeId = `mixed-${i}`;
+        viewportTest.set(structuredClone(next));
+        checkMixedScope(next);
+        maximumSwitchedCached = Math.max(
+          maximumSwitchedCached,
+          viewportTest.cached(keys).keys.length,
+        );
+        if (sidebarRowsProbe().totalPooled > 64)
+          throw Error('Mixed line-mode switch exceeded the unused control budget');
+      }
+    }
+    return { maximumCached, maximumSwitchedCached, builds, reused, fresh };
   });
   expect(mixedFolders.maximumCached).toBeLessThanOrEqual(150);
+  expect(mixedFolders.maximumSwitchedCached).toBeLessThanOrEqual(150);
   expect(mixedFolders.builds.tabs).toBeLessThan(150);
   expect(mixedFolders.builds.groups).toBeLessThan(20);
   expect(mixedFolders.builds.creations).toBeLessThan(10);
@@ -2157,12 +2286,11 @@ try {
       viewportTest.set(next);
       checkMixedScope(next);
     }
-    for (const mode of ['expanded', 'domains', 'parents', 'audio']) {
+    for (const mode of ['expanded', 'parents', 'audio']) {
       const next = structuredClone(mixedScopeFixture);
       next.view.scopeId = 'mixed-0';
       if (mode === 'expanded')
         next.view.collapsed = next.view.collapsed.filter((id) => id !== 'mixed-child-0-0');
-      if (mode === 'domains') next.look.domains = true;
       if (mode === 'parents') next.tabs[1].parentTabId = next.tabs[0].id;
       if (mode === 'audio') next.tabs[0].audible = true;
       viewportTest.set(next);
@@ -2237,124 +2365,133 @@ try {
     '✓ Mixed tab/folder scopes preserve full results, appearance, actions, protected owners and varying shapes',
   );
 
-  const flatTransitions = await page.evaluate(() => {
-    document.getElementById('home').focus();
-    const next = structuredClone(fixture);
-    const sizes = [0, 1, 7, 35, 50, 63, 64, 90, 690];
-    next.groups = sizes.map((_, i) => ({ id: `vary-${i}`, name: `Vary ${i}`, parentId: null }));
-    let offset = 0;
-    next.tabs = sizes.flatMap((size, i) => {
-      const tabs = fixture.tabs
-        .slice(offset, offset + size)
-        .map((tab) => ({ ...tab, groupId: `vary-${i}` }));
-      offset += size;
-      return tabs;
-    });
-    for (const i of [2, 4, 3, 6, 7, 1, 0, 4, 2, 8, 4]) {
-      viewportTest.set({ ...next, view: { ...next.view, scopeId: `vary-${i}` } });
-      const expected = next.tabs.filter((tab) => tab.groupId === `vary-${i}`);
-      if (expected.length <= 100) {
-        const rows = [...document.querySelectorAll('#tree .tab-row')];
-        if (
-          rows.length !== expected.length ||
-          rows.some(
-            (row, n) =>
-              Number(row.dataset.id) !== expected[n].id ||
-              row.querySelector('.label').textContent !== expected[n].title ||
-              row.querySelector('.close-tab').getAttribute('aria-label') !==
-                `Close ${expected[n].title}`,
-          )
-        )
-          throw Error('Variable-size folder recycling changed rows or targets');
-      }
-    }
-    const owned = document.querySelector('#tree .tab-row .close-tab');
-    owned.focus();
-    const key = owned.closest('[data-key]').dataset.key;
-    viewportTest.set({ ...next, view: { ...next.view, scopeId: 'vary-3' } });
-    const ownerPreserved = owned.closest('[data-key]').dataset.key === key;
-    document.getElementById('home').focus();
-    return { ownerPreserved };
-  });
-  expect(flatTransitions.ownerPreserved).toBe(true);
-  console.log(
-    '✓ Variable-size, empty and virtual folder transitions preserve rows and focused ownership',
-  );
-  for (const owner of ['pressed', 'menu']) {
-    await page.evaluate((owner) => {
+  for (const domains of [false, true]) {
+    const flatTransitions = await page.evaluate((domains) => {
       document.getElementById('home').focus();
       const next = structuredClone(fixture);
-      next.groups = Array.from({ length: 20 }, (_, i) => ({
-        id: `owned-${i}`,
-        name: `Owned ${i}`,
-        parentId: null,
-      }));
-      next.tabs = next.tabs.map((tab, i) => ({
-        ...tab,
-        groupId: `owned-${Math.floor(i / 50)}`,
-        parentTabId: null,
-        audible: false,
-        mutedInfo: { muted: false },
-      }));
-      next.look.domains = false;
-      next.view.scopeId = 'owned-0';
-      viewportTest.set(next);
-      window.fullOwnerFixture = next;
-      window.fullOwner = document.querySelector('#tree .tab-row');
-      window.fullOwnerClose = fullOwner.querySelector('.close-tab');
-      if (owner === 'pressed')
-        fullOwnerClose.dispatchEvent(
-          new PointerEvent('pointerdown', {
-            bubbles: true,
-            pointerId: 42,
-            button: 0,
-            isPrimary: true,
-          }),
-        );
-      else fullOwner.focus();
-    }, owner);
-    if (owner === 'menu') {
-      await page.keyboard.press('Shift+F10');
-      await expect(page.locator('#menu')).toBeVisible();
-    }
-    const ownership = await page.evaluate((owner) => {
-      const before = viewportTest.calls.length;
-      if (owner === 'pressed')
-        document.dispatchEvent(
-          new PointerEvent('pointerup', { bubbles: true, pointerId: 42, button: 0 }),
-        );
-      viewportTest.set({
-        ...fullOwnerFixture,
-        view: { ...fullOwnerFixture.view, scopeId: 'owned-1' },
+      next.look.domains = domains;
+      const sizes = [0, 1, 7, 35, 50, 63, 64, 90, 690];
+      next.groups = sizes.map((_, i) => ({ id: `vary-${i}`, name: `Vary ${i}`, parentId: null }));
+      let offset = 0;
+      next.tabs = sizes.flatMap((size, i) => {
+        const tabs = fixture.tabs
+          .slice(offset, offset + size)
+          .map((tab) => ({ ...tab, groupId: `vary-${i}` }));
+        offset += size;
+        return tabs;
       });
-      fullOwnerClose.click();
-      return {
-        oldKey: fullOwner.dataset.key,
-        firstVisibleId: Number(document.querySelector('#tree .tab-row').dataset.id),
-        closes: viewportTest.calls.slice(before).filter((call) => call.type === 'closeTab'),
-      };
-    }, owner);
-    expect(ownership).toEqual({ oldKey: 'tab:1', firstVisibleId: 51, closes: [] });
-    if (owner === 'menu') await page.keyboard.press('Escape');
-    await page.evaluate(async () => {
-      document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 42 }));
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      delete window.fullOwner;
-      delete window.fullOwnerClose;
-      delete window.fullOwnerFixture;
-    });
+      for (const i of [2, 4, 3, 6, 7, 1, 0, 4, 2, 8, 4]) {
+        viewportTest.set({ ...next, view: { ...next.view, scopeId: `vary-${i}` } });
+        const expected = next.tabs.filter((tab) => tab.groupId === `vary-${i}`);
+        if (expected.length <= 100) {
+          const rows = [...document.querySelectorAll('#tree .tab-row')];
+          if (
+            rows.length !== expected.length ||
+            rows.some(
+              (row, n) =>
+                Number(row.dataset.id) !== expected[n].id ||
+                row.querySelector('.label').textContent !== expected[n].title ||
+                (domains
+                  ? row.querySelector('.row-detail')?.textContent !== 'example.com'
+                  : Boolean(row.querySelector('.row-detail'))) ||
+                row.querySelector('.close-tab').getAttribute('aria-label') !==
+                  `Close ${expected[n].title}`,
+            )
+          )
+            throw Error('Variable-size folder recycling changed rows or targets');
+        }
+      }
+      const owned = document.querySelector('#tree .tab-row .close-tab');
+      owned.focus();
+      const key = owned.closest('[data-key]').dataset.key;
+      viewportTest.set({ ...next, view: { ...next.view, scopeId: 'vary-3' } });
+      const ownerPreserved = owned.closest('[data-key]').dataset.key === key;
+      document.getElementById('home').focus();
+      return { ownerPreserved };
+    }, domains);
+    expect(flatTransitions.ownerPreserved).toBe(true);
+    console.log(
+      '✓ Variable-size, empty and virtual folder transitions preserve rows and focused ownership',
+    );
+    for (const owner of ['pressed', 'menu']) {
+      await page.evaluate(
+        ({ owner, domains }) => {
+          document.getElementById('home').focus();
+          const next = structuredClone(fixture);
+          next.groups = Array.from({ length: 20 }, (_, i) => ({
+            id: `owned-${i}`,
+            name: `Owned ${i}`,
+            parentId: null,
+          }));
+          next.tabs = next.tabs.map((tab, i) => ({
+            ...tab,
+            groupId: `owned-${Math.floor(i / 50)}`,
+            parentTabId: null,
+            audible: false,
+            mutedInfo: { muted: false },
+          }));
+          next.look.domains = domains;
+          next.view.scopeId = 'owned-0';
+          viewportTest.set(next);
+          window.fullOwnerFixture = next;
+          window.fullOwner = document.querySelector('#tree .tab-row');
+          window.fullOwnerClose = fullOwner.querySelector('.close-tab');
+          if (owner === 'pressed')
+            fullOwnerClose.dispatchEvent(
+              new PointerEvent('pointerdown', {
+                bubbles: true,
+                pointerId: 42,
+                button: 0,
+                isPrimary: true,
+              }),
+            );
+          else fullOwner.focus();
+        },
+        { owner, domains },
+      );
+      if (owner === 'menu') {
+        await page.keyboard.press('Shift+F10');
+        await expect(page.locator('#menu')).toBeVisible();
+      }
+      const ownership = await page.evaluate((owner) => {
+        const before = viewportTest.calls.length;
+        if (owner === 'pressed')
+          document.dispatchEvent(
+            new PointerEvent('pointerup', { bubbles: true, pointerId: 42, button: 0 }),
+          );
+        viewportTest.set({
+          ...fullOwnerFixture,
+          view: { ...fullOwnerFixture.view, scopeId: 'owned-1' },
+        });
+        fullOwnerClose.click();
+        return {
+          oldKey: fullOwner.dataset.key,
+          firstVisibleId: Number(document.querySelector('#tree .tab-row').dataset.id),
+          closes: viewportTest.calls.slice(before).filter((call) => call.type === 'closeTab'),
+        };
+      }, owner);
+      expect(ownership).toEqual({ oldKey: 'tab:1', firstVisibleId: 51, closes: [] });
+      if (owner === 'menu') await page.keyboard.press('Escape');
+      await page.evaluate(async () => {
+        document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 42 }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        delete window.fullOwner;
+        delete window.fullOwnerClose;
+        delete window.fullOwnerFixture;
+      });
+    }
+    console.log('✓ Small-folder navigation cannot reassign a pressed or menu-owned close control');
   }
-  console.log('✓ Small-folder navigation cannot reassign a pressed or menu-owned close control');
   const complexRevisits = await page.evaluate(() => {
     document.getElementById('home').focus();
-    return ['domains', 'parents', 'audio'].map((mode) => {
+    return ['parents', 'audio'].map((mode) => {
       const next = structuredClone(fixture);
       next.groups = Array.from({ length: 20 }, (_, i) => ({
         id: `complex-${i}`,
         name: `Complex ${i}`,
         parentId: null,
       }));
-      next.look.domains = mode === 'domains';
+      next.look.domains = false;
       next.tabs = next.tabs.map((tab, i) => ({
         ...tab,
         groupId: `complex-${Math.floor(i / 50)}`,
@@ -2376,11 +2513,9 @@ try {
     });
   });
   expect(complexRevisits).toEqual(
-    ['domains', 'parents', 'audio'].map((mode) => ({ mode, sameControl: true, rebuilt: 0 })),
+    ['parents', 'audio'].map((mode) => ({ mode, sameControl: true, rebuilt: 0 })),
   );
-  console.log(
-    '✓ Two-line, parent and audio rows retain their cached controls across 20 small scopes',
-  );
+  console.log('✓ Parent and audio rows retain their cached controls across 20 small scopes');
   await page.evaluate(() => viewportTest.set(structuredClone(fixture)));
   expect(errors).toEqual([]);
 } finally {

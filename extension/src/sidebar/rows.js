@@ -78,7 +78,10 @@ export function createSidebarRows({
   const creationViews = new Map();
   const pooledCount = () => leafPool.length + groupPool.length + creationPool.length;
 
-  const pooledLeafParts = new WeakMap();
+  let pooledLeafParts = new WeakMap();
+  let pooledLeafDetails = new WeakMap();
+  let leafDomains = false;
+  let updateLeaf = updatePooledLeaf;
 
   const usedWrappers = new Set();
 
@@ -121,8 +124,8 @@ export function createSidebarRows({
           (row.kind === 'tab' && plainLeaf(row.tab, row.stats)) ||
           (row.kind === 'group' && !row.expanded),
       );
-    // Complex small scopes keep their identity cache, including two-line labels,
-    // audio controls, parent rows and expanded folders. Their reconstruction cost
+    // Complex small scopes keep their identity cache, including audio controls,
+    // parent rows and expanded folders. Their reconstruction cost
     // is not traded for a smaller dormant budget.
     if (!reuseControls()) return;
     const keep = new Set([
@@ -823,11 +826,7 @@ export function createSidebarRows({
 
   function plainLeaf(tab, stats) {
     return Boolean(
-      !getState().look.domains &&
-      !stats.descendants &&
-      !tab.audible &&
-      !tab.mutedInfo?.muted &&
-      !childAudioCount(tab),
+      !stats.descendants && !tab.audible && !tab.mutedInfo?.muted && !childAudioCount(tab),
     );
   }
 
@@ -895,6 +894,29 @@ export function createSidebarRows({
     return true;
   }
 
+  function updatePooledTwoLineLeaf(row, tab, expanded, stats) {
+    if (!updatePooledLeaf(row, tab, expanded, stats)) return false;
+    const parts = pooledLeafParts.get(row);
+    let detail = pooledLeafDetails.get(parts);
+    if (!detail || detail.url !== tab.url) {
+      if (!detail) {
+        const node = row.querySelector('.row-detail');
+        if (!node) {
+          pooledLeafParts.delete(row);
+          return false;
+        }
+        detail = { node };
+        // The cache can replace a row's children without replacing its element.
+        // A new parts record then also needs a new reference to the detail node.
+        pooledLeafDetails.set(parts, detail);
+      }
+      const domain = tabDomain(tab);
+      if (detail.node.textContent !== domain) detail.node.textContent = domain;
+      detail.url = tab.url;
+    }
+    return true;
+  }
+
   function tabRow(tab, expanded, stats) {
     const recyclable = canPoolLeaf(tab, stats);
     const row = markSelected(
@@ -912,7 +934,7 @@ export function createSidebarRows({
         ],
         () => createTabRow(tab, expanded, stats),
         recyclable
-          ? (row) => updatePooledLeaf(row, tab, expanded, stats)
+          ? (row) => updateLeaf(row, tab, expanded, stats)
           : (row, previous, next) => patchTabRow(row, tab, expanded, stats, previous, next),
       ),
     );
@@ -1107,7 +1129,7 @@ export function createSidebarRows({
   }
 
   function finishRows() {
-    if (!reuseControls() || getDomainFilter() || getState().look.domains) leafPool.length = 0;
+    if (!reuseControls() || getDomainFilter()) leafPool.length = 0;
     if (!reuseControls() || getDomainFilter()) groupPool.length = creationPool.length = 0;
     rowCache.finish((key) => {
       if (key.startsWith('pin:group:'))
@@ -1163,6 +1185,15 @@ export function createSidebarRows({
   }
 
   function beginRows() {
+    const domains = Boolean(getState().look.domains);
+    if (domains !== leafDomains) {
+      // Shape changes discard child references once, before any controls move.
+      leafPool.length = 0;
+      pooledLeafParts = new WeakMap();
+      pooledLeafDetails = new WeakMap();
+      leafDomains = domains;
+      updateLeaf = domains ? updatePooledTwoLineLeaf : updatePooledLeaf;
+    }
     rowCache.begin();
   }
 
