@@ -2413,9 +2413,14 @@ try {
     console.log(
       '✓ Variable-size, empty and virtual folder transitions preserve rows and focused ownership',
     );
-    for (const owner of ['pressed', 'menu']) {
+    for (const [owner, audio] of [
+      ['pressed', false],
+      ['menu', false],
+      ['pressed', true],
+      ['menu', true],
+    ]) {
       await page.evaluate(
-        ({ owner, domains }) => {
+        ({ owner, domains, audio }) => {
           document.getElementById('home').focus();
           const next = structuredClone(fixture);
           next.groups = Array.from({ length: 20 }, (_, i) => ({
@@ -2428,7 +2433,7 @@ try {
             groupId: `owned-${Math.floor(i / 50)}`,
             parentTabId: null,
             audible: false,
-            mutedInfo: { muted: false },
+            mutedInfo: { muted: audio && i % 50 === 0 },
           }));
           next.look.domains = domains;
           next.view.scopeId = 'owned-0';
@@ -2447,7 +2452,7 @@ try {
             );
           else fullOwner.focus();
         },
-        { owner, domains },
+        { owner, domains, audio },
       );
       if (owner === 'menu') {
         await page.keyboard.press('Shift+F10');
@@ -2482,6 +2487,253 @@ try {
     }
     console.log('✓ Small-folder navigation cannot reassign a pressed or menu-owned close control');
   }
+  for (const domains of [false, true])
+    for (const audioMode of ['muted', 'audible']) {
+      const sparseAudio = await page.evaluate(
+        ({ domains, audioMode }) => {
+          document.getElementById('home').focus();
+          const next = structuredClone(fixture);
+          next.groups = Array.from({ length: 20 }, (_, i) => ({
+            id: `audio-${i}`,
+            name: `Audio folder ${i}`,
+            parentId: null,
+          }));
+          next.tabs = next.tabs.map((tab, i) => ({
+            ...tab,
+            groupId: `audio-${Math.floor(i / 50)}`,
+            parentTabId: null,
+            audible: audioMode === 'audible' && i % 50 === Math.floor(i / 50),
+            mutedInfo: { muted: audioMode === 'muted' && i % 50 === Math.floor(i / 50) },
+          }));
+          next.look.domains = domains;
+          next.view.scopeId = 'audio-0';
+          viewportTest.set(next);
+          viewportTest.resetRows();
+          const keys = next.tabs.map((tab) => `tab:${tab.id}`);
+          const audioOwners = new Map();
+          let maximumCached = 0;
+          for (let pass = 0; pass < 2; pass++)
+            for (let i = 0; i < 20; i++) {
+              next.view.scopeId = `audio-${i}`;
+              viewportTest.set(structuredClone(next));
+              const expected = next.tabs.filter((tab) => tab.groupId === next.view.scopeId);
+              const rows = [...document.querySelectorAll('#tree .tab-row')];
+              if (
+                document.getElementById('tree').classList.contains('viewport-tree') ||
+                rows.length !== 50 ||
+                rows.some((row, n) => {
+                  const tab = expected[n];
+                  const button = row.querySelector('.audio-button');
+                  return (
+                    Number(row.dataset.id) !== tab.id ||
+                    row.querySelector('.label').textContent !== tab.title ||
+                    row.querySelector('.close-tab').getAttribute('aria-label') !==
+                      `Close ${tab.title}` ||
+                    (domains
+                      ? row.querySelector('.row-detail')?.textContent !== 'example.com'
+                      : Boolean(row.querySelector('.row-detail'))) ||
+                    (n === i
+                      ? button?.getAttribute('aria-label') !==
+                        (audioMode === 'muted' ? 'Unmute tab' : 'Mute tab')
+                      : Boolean(button))
+                  );
+                }) ||
+                JSON.stringify(viewportTest.targets()) !==
+                  JSON.stringify(expected.map((tab) => tab.id))
+              )
+                throw Error('Sparse audio reuse changed complete rows, labels or actions');
+              const id = expected[i].id;
+              const button = rows[i].querySelector('.audio-button');
+              const previous = audioOwners.get(id);
+              if (previous && (previous.row !== rows[i] || previous.button !== button))
+                throw Error('Quiet sibling reuse rebuilt an audio control');
+              audioOwners.set(id, { row: rows[i], button });
+              maximumCached = Math.max(maximumCached, viewportTest.cached(keys).keys.length);
+              if (sidebarRowsProbe().totalPooled > 64)
+                throw Error('Sparse audio scope exceeded the unused pool budget');
+            }
+          const lastId = next.tabs[969].id;
+          const row = document.querySelector(`#tree .tab-row[data-id="${lastId}"]`);
+          const close = row.querySelector('.close-tab');
+          close.focus();
+          for (const shape of ['quiet', 'muted', 'audible']) {
+            next.tabs[969].audible = shape === 'audible';
+            next.tabs[969].mutedInfo = { muted: shape === 'muted' };
+            viewportTest.patch(structuredClone(next));
+            const button = row.querySelector('.audio-button');
+            if (
+              document.activeElement !== close ||
+              row.querySelector('.close-tab') !== close ||
+              (shape === 'quiet'
+                ? Boolean(button)
+                : button?.getAttribute('aria-label') !==
+                  (shape === 'muted' ? 'Unmute tab' : 'Mute tab'))
+            )
+              throw Error('Audio shape change lost the focused current control');
+          }
+          document.getElementById('home').focus();
+          return { maximumCached, built: viewportTabBuilds, audioOwners: audioOwners.size, lastId };
+        },
+        { domains, audioMode },
+      );
+      expect(sparseAudio.maximumCached).toBeLessThanOrEqual(100);
+      expect(sparseAudio.built).toBeLessThan(100);
+      expect(sparseAudio.audioOwners).toBe(20);
+      const beforeMute = await page.evaluate(() => viewportTest.calls.length);
+      await page.locator(`#tree .tab-row[data-id="${sparseAudio.lastId}"] .audio-button`).click();
+      expect(await page.evaluate((before) => viewportTest.calls.slice(before), beforeMute)).toEqual(
+        [{ type: 'muteTab', id: sparseAudio.lastId }],
+      );
+    }
+  console.log(
+    '✓ Quiet siblings reuse controls while sparse audio buttons keep identity and actions',
+  );
+
+  const audioDemand = await page.evaluate(async () => {
+    document.getElementById('home').focus();
+    const next = structuredClone(fixture);
+    const sizes = [80, 90, 1, 80];
+    next.groups = sizes.map((_, i) => ({ id: `demand-${i}`, name: `Demand ${i}`, parentId: null }));
+    let offset = 0;
+    next.tabs = sizes.flatMap((size, i) => {
+      const tabs = fixture.tabs.slice(offset, offset + size).map((tab, n) => ({
+        ...tab,
+        groupId: `demand-${i}`,
+        audible: false,
+        mutedInfo: { muted: i === 1 || (i === 3 && n % 2 === 0) },
+      }));
+      offset += size;
+      return tabs;
+    });
+    viewportTest.set({ ...next, view: { ...next.view, scopeId: 'demand-0' } });
+    viewportTest.resetRows();
+    let maximumUnused = 0;
+    for (const i of [1, 2, 3, 0, 1, 3, 2, 0]) {
+      viewportTest.set({ ...next, view: { ...next.view, scopeId: `demand-${i}` } });
+      const expected = next.tabs.filter((tab) => tab.groupId === `demand-${i}`);
+      const rows = [...document.querySelectorAll('#tree .tab-row')];
+      if (
+        rows.length !== expected.length ||
+        rows.some(
+          (row, n) =>
+            Number(row.dataset.id) !== expected[n].id ||
+            row.querySelector('.label').textContent !== expected[n].title ||
+            Boolean(row.querySelector('.audio-button')) !== expected[n].mutedInfo.muted,
+        )
+      )
+        throw Error('Mixed audio demand lost complete rows or mute controls');
+      maximumUnused = Math.max(maximumUnused, sidebarRowsProbe().totalPooled);
+    }
+    viewportTest.set({ ...next, view: { ...next.view, scopeId: 'demand-1' } });
+    const audioOwner = document.querySelector('#tree .tab-row .audio-button');
+    const ownerId = Number(audioOwner.closest('.tab-row').dataset.id);
+    audioOwner.focus();
+    const large = structuredClone(next);
+    large.tabs.push(
+      ...fixture.tabs.slice(offset, offset + 150).map((tab, i) => ({
+        ...tab,
+        groupId: 'demand-1',
+        mutedInfo: { muted: i % 5 === 0 },
+      })),
+    );
+    for (const state of [large, next]) {
+      viewportTest.set({ ...state, view: { ...state.view, scopeId: 'demand-1' } });
+      await new Promise(requestAnimationFrame);
+      if (
+        document.getElementById('tree').classList.contains('viewport-tree') !== (state === large) ||
+        document.activeElement !== audioOwner ||
+        Number(audioOwner.closest('.tab-row').dataset.id) !== ownerId ||
+        audioOwner.getAttribute('aria-label') !== 'Unmute tab'
+      )
+        throw Error('Full/virtual audio transition lost its focused current mute control');
+      const expectedIds = state.tabs
+        .filter((tab) => tab.groupId === 'demand-1')
+        .map((tab) => tab.id);
+      if (JSON.stringify(viewportTest.targets()) !== JSON.stringify(expectedIds))
+        throw Error('Full/virtual audio transition lost logical members');
+      const keys = state.tabs.map((tab) => `tab:${tab.id}`);
+      const dormant = viewportTest.cached(keys);
+      if (
+        state === large &&
+        dormant.keys.length - document.querySelectorAll('#tree .tab-row').length + dormant.pooled >
+          96
+      )
+        throw Error('Virtual audio transition exceeded its dormant budget');
+      maximumUnused = Math.max(maximumUnused, sidebarRowsProbe().totalPooled);
+    }
+    const overlapping = structuredClone(next);
+    const moved = overlapping.tabs.filter((tab) => tab.groupId === 'demand-1').slice(0, 5);
+    for (const tab of moved) tab.groupId = 'demand-3';
+    viewportTest.set({ ...overlapping, view: { ...overlapping.view, scopeId: 'demand-3' } });
+    if (
+      document.activeElement !== audioOwner ||
+      document.querySelector(`#tree .tab-row[data-id="${ownerId}"] .audio-button`) !== audioOwner
+    )
+      throw Error('Overlapping audio scopes lost their focused owner');
+    const expectedOverlap = overlapping.tabs.filter((tab) => tab.groupId === 'demand-3');
+    const overlapRows = [...document.querySelectorAll('#tree .tab-row')];
+    if (
+      overlapRows.length !== expectedOverlap.length ||
+      overlapRows.some(
+        (row, i) =>
+          Number(row.dataset.id) !== expectedOverlap[i].id ||
+          row.querySelector('.label').textContent !== expectedOverlap[i].title,
+      )
+    )
+      throw Error('Overlapping audio scopes changed complete order or labels');
+    maximumUnused = Math.max(maximumUnused, sidebarRowsProbe().totalPooled);
+    document.getElementById('home').focus();
+    return maximumUnused;
+  });
+  expect(audioDemand).toBeLessThanOrEqual(64);
+  console.log('✓ All-muted and dense-audio scopes cannot inflate unused quiet-control demand');
+
+  await page.evaluate(() => {
+    document.getElementById('home').focus();
+    for (const audioPosition of [0, 79]) {
+      const next = structuredClone(fixture);
+      next.groups = [0, 1].map((i) => ({ id: `edge-${i}`, name: `Edge ${i}`, parentId: null }));
+      next.tabs = next.tabs.slice(0, 160).map((tab, i) => ({
+        ...tab,
+        groupId: `edge-${Math.floor(i / 80)}`,
+        audible: false,
+        mutedInfo: { muted: i % 80 === audioPosition },
+      }));
+      next.view.scopeId = 'edge-0';
+      viewportTest.set(next);
+      viewportTest.resetRows();
+      const audio = document.querySelector('#tree .audio-button');
+      const observer = new MutationObserver(() => {});
+      observer.observe(document.getElementById('tree'), { childList: true });
+      for (const scopeId of ['edge-1', 'edge-0']) {
+        viewportTest.set({ ...next, view: { ...next.view, scopeId } });
+        const records = observer.takeRecords();
+        if (
+          records.reduce((count, record) => count + record.removedNodes.length, 0) !== 1 ||
+          records.reduce((count, record) => count + record.addedNodes.length, 0) !== 1
+        )
+          throw Error('Audio position forced quiet siblings out of their connected wrappers');
+        const expected = next.tabs.filter((tab) => tab.groupId === scopeId);
+        const rows = [...document.querySelectorAll('#tree .tab-row')];
+        if (
+          rows.length !== expected.length ||
+          rows.some(
+            (row, i) =>
+              Number(row.dataset.id) !== expected[i].id ||
+              row.querySelector('.label').textContent !== expected[i].title,
+          )
+        )
+          throw Error('In-place larger audio scopes changed complete order or labels');
+      }
+      observer.disconnect();
+      if (document.querySelector('#tree .audio-button') !== audio)
+        throw Error('In-place larger audio scopes replaced the cached audio button');
+      if (sidebarRowsProbe().totalPooled > 64)
+        throw Error('Audio wrapper release raised the unused pool budget');
+    }
+  });
+  console.log('✓ Larger flat scopes leave quiet controls connected with audio at either end');
+
   const complexRevisits = await page.evaluate(() => {
     document.getElementById('home').focus();
     return ['parents', 'audio'].map((mode) => {

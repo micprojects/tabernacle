@@ -121,12 +121,11 @@ export function createSidebarRows({
       rows.every(
         ({ row }) =>
           row.kind === 'new-tab' ||
-          (row.kind === 'tab' && plainLeaf(row.tab, row.stats)) ||
+          (row.kind === 'tab' && !row.stats.descendants && !childAudioCount(row.tab)) ||
           (row.kind === 'group' && !row.expanded),
       );
-    // Complex small scopes keep their identity cache, including audio controls,
-    // parent rows and expanded folders. Their reconstruction cost
-    // is not traded for a smaller dormant budget.
+    // Audio leaves keep their own identity cache while quiet siblings can reuse
+    // controls. Parent rows and expanded folders keep the complex-scope cache.
     if (!reuseControls()) return;
     const keep = new Set([
       ...rows.map(({ row }) => row.key),
@@ -137,6 +136,7 @@ export function createSidebarRows({
     ]);
     const departing = [];
     const creations = [];
+    let audioDepartures;
     // A full render consumes every incoming row synchronously. Views needed by
     // that update may pass through the pool beyond its unused-view budget.
     const needed = virtual
@@ -144,20 +144,31 @@ export function createSidebarRows({
       : { tab: -leafPool.length, group: -groupPool.length, 'new-tab': -creationPool.length };
     if (needed)
       for (const { row } of rows)
-        if (!rowCache.has(row.key) && (row.kind === 'new-tab' || !wrappers.has(row.key)))
+        if (
+          !rowCache.has(row.key) &&
+          (row.kind === 'new-tab' || !wrappers.has(row.key)) &&
+          (row.kind !== 'tab' || plainLeaf(row.tab, row.stats))
+        )
           needed[row.kind]++;
     wrappers.forEach((wrapper, key) => {
       const folder = key.startsWith('group:');
       const kind = folder ? 'group' : 'tab';
-      if (
-        (pooledCount() + departing.length >= pooledViewLimit && !(needed?.[kind] > 0)) ||
-        keep.has(key)
-      )
-        return;
+      const poolFull = pooledCount() + departing.length >= pooledViewLimit && !(needed?.[kind] > 0);
+      if ((virtual && poolFull) || keep.has(key)) return;
       if (!folder && wrapper.branch) return;
       const row = wrapper.node.firstElementChild;
+      if (!row) return;
       if (!virtual && folder && row.getAttribute('aria-expanded') !== 'false') return;
-      if ((!folder && !pooledLeafParts.has(row)) || wrapper.node.contains(document.activeElement))
+      const audio = !folder && !pooledLeafParts.has(row);
+      // Audio departures help only when tab or folder controls could stay in place.
+      if (
+        (poolFull && !audio) ||
+        (audio &&
+          (virtual ||
+            (!departing.length && needed.tab <= 0 && needed.group <= 0) ||
+            !row.querySelector('.audio-button'))) ||
+        wrapper.node.contains(document.activeElement)
+      )
         return;
       if (
         treeMotion.owns(wrapper.node) ||
@@ -166,6 +177,10 @@ export function createSidebarRows({
         )
       )
         return;
+      if (audio) {
+        (audioDepartures ??= new Set()).add(wrapper.node);
+        return;
+      }
       const entry = rowCache.take(key);
       if (!entry) return;
       if (needed?.[kind] > 0) needed[kind]--;
@@ -201,12 +216,21 @@ export function createSidebarRows({
     const reusable = new Map(departing.map((item) => [item.wrapper.node, item]));
     const creationNodes = new Set(creations.map(({ row }) => row));
     const inPlace =
-      children.every((node) => reusable.has(node) || creationNodes.has(node)) &&
+      children.every(
+        (node) => reusable.has(node) || creationNodes.has(node) || audioDepartures?.has(node),
+      ) &&
       departing.every(({ folder, wrapper }) =>
         folder ? !wrapper.branch.isConnected && !wrapper.branch.childNodes.length : !wrapper.branch,
       ) &&
       rows.filter(({ row }) => row.kind === 'new-tab').length === creations.length &&
-      rows.every(({ row }) => !rowCache.has(row.key));
+      rows.every(
+        ({ row }) =>
+          !rowCache.has(row.key) ||
+          (row.kind === 'tab' && (row.tab.audible || row.tab.mutedInfo?.muted)),
+      );
+    // Remove only unowned audio leaves before the cursor-based reconciliation;
+    // quiet siblings can then stay in place while audio rows keep their identity.
+    if (inPlace && audioDepartures) for (const node of audioDepartures) node.remove();
     // The full renderer builds children from last to first. Pool in DOM order
     // so a flat scope can reassign safe controls in place.
     const released = inPlace
