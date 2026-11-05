@@ -2125,7 +2125,7 @@ try {
         delete window.heldMixedControl;
       });
     }
-  await page.evaluate(() => {
+  const largerMixedScopes = await page.evaluate(() => {
     for (const [scope, tabCount, groupCount] of [
       [2, 7, 1],
       [3, 50, 4],
@@ -2176,9 +2176,63 @@ try {
       if (document.querySelector(selector) !== held)
         throw Error('Mixed navigation discarded a cached complex control');
     }
+    document.getElementById('home').focus();
+    const large = structuredClone(mixedScopeFixture);
+    const parentIds = new Set(Array.from({ length: 12 }, (_, i) => `mixed-${i}`));
+    large.groups = large.groups.filter((group) => parentIds.has(group.parentId ?? group.id));
+    large.tabs = large.tabs.slice(0, 960).map((tab, i) => ({
+      ...tab,
+      groupId: `mixed-${Math.floor(i / 80)}`,
+    }));
+    large.view = {
+      scopeId: 'mixed-0',
+      collapsed: large.groups.filter((group) => group.parentId !== null).map((group) => group.id),
+    };
+    viewportTest.set(large);
+    viewportTest.resetRows();
+    const keys = [
+      ...large.tabs.map((tab) => `tab:${tab.id}`),
+      ...large.groups.map((group) => `group:${group.id}`),
+      ...parentIds.values().map((id) => `new-tab:${id}`),
+    ];
+    let maximumCached = 0;
+    for (let pass = 0; pass < 2; pass++)
+      for (const id of parentIds) {
+        large.view.scopeId = id;
+        viewportTest.set(structuredClone(large));
+        checkMixedScope(large);
+        maximumCached = Math.max(maximumCached, viewportTest.cached(keys).keys.length);
+        if (sidebarRowsProbe().totalPooled > 64) throw Error('Unused row pool exceeded its budget');
+      }
+    // Transfer demand belongs to each control kind; spare tab views cannot
+    // justify retaining extra folder or creation controls after the render.
+    for (const [tabCount, groupCount] of [
+      [0, 80],
+      [80, 0],
+      [0, 0],
+      [1, 4],
+      [80, 4],
+    ]) {
+      const next = structuredClone(large);
+      next.view.scopeId = 'mixed-0';
+      next.tabs = next.tabs.filter((tab) => tab.groupId !== 'mixed-0' || tab.id <= tabCount);
+      next.groups = next.groups.filter((group) => group.parentId !== 'mixed-0');
+      const children = Array.from({ length: groupCount }, (_, i) => ({
+        id: `large-child-${i}`,
+        name: `Large child ${i}`,
+        parentId: 'mixed-0',
+      }));
+      next.groups.push(...children);
+      next.view.collapsed = children.map((group) => group.id);
+      viewportTest.set(next);
+      checkMixedScope(next);
+      if (sidebarRowsProbe().totalPooled > 64) throw Error('Mixed kinds enlarged the unused pool');
+    }
     delete window.mixedScopeFixture;
     delete window.checkMixedScope;
+    return { maximumCached };
   });
+  expect(largerMixedScopes.maximumCached).toBeLessThanOrEqual(100);
   console.log(
     '✓ Mixed tab/folder scopes preserve full results, appearance, actions, protected owners and varying shapes',
   );

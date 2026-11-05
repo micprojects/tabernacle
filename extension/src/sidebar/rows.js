@@ -134,9 +134,23 @@ export function createSidebarRows({
     ]);
     const departing = [];
     const creations = [];
+    // A full render consumes every incoming row synchronously. Views needed by
+    // that update may pass through the pool beyond its unused-view budget.
+    const needed = virtual
+      ? null
+      : { tab: -leafPool.length, group: -groupPool.length, 'new-tab': -creationPool.length };
+    if (needed)
+      for (const { row } of rows)
+        if (!rowCache.has(row.key) && (row.kind === 'new-tab' || !wrappers.has(row.key)))
+          needed[row.kind]++;
     wrappers.forEach((wrapper, key) => {
-      if (pooledCount() + departing.length >= pooledViewLimit || keep.has(key)) return;
       const folder = key.startsWith('group:');
+      const kind = folder ? 'group' : 'tab';
+      if (
+        (pooledCount() + departing.length >= pooledViewLimit && !(needed?.[kind] > 0)) ||
+        keep.has(key)
+      )
+        return;
       if (!folder && wrapper.branch) return;
       const row = wrapper.node.firstElementChild;
       if (!virtual && folder && row.getAttribute('aria-expanded') !== 'false') return;
@@ -151,6 +165,7 @@ export function createSidebarRows({
         return;
       const entry = rowCache.take(key);
       if (!entry) return;
+      if (needed?.[kind] > 0) needed[kind]--;
       wrappers.delete(key);
       if (virtual) {
         wrapper.node.remove();
@@ -160,7 +175,8 @@ export function createSidebarRows({
     });
     creationViews.forEach((node, key) => {
       if (
-        pooledCount() + departing.length + creations.length >= pooledViewLimit ||
+        (pooledCount() + departing.length + creations.length >= pooledViewLimit &&
+          !(needed?.['new-tab'] > 0)) ||
         keep.has(key) ||
         node.contains(document.activeElement)
       )
@@ -170,6 +186,7 @@ export function createSidebarRows({
       if (treeMotion.owns(node) || node.matches(owned) || node.querySelector(owned)) return;
       const entry = rowCache.take(key);
       if (!entry) return;
+      if (needed?.['new-tab'] > 0) needed['new-tab']--;
       creationViews.delete(key);
       if (virtual) {
         node.remove();
