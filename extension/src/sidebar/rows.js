@@ -165,6 +165,8 @@ export function createSidebarRows({
       const poolFull = pooledCount() + departing.length >= pooledViewLimit && !(needed?.[kind] > 0);
       if ((virtual && poolFull) || keep.has(key)) return;
       const row = wrapper.node.firstElementChild;
+      // A finished fold detaches cached descendant rows before the next render
+      // releases their wrappers. These empty wrappers have no controls to reuse.
       if (!row) return;
       const parent = !folder && Boolean(wrapper.branch);
       if (
