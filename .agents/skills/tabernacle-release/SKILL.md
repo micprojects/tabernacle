@@ -111,9 +111,10 @@ continuation file `.amo-upload-uuid` is an exception: preserve it there and veri
 that it is excluded from the package.
 Do not pick an archive by modification time or a wildcard for “latest”.
 
-Draft concise public release notes from the actual changes. Prepare the minimal
-version metadata described in the reference. Do not rewrite the AMO listing,
-licence, compatibility or other listing metadata incidentally.
+Draft concise public release notes from the actual changes, plus reviewer notes
+only when needed. Prepare both before asking for release confirmation, using the
+minimal version metadata described in the reference. Do not rewrite the AMO
+listing, licence, compatibility or other listing metadata incidentally.
 
 ## Confirm once, immediately before committing and publishing
 
@@ -121,10 +122,19 @@ After preparation, present a compact review containing:
 
 - Current → exact target version, or the remaining steps of a resumed release.
 - Included changes, explicit commit paths and any existing unpublished commits.
-- QA result, verified ZIP link/hash and the public release notes.
+- QA result and verified ZIP link/hash.
+- **Public release notes:** the exact complete text to be sent, with its locale.
+- **Reviewer notes (Mozilla only):** the exact complete text if any will be sent;
+  otherwise explicitly state **None — no reviewer notes will be sent.**
 - Exact branch/remote, commit message, annotated tag and existing Mozilla add-on.
 - The remaining actions: commit, tag, push, then submit through `web-ext` to the
   public listing. Mozilla may make the update available after validation/review.
+
+Include both notes fields inline in the first release-plan message that asks for
+confirmation, alongside the actions to be performed. A summary, a file link alone,
+or a preview after approval is insufficient. If multiple release-note locales are
+being submitted, show every locale's exact text. The prepared metadata must match
+this preview; “None” means omit reviewer notes, not send that word to Mozilla.
 
 Ask an explicit “Proceed with this release?” and wait for an affirmative answer.
 Explain that this confirmation is required by this skill at Michael's request;
@@ -134,8 +144,10 @@ release is not confirmation of this release. If declined, leave the prepared fil
 and explain their state; do not discard anyone's edits automatically.
 
 This approval covers the exact plan through submission: do not ask again at each
-step. If the version, included code, notes, destination or publishing behaviour
-materially changes, prepare and validate the revised result before confirming it.
+step. Any change to either notes text after approval requires showing the revised
+text and obtaining confirmation again. If the version, included code, destination
+or publishing behaviour materially changes, prepare and validate the revised result
+before confirming it.
 
 ## Commit, tag, push, submit
 

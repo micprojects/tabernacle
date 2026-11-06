@@ -82,7 +82,11 @@ Store metadata outside that directory. For an update, the minimal metadata shape
 ```
 
 Use the listing's existing locale when preparing the real metadata; do not change
-its default locale. Add reviewer notes only when needed and included in the plan.
+its default locale. If reviewer notes are needed, put the exact approved text in
+`version.approval_notes`; otherwise omit that field. Before invoking the CLI,
+compare `version.release_notes` and any `version.approval_notes` against the exact
+text shown in the release confirmation. Do not add, omit or reword notes after
+approval without showing the revised text and obtaining confirmation again.
 The current extension is readable JavaScript without a bundling/minification step;
 a separate source archive is not ordinarily needed. Reassess against Mozilla's
 [source submission requirements](https://extensionworkshop.com/documentation/publish/source-code-submission/)
