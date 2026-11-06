@@ -54,6 +54,7 @@ export const firefoxSuites = [
   'test-container-picker-firefox',
   'test-drag-firefox',
   'test-tab-close-firefox',
+  'test-tree-motion-firefox',
   'test-backup-firefox',
   'test-new-tab-firefox',
   'test-new-tab-disabled-firefox',

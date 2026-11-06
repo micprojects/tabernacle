@@ -205,6 +205,42 @@ try {
   console.log(
     '✓ Inline/footer + feedback and saved settings switch work, including mid-animation disabling',
   );
+
+  // A completed parent fold can leave cached descendant wrappers empty. The
+  // next click or tab creation must still refresh the whole tree (0.2.2 froze).
+  await page.goto(`${base}/extension/sidebar.html?demo`);
+  await expect(design).toBeVisible();
+  const rootTab = (await send('newTab', { groupId: null })).createdTabId;
+  const rootRow = page.locator(`[data-key="tab:${rootTab}"]`);
+  await expect(rootRow).toBeVisible();
+  await send('activateTab', { id: 1 });
+  await fold(work);
+  await expect(work).toHaveAttribute('aria-expanded', 'false');
+  await expect
+    .poll(async () => (await send('snapshot')).view.collapsed.includes('work'))
+    .toBe(true);
+  await finish();
+  await expect(page.locator('#reveal')).toBeVisible();
+  await rootRow.locator('.label').click();
+  await expect(rootRow).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#reveal')).toBeHidden();
+
+  for (const selector of ['#new-tab', '.new-tab-action[data-key="new-tab:null"]']) {
+    const before = (await send('snapshot')).tabs.length;
+    await page.locator(selector).click();
+    await expect.poll(async () => (await send('snapshot')).tabs.length).toBe(before + 1);
+    const active = (await send('snapshot')).tabs.find((tab) => tab.active);
+    await expect(page.locator(`[data-key="tab:${active.id}"]`)).toBeVisible();
+    await expect(page.locator('#reveal')).toBeHidden();
+    await expect(page.locator('#toast.error')).toBeHidden();
+  }
+  await fold(work);
+  await finish();
+  await expect(design).toBeVisible();
+  await expect(page.locator('[data-key="group:research"]')).toBeVisible();
+  await expect(page.locator('[data-key="tab:4"]')).toBeVisible();
+  expect(errors).toEqual([]);
+  console.log('✓ Finished nested folder folds preserve tab clicks, new tabs and restored rows');
 } finally {
   await close();
 }
