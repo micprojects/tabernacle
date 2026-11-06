@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Tabernacle Release'
+  short_description: 'Prepare, confirm and publish Tabernacle releases'
+  default_prompt: 'Use $tabernacle-release to prepare the next patch release, or the exact version I specify, and ask for confirmation before committing and publishing.'
+policy:
+  allow_implicit_invocation: false
