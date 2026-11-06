@@ -40,6 +40,8 @@ SKILL.md
 *.cpuprofile
 *.heapprofile
 *.heapsnapshot
+__pycache__/
+*.pyc
 
 # Credentials and machine-local configuration.
 .env
@@ -66,3 +68,12 @@ SKILL.md
 !/.agents/skills/tabernacle-optimise/agents/
 /.agents/skills/tabernacle-optimise/agents/*
 !/.agents/skills/tabernacle-optimise/agents/openai.yaml
+!/.agents/skills/tabernacle-release/
+/.agents/skills/tabernacle-release/*
+!/.agents/skills/tabernacle-release/SKILL.md
+!/.agents/skills/tabernacle-release/agents/
+/.agents/skills/tabernacle-release/agents/*
+!/.agents/skills/tabernacle-release/agents/openai.yaml
+!/.agents/skills/tabernacle-release/references/
+/.agents/skills/tabernacle-release/references/*
+!/.agents/skills/tabernacle-release/references/mozilla.md
