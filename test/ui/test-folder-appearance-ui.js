@@ -229,6 +229,14 @@ try {
   await expect(glyph('research')).toHaveAttribute('data-icon', 'folder-open-16');
   await expect(pinnedGlyph).toHaveAttribute('data-icon', 'folder-16');
   await expect(pinnedGlyph).toHaveCSS('color', await folderColor('#37adff'));
+  await expect(pinnedGlyph.locator(':scope > path')).toHaveCount(1);
+  await send('setGroupAppearance', { id: 'research', appearance: { icon: 'musical-note' } });
+  await expect(pinnedGlyph).toHaveAttribute('data-icon', 'musical-note-16');
+  await expect(pinnedGlyph.locator(':scope > use')).toHaveCount(1);
+  await send('setGroupAppearance', { id: 'research', appearance: {} });
+  await expect(pinnedGlyph).toHaveAttribute('data-icon', 'folder-16');
+  await expect(pinnedGlyph.locator(':scope > path')).toHaveCount(1);
+  await expect(pinnedGlyph).toHaveCSS('color', await folderColor('#37adff'));
   await send('setGroupPin', { id: 'research', action: null });
   await page.screenshot({ path: 'test-results/folder-container-icon-inheritance.png' });
   console.log(

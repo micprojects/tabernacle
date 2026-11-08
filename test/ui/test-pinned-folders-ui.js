@@ -179,6 +179,35 @@ try {
     await send('setGroupPin', { id, action: 'reveal' });
   await page.setViewportSize({ width: 220, height: 660 });
   await expect(shelf.locator('.pinned-folder')).toHaveCount(5);
+  // The shelf's direct outline must stay identical to the maintained Acorn asset.
+  // Compare the actual rendered glyphs so an asset update cannot leave pins behind.
+  const outlines = await shelf.evaluate(async (node) => {
+    const source = await (await fetch(new URL('icons/ui/acorn.svg', location.href))).text();
+    const canonical = new DOMParser()
+      .parseFromString(source, 'image/svg+xml')
+      .getElementById('folder-16').firstElementChild;
+    const attributes = (path) =>
+      Object.fromEntries(
+        path
+          .getAttributeNames()
+          .sort()
+          .map((name) => [name, path.getAttribute(name)]),
+      );
+    return {
+      expected: attributes(canonical),
+      actual: [...node.querySelectorAll('svg.folder-glyph[data-icon="folder-16"]')].map(
+        (glyph) => ({
+          children: glyph.childElementCount,
+          kind: glyph.firstElementChild.localName,
+          attributes: attributes(glyph.firstElementChild),
+        }),
+      ),
+    };
+  });
+  expect(outlines.actual.length).toBeGreaterThan(0);
+  for (const outline of outlines.actual)
+    expect(outline).toEqual({ children: 1, kind: 'path', attributes: outlines.expected });
+
   expect((await pin('later').boundingBox()).y).toBeGreaterThan((await tab(13).boundingBox()).y);
   await move(pin('later'), tab(13));
   await expect.poll(async () => (await order())[0]).toBe('group:later');

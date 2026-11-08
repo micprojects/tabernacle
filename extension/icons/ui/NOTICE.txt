@@ -31,6 +31,9 @@ All UI icons render at their native 12, 16 or 20 CSS pixel size. The registry
 in ../../src/icons.js maps Tabernacle actions to these symbols. The existing
 Firefox container artwork and Tabernacle extension logo are separate assets.
 
+../../src/folder-icons.js also copies the unmodified folder-16 path for pinned
+folder glyphs under the same MPL 2.0 licence, preserving its geometry and fill rules.
+
 folder-icons.svg contains 72 unmodified 16px Acorn symbols followed by 36 custom
 letter and number symbols for folder appearance choices.
 ../../src/folder-appearance.js lists their labels, categories and search
