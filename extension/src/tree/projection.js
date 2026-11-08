@@ -46,6 +46,22 @@ const rowPrototype = {
 
 const record = (fields) => Object.assign(Object.create(rowPrototype), fields);
 
+// Temporary pin lookups must not outlive construction through the lazy getters.
+function projectPins(state) {
+  const tabs = new Map(state.tabs.filter((tab) => tab.pinned).map((tab) => [tab.treeId, tab]));
+  const folders = new Map((state.folderPins || []).map((pin) => [pin.id, pin]));
+  return (state.pins || []).map((pin) => {
+    const tab = pin.kind === 'tab' ? tabs.get(pin.id) : null;
+    return {
+      kind: tab ? 'pin-tab' : 'pin-group',
+      key: tab ? `tab:${tab.id}` : `pin:group:${pin.id}`,
+      id: tab?.id ?? pin.id,
+      ...(tab ? { tab } : { group: folders.get(pin.id) }),
+      target: { kind: pin.kind, id: tab?.id ?? pin.id },
+    };
+  });
+}
+
 // Keep one current collection, not a history of snapshots or query results.
 // Callers clear on accepted state, in-place changes and view release.
 export function createDomainTreeProjector() {
@@ -242,20 +258,7 @@ export function projectTree(
 
   const shown = build(false);
   const { roots, byKey, domainTabs } = shown;
-  const tabPins = new Map(state.tabs.filter((tab) => tab.pinned).map((tab) => [tab.treeId, tab]));
-  const folderPins = new Map((state.folderPins || []).map((pin) => [pin.id, pin]));
-  const pins = domain
-    ? []
-    : (state.pins || []).map((pin) => {
-        const tab = pin.kind === 'tab' ? tabPins.get(pin.id) : null;
-        return {
-          kind: tab ? 'pin-tab' : 'pin-group',
-          key: tab ? `tab:${tab.id}` : `pin:group:${pin.id}`,
-          id: tab?.id ?? pin.id,
-          ...(tab ? { tab } : { group: folderPins.get(pin.id) }),
-          target: { kind: pin.kind, id: tab?.id ?? pin.id },
-        };
-      });
+  const pins = domain ? [] : projectPins(state);
   for (const row of pins) byKey.set(row.key, row);
   const visibleRows = shown.logicalRows.every((row) => row.visible)
     ? shown.logicalRows

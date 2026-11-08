@@ -731,8 +731,9 @@ export function createSidebarRows({
   }
 
   function createPinnedTab(tab) {
+    const id = tab.id;
     const label = `${tab.title || 'New tab'}, pinned`;
-    const node = button(label, null, () => activateTab(tab.id), 'pinned-tab');
+    const node = button(label, null, () => activateTab(id), 'pinned-tab');
     node.dataset.key = `tab:${tab.id}`;
     node.removeAttribute('title');
     node.setAttribute('aria-pressed', String(Boolean(tab.active)));

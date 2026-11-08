@@ -1,4 +1,4 @@
-import { instrumentDemo } from '../helpers/probes/pinned-tabs.js';
+import { instrumentDemo, instrumentSidebar } from '../helpers/probes/pinned-tabs.js';
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startUiTest } from '../helpers/ui-test.js';
@@ -8,6 +8,10 @@ const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 
 try {
+  const sidebar = await readFile('extension/src/sidebar.js', 'utf8');
+  await page.route('**/extension/src/sidebar.js', (route) =>
+    route.fulfill({ contentType: 'application/javascript', body: instrumentSidebar(sidebar) }),
+  );
   const demo = await readFile('preview/demo.js', 'utf8');
   await page.route('**/preview/demo.js', (route) =>
     route.fulfill({
@@ -205,6 +209,22 @@ try {
   await expect.poll(order).toEqual(remaining);
   expect((await snapshot()).tabs.some((tab) => tab.id === closedPin)).toBe(false);
   console.log('✓ Middle-clicking a pin’s icon closes that tab and preserves the other pins');
+
+  await pin(13).focus();
+  await pin(13).evaluate((node) => {
+    window.originalPinButton = node;
+  });
+  expect(await page.evaluate(() => pinOwnership.replaceMetadata())).toBe(remaining.length);
+  await expect(pin(13)).toHaveAttribute('aria-label', /^Updated /);
+  await expect(pin(13)).toBeFocused();
+  expect(await pin(13).evaluate((node) => node === window.originalPinButton)).toBe(true);
+  await page.requestGC();
+  expect(await page.evaluate(() => pinOwnership.retained())).toBe(0);
+  await page.keyboard.press('Enter');
+  await expect(pin(13)).toHaveAttribute('aria-pressed', 'true');
+  console.log(
+    '✓ Metadata updates release obsolete pin records while preserving focus and activation',
+  );
   expect(errors).toEqual([]);
 } finally {
   await close();

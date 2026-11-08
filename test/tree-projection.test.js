@@ -1,6 +1,7 @@
 import { createFullTreeRenderer } from '../extension/src/tree/full-renderer.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createTreeIndex } from '../extension/src/tree/index.js';
 import { searchTabOrder } from '../extension/src/tab-collection.js';
 import { domainResults } from '../extension/src/domain-filter.js';
@@ -43,6 +44,44 @@ function fixture() {
     view: { scopeId: null, collapsed: ['work'] },
   };
 }
+
+test('lazy projections release original pin records after metadata replacement', () => {
+  execFileSync(
+    process.execPath,
+    [
+      '--expose-gc',
+      '--input-type=module',
+      '-e',
+      `
+        import assert from 'node:assert/strict';
+        import { createTreeIndex } from ${JSON.stringify(new URL('../extension/src/tree/index.js', import.meta.url).href)};
+        import { projectTree } from ${JSON.stringify(new URL('../extension/src/tree/projection.js', import.meta.url).href)};
+        function replacePin() {
+          const original = { id: 1, treeId: 'pin', title: 'Original', pinned: true, parentTabId: null };
+          const state = { tabs: [original], groups: [], folderPins: [], pins: [{ kind: 'tab', id: 'pin' }], view: { scopeId: null, collapsed: [] } };
+          const index = createTreeIndex(state);
+          const projection = projectTree(state, index);
+          const current = { ...original, title: 'Updated' };
+          index.byId.set(current.id, current);
+          projection.materializedByKey.get('tab:1').tab = current;
+          projection.source = { ...state, tabs: [current] };
+          return { projection, original: new WeakRef(original), current: new WeakRef(current) };
+        }
+        const retained = replacePin();
+        for (let i = 0; i < 5; i++) {
+          await new Promise(setImmediate);
+          global.gc();
+        }
+        assert.equal(retained.original.deref(), undefined, 'Temporary pin lookups must not retain an obsolete snapshot record');
+        assert.equal(retained.current.deref()?.title, 'Updated');
+        assert.equal(retained.projection.byKey.get('tab:1').tab.title, 'Updated');
+        assert.deepEqual(retained.projection.filterTabIds, []);
+        assert.deepEqual(retained.projection.pins.map(row => row.key), ['tab:1']);
+      `,
+    ],
+    { timeout: 10000, stdio: 'pipe' },
+  );
+});
 
 test('complete logical hierarchy is separate from visible navigation and action targets', () => {
   const state = fixture();
