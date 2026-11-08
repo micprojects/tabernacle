@@ -785,7 +785,7 @@ export function createSidebarRows({
         node.dataset.key = `pin:group:${group.id}`;
         node.classList.toggle('active', current);
         if (current) node.setAttribute('aria-current', 'location');
-        node.append(folderIcon(group, container, { appearance }));
+        node.append(folderIcon(group, container, { appearance, pinned: true }));
         pinnedDrag(node, { kind: 'group', id: group.id });
         pinnedMenu(node, 'group', group.id);
         return node;
