@@ -16,6 +16,7 @@
     "https://api.open-meteo.com/*",
     "https://geocoding-api.open-meteo.com/*"
   ],
+  "optional_permissions": ["bookmarks"],
   "incognito": "not_allowed",
   "browser_specific_settings": {
     "gecko": {

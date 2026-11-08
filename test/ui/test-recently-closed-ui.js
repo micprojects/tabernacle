@@ -193,12 +193,12 @@ try {
   await page.evaluate(() => window.closedTabsTest.api.tabs.remove(3));
   await expect(rows).toHaveCount(2);
   await expect(rows.last()).toBeFocused();
-  await page.getByRole('button', { name: 'Domains', exact: true }).click();
+  await page.getByRole('button', { name: 'Bookmarks', exact: true }).click();
   await expect(popup).toBeHidden();
   await expect(rows).toHaveCount(0);
-  await expect(page.locator('#domains-view')).toBeVisible();
+  await expect(page.locator('#bookmarks-view')).toBeVisible();
   await trigger.click();
-  await expect(page.locator('#domains-view')).toBeHidden();
+  await expect(page.locator('#bookmarks-view')).toBeHidden();
   await expect(popup).toBeVisible();
   await trigger.click();
   await expect(popup).toBeHidden();

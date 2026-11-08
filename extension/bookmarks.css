@@ -1,0 +1,62 @@
+.sidebar.bookmarks-open > :not(.bookmarks-view):not(footer) {
+  display: none !important;
+}
+.bookmarks-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+}
+.bookmarks-destination {
+  margin: 10px 16px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+.bookmarks-status {
+  padding: 8px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.bookmarks-status p {
+  margin: 0 0 8px;
+}
+.bookmarks-tree {
+  --guide-1: var(--neutral-marker);
+  --guide-2: color-mix(in srgb, var(--neutral-marker) 75%, var(--background));
+  --guide-3: color-mix(in srgb, var(--neutral-marker) 55%, var(--background));
+}
+.bookmark-row {
+  min-width: 70px;
+  touch-action: pan-y;
+}
+.bookmark-more {
+  flex: none;
+  opacity: 0;
+}
+.bookmark-row:hover .bookmark-more,
+.bookmark-row:focus-within .bookmark-more {
+  opacity: 1;
+}
+.bookmark-field {
+  margin-top: 14px;
+}
+.bookmark-field input,
+.bookmark-field select {
+  display: block;
+  margin-top: 7px;
+}
+.bookmark-recovery > div + div {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-line);
+}
+@media (hover: none) {
+  .bookmark-more {
+    opacity: 1;
+  }
+}

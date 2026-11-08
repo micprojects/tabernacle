@@ -11,6 +11,8 @@ import { containerDetails } from './containers.js';
 import { removeUnusedCreatedContainer } from './container-rollback.js';
 import { createPreferenceActions } from './controller/preference-actions.js';
 import { createContainerActions } from './controller/container-actions.js';
+import { createBookmarkActions } from './controller/bookmark-actions.js';
+import { createBookmarkEditor } from './controller/bookmark-editor.js';
 import { deserializeModel, serializeModel } from './persistence.js';
 import { normaliseDomain } from './domain-filter.js';
 import { normaliseDomainPins } from './domains.js';
@@ -180,6 +182,14 @@ export function createController(
     invalidate: () => cache.invalidateContainers(),
   });
   const { list: containers } = containerActions;
+  const openBookmark = createBookmarkActions({
+    api,
+    requireFolder,
+    newTabContainer,
+    moveTab,
+    writeTab,
+  });
+  const bookmarkEditor = createBookmarkEditor(api);
   const folderBackup = createFolderBackupController({
     api,
     getModel: () => model,
@@ -1935,6 +1945,15 @@ export function createController(
         extra.createdTabId = tab.id;
         break;
       }
+      case 'openBookmark':
+        extra.createdTabId = await openBookmark(message);
+        break;
+      case 'editBookmark':
+        return bookmarkEditor.edit(message);
+      case 'getBookmarkEdits':
+        return bookmarkEditor.pending();
+      case 'dismissBookmarkEdit':
+        return bookmarkEditor.dismiss(message);
       case 'undoCloseTab':
       case 'restoreClosedTab': {
         // Select a tab explicitly: restore() without an ID can reopen a whole window.

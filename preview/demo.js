@@ -2,7 +2,7 @@ import { createController } from '../extension/src/controller.js';
 import { VIEW_KEY } from '../extension/src/model.js';
 import { memoryBrowser } from './browser.js';
 
-export async function createDemo(notify, readCloseFilter) {
+export async function createDemo(notify, readCloseFilter, onBrowser = () => {}) {
   const groups = [
     { id: 'work', name: 'Work', parentId: null },
     { id: 'design', name: 'Design', parentId: 'work' },
@@ -57,6 +57,7 @@ export async function createDemo(notify, readCloseFilter) {
     { cookieStoreId: 'firefox-container-4', name: 'Shopping', colorCode: '#d65780' },
   ];
   const api = memoryBrowser({ groups, tabs, memberships, containers });
+  onBrowser(api);
   await api.sessions.setWindowValue(1, VIEW_KEY, {
     scopeId: null,
     collapsed: ['research', 'personal', 'later'],
