@@ -20,6 +20,9 @@ export async function connectDemo(onChange, readCloseFilter) {
         for (const listener of listeners) listener(notice);
       },
       () => session.readCloseFilter?.(),
+      (api) => {
+        session.browser = api;
+      },
     );
   }
   if (readCloseFilter) session.readCloseFilter = readCloseFilter;
@@ -35,4 +38,8 @@ export async function connectDemo(onChange, readCloseFilter) {
     { once: true },
   );
   return session.ready;
+}
+
+export function demoBrowser() {
+  return window.tabernacleDemoSession.browser;
 }

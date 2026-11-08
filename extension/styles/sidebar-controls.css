@@ -502,14 +502,6 @@ input::placeholder {
   background: var(--field);
   color: var(--field-text);
 }
-#domain-back {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
 #domain-actions {
   flex-shrink: 0;
   width: 28px;

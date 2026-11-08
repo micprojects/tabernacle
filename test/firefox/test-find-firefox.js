@@ -418,15 +418,15 @@ try {
   );
   await check('actual-sidebar-full-dom', async () => {
     const before = await discoverEveryRow('sidebar', 'LifecycleNeedle', fixture.count);
-    await browser.evaluate(() => document.getElementById('domains-toggle').click());
+    await browser.evaluate(() => document.getElementById('bookmarks-toggle').click());
     await wait(
-      () => browser.evaluate(() => !document.getElementById('domains-view').hidden),
-      'Open Domains',
+      () => browser.evaluate(() => !document.getElementById('bookmarks-view').hidden),
+      'Open Bookmarks',
     );
     const inactiveRows = await browser.evaluate(
       () => document.querySelectorAll('#tree .row').length,
     );
-    await browser.evaluate(() => document.querySelector('.domains-close').click());
+    await browser.evaluate(() => document.querySelector('#bookmarks-view .pane-back').click());
     await wait(
       () =>
         browser.evaluate(

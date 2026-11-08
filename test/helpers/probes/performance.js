@@ -66,7 +66,7 @@ window.sidebarProjectionTest = {
   capture: () => treeRenderer.capture(),
   reveal: key => treeRenderer.ensureVisible(key),
   mount: key => treeRenderer.mount(key),
-  panes: { domains: domainsView },
+  panes: { bookmarks: bookmarksView },
 };
 window.measureSidebarLookupReads = (next) => {
   acceptState(next);

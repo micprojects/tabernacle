@@ -3,7 +3,6 @@ import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startUiTest } from '../helpers/ui-test.js';
 import { replaceSource } from '../../scripts/instrumentation/source.js';
-import { listDomains } from '../../extension/src/domains.js';
 
 const { page, close, base } = await startUiTest({ viewport: { width: 320, height: 820 } });
 const errors = [];
@@ -13,17 +12,6 @@ try {
   const source = await readFile('extension/src/sidebar.js', 'utf8');
   expect(source.match(/createTreeIndex\(state, query\)/g)).toHaveLength(1);
   const transferSource = await readFile('extension/src/snapshot-transfer.js', 'utf8');
-  const domainsSource = await readFile('extension/src/domains.js', 'utf8');
-  await page.route('**/extension/src/domains.js', (route) =>
-    route.fulfill({
-      contentType: 'application/javascript',
-      body: replaceSource(
-        domainsSource,
-        'export function listDomains(tabs, pins = []) {',
-        'export function listDomains(tabs, pins = []) { window.perfDomainBuilds = (window.perfDomainBuilds || 0) + 1;',
-      ),
-    }),
-  );
   await page.route('**/extension/src/snapshot-transfer.js', (route) =>
     route.fulfill({
       contentType: 'application/javascript',
@@ -41,7 +29,7 @@ try {
     const addListener = EventTarget.prototype.addEventListener;
     const rowListeners = new WeakMap();
     window.rowListenerCount = () =>
-      [...document.querySelectorAll('.row, .row *, .domains-row, .domains-row *')].reduce(
+      [...document.querySelectorAll('.row, .row *')].reduce(
         (sum, node) => sum + (rowListeners.get(node) || 0),
         0,
       );
@@ -362,92 +350,9 @@ try {
     document.querySelector('[data-key="tab:500"]').scrollIntoView({ block: 'start' });
   });
   const priorAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
-  await page.locator('#domains-toggle').click();
+  await page.locator('#bookmarks-toggle').click();
   expect(await checkProjection()).toEqual({ released: true, target: false });
-  // Domain rows depend on ordered IDs, URLs, icons and pins, not title/audio/activation.
-  await page.evaluate(async () => {
-    perfTest.suppressNotify = true;
-    await sidebarReleaseProbe.refresh();
-  });
-
-  const verifyDomains = async () => {
-    const snapshot = await page.evaluate(() => perfTest.snapshot());
-    const expected = listDomains(snapshot.tabs, snapshot.domainPins).map((entry) => ({
-      domain: entry.domain,
-      count: String(entry.count),
-      pinned: String(entry.pinned),
-      icon: entry.source.favIconUrl || null,
-    }));
-    expect(
-      await page.locator('.domains-row').evaluateAll((rows) =>
-        rows.map((row) => ({
-          domain: row.dataset.domain,
-          count: row.querySelector('.domains-tab-count').textContent,
-          pinned: row.querySelector('.domains-pin').getAttribute('aria-pressed'),
-          icon: row.querySelector('.domains-favicon img')?.getAttribute('src') || null,
-        })),
-      ),
-    ).toEqual(expected);
-  };
-
-  const updateDomainTab = async (id, values, rebuild) => {
-    const before = await page.evaluate(() => perfDomainBuilds);
-    await page.evaluate(
-      async ({ id, values }) => {
-        await perfTest.api.tabs.update(id, values);
-        await sidebarReleaseProbe.refresh();
-      },
-      { id, values },
-    );
-    expect(await page.evaluate(() => perfDomainBuilds)).toBe(before + Number(rebuild));
-    await verifyDomains();
-  };
-
-  await updateDomainTab(2, { title: 'Domain title only' }, false);
-  await updateDomainTab(3, { active: true }, false);
-  await updateDomainTab(2, { audible: true }, false);
-  await updateDomainTab(2, { audible: false, title: 'Tab 1' }, false);
-  await updateDomainTab(2, { url: 'https://child.example.com/two' }, true);
-  const domainIcon = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E';
-  await updateDomainTab(3, { favIconUrl: domainIcon }, true);
-  await page.evaluate(async () => {
-    await sidebarReleaseProbe.action('setDomainPin', { domain: 'child.example.com', pinned: true });
-  });
-  await verifyDomains();
-  // A missing URL update cannot be masked by the following title-only delta.
-  await page.evaluate(async () => {
-    await perfTest.api.tabs.update(2, { url: 'https://example.com/1' });
-    await sidebarReleaseProbe.request('snapshot');
-  });
-  await updateDomainTab(2, { title: 'Skipped domain response' }, true);
-  await page.evaluate(async () => {
-    await sidebarReleaseProbe.action('setDomainPin', {
-      domain: 'child.example.com',
-      pinned: false,
-    });
-  });
-  await updateDomainTab(3, { favIconUrl: undefined }, true);
-  await page.evaluate(() => perfTest.restart());
-  await updateDomainTab(2, { title: 'Tab 1' }, true);
-  // Unversioned snapshots may have been edited in place; identity is not enough.
-  const legacyBuilds = await page.evaluate(() => perfDomainBuilds);
-  await page.evaluate(async () => {
-    const snapshot = await perfTest.snapshot();
-    measureSidebarUpdate(snapshot);
-    snapshot.tabs[1].url = 'https://legacy.test/';
-    measureSidebarUpdate(snapshot);
-  });
-  expect(await page.evaluate(() => perfDomainBuilds)).toBe(legacyBuilds + 2);
-  await expect(page.locator('[data-domain="example.com"] .domains-tab-count')).toHaveText('999');
-  await page.evaluate(async () => {
-    await sidebarReleaseProbe.refresh();
-    perfTest.suppressNotify = false;
-  });
-  await verifyDomains();
-  console.log(
-    '✓ Domains deltas skip irrelevant work and recover changed inputs, skipped replies and legacy reads',
-  );
-  await page.locator('.domains-close').click();
+  await page.locator('#bookmarks-view .pane-back').first().click();
   const restoredAnchor = await page.evaluate(() => sidebarProjectionTest.capture().scroll.anchor);
   expect(restoredAnchor.key).toBe(priorAnchor.key);
   expect(Math.abs(restoredAnchor.offset - priorAnchor.offset)).toBeLessThan(1);
@@ -458,7 +363,7 @@ try {
     // Use a visible footer control to prove close(false) preserves caller focus.
     const external = document.getElementById('settings');
     const results = [];
-    for (const name of ['domains']) {
+    for (const name of ['bookmarks']) {
       document.getElementById(name + '-toggle').focus();
       panes[name].open();
       external.focus();
@@ -468,13 +373,13 @@ try {
       const record = (event) =>
         changes.push(event.target.id || event.target.dataset.key || event.target.className);
       document.addEventListener('focusin', record);
-      panes[name].close({ restoreFocus: false });
+      panes[name].close();
       document.removeEventListener('focusin', record);
       results.push({ name, selected: document.activeElement.id, changes });
     }
     return { results };
   });
-  expect(paneFocus.results).toEqual([{ name: 'domains', selected: 'settings', changes: [] }]);
+  expect(paneFocus.results).toEqual([{ name: 'bookmarks', selected: 'settings', changes: [] }]);
   console.log('✓ Renderer scroll restoration preserves explicit pane focus');
   await expect
     .poll(async () => (await page.evaluate(() => sidebarProjectionTest.inspect())).matching?.length)
@@ -937,101 +842,6 @@ try {
   });
   console.log('✓ Patched metadata matches full rendering for pins, nested and hidden tabs');
 
-  const panePage = await page.context().browser().newPage();
-  try {
-    await panePage.route('**/lookup-fixture', (route) =>
-      route.fulfill({
-        contentType: 'text/html',
-        body: '<!doctype html><section id="root"><button id="tree-toggle">Fold</button><footer></footer></section>',
-      }),
-    );
-    await panePage.goto(base + '/lookup-fixture');
-    const paneEvents = await panePage.evaluate(async () => {
-      const { createDomainsView } = await import('/extension/src/domains-view.js');
-      const calls = [];
-      const adds = new WeakMap();
-      const addListener = EventTarget.prototype.addEventListener;
-      EventTarget.prototype.addEventListener = function (type, listener, options) {
-        if (type !== 'error') adds.set(this, (adds.get(this) || 0) + 1);
-        return addListener.call(this, type, listener, options);
-      };
-      const count = (root) =>
-        [...root.querySelectorAll('.domains-row, .domains-row *')].reduce(
-          (sum, node) => sum + (adds.get(node) || 0),
-          0,
-        );
-      const root = document.getElementById('root');
-      root.innerHTML =
-        '<button id="tree-toggle">Fold</button><footer><button id="recently-closed-toggle">Closed</button></footer>';
-      let release;
-      const state = {};
-      state.tabs = Array.from({ length: 600 }, (_, i) => ({
-        id: i + 1,
-        title: 'Domain ' + i,
-        url: 'https://host' + Math.floor(i / 2) + '.example.com/',
-      }));
-      state.domainPins = [];
-      const domains = createDomainsView({
-        root,
-        getState: () => state,
-
-        onOpen() {},
-
-        onClose() {},
-
-        onSelect: (domain, id) => calls.push(['select', domain, id]),
-
-        onPin: (domain, value) => {
-          calls.push(['pin', domain, value]);
-          return new Promise((resolve) => {
-            release = resolve;
-          });
-        },
-      });
-      domains.update(state);
-      domains.open();
-      const domainListenersAt300 = count(root);
-      const domainRow = root.querySelector('[data-domain="host0.example.com"]');
-      const pin = domainRow.querySelector('.domains-pin');
-      pin.querySelector('svg').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      pin.click();
-      const pinBusy = pin.getAttribute('aria-disabled');
-      release();
-      await Promise.resolve();
-      const pinReady = !pin.hasAttribute('aria-disabled');
-      state.tabs[0].id = 1000;
-      domains.update(state);
-      domainRow.querySelector('.domains-label').click();
-      const selected = calls.at(-1);
-      const currentCalls = calls.length;
-      pin.click();
-      domainRow.querySelector('.domains-open-domain').click();
-      domains.dispose();
-      const staleDomainCalls = calls.length - currentCalls;
-      EventTarget.prototype.addEventListener = addListener;
-      return {
-        domainListenersAt300,
-        pinBusy,
-        pinReady,
-        selected,
-        staleDomainCalls,
-        pins: calls.filter(([type]) => type === 'pin'),
-      };
-    });
-    expect(paneEvents).toMatchObject({
-      domainListenersAt300: 0,
-      pinBusy: 'true',
-      pinReady: true,
-      selected: ['select', 'host0.example.com', 1000],
-      staleDomainCalls: 0,
-      pins: [['pin', 'host0.example.com', true]],
-    });
-    console.log(
-      '✓ Delegated pane controls preserve nested clicks, busy guards and stale targets without row listeners',
-    );
-  } finally {
-    await panePage.close();
-  }
   const queue = await page.evaluate(async () => {
     const result = await sidebarReleaseProbe.action('toggleGroup', { id: 'g0' });
     return { resultTabs: result.tabs.length, empty: await sidebarReleaseProbe.queueIsEmpty() };

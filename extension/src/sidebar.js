@@ -17,7 +17,8 @@ import { projectTree, createDomainTreeProjector } from './tree/projection.js';
 import { createViewportTreeRenderer } from './tree/viewport.js';
 import { captureScroll, restoreScroll } from './view-state.js';
 import { createDomainHeader } from './domain-header.js';
-import { createDomainsView } from './domains-view.js';
+import { createBookmarksView } from './bookmarks-view.js';
+import { createBookmarkDialogs } from './bookmark-dialogs.js';
 import { setAttribute } from './dom.js';
 import { createTreeMotion } from './tree/motion.js';
 import { createFaviconTints } from './favicon-tint.js';
@@ -46,7 +47,7 @@ let domainFilter = null;
 let domainSort = 'newest';
 let domainOrigin;
 let domainSourceId;
-let domainFromDirectory = false;
+let bookmarkBrowser;
 let domainVisibleTabs = [];
 let searchVisibleIds = [];
 let searchOrigin;
@@ -108,9 +109,10 @@ let movingItem = false;
 let actionQueue = Promise.resolve();
 let activeActions = 0;
 const pendingViewActions = [];
-const domainsView = createDomainsView({
+const bookmarksView = createBookmarksView({
   root: document.querySelector('.sidebar'),
   getState: () => state,
+  getBrowser: () => bookmarkBrowser,
 
   onOpen() {
     cancelGroupClick();
@@ -123,9 +125,11 @@ const domainsView = createDomainsView({
   },
 
   onClose: () => render(),
-  onSelect: (domain, sourceId) => filterByDomain(domain, sourceId, true),
-  onMenu: (event) => collectionMenu(event, { kind: 'window' }, state.tabs, false),
-  onPin: (domain, pinned) => action('setDomainPin', { domain, pinned }),
+  onSelect: ({ id, groupId, operationId }) => action('openBookmark', { id, groupId, operationId }),
+  onMenu: (...args) => bookmarkDialogs.openMenu(...args),
+  onMove: (...args) => bookmarkDialogs.drop(...args),
+  onEdit: (id) => bookmarkDialogs.edit(id),
+  onDelete: (id) => bookmarkDialogs.remove(id),
 });
 
 function acceptState(next) {
@@ -331,6 +335,7 @@ const {
 
 const {
   createDialog,
+  showDialog,
   renameDialog,
   appearanceDialog,
   pinFolderDialog,
@@ -358,6 +363,17 @@ const {
     if (key?.startsWith('tab:') && !domainFilter) $('search').value = '';
     render();
   },
+});
+
+const bookmarkDialogs = createBookmarkDialogs({
+  getIndex: bookmarksView.getIndex,
+  getState: () => state,
+  request: (...args) => request(...args),
+  showDialog,
+  menu,
+  refresh: bookmarksView.refresh,
+  reveal: bookmarksView.reveal,
+  announce,
 });
 
 async function requestMove(args) {
@@ -498,7 +514,7 @@ document.addEventListener('visibilitychange', () => {
 
 function enter(id, collapsed) {
   recentlyClosed?.close();
-  domainsView.close({ restoreFocus: false });
+  bookmarksView.close();
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
   if (searchOpen) showSearch(false, { restoreFocus: false });
@@ -508,7 +524,7 @@ function enter(id, collapsed) {
 
 async function revealFolder(id) {
   recentlyClosed?.close();
-  domainsView.close({ restoreFocus: false });
+  bookmarksView.close();
   cancelGroupClick();
   if (domainFilter) leaveDomain({ restoreFocus: false });
   if (searchOpen) showSearch(false, { restoreFocus: false });
@@ -827,7 +843,7 @@ window.addEventListener(
     readSnapshot?.clear();
     releaseTree();
     treeRenderer.dispose();
-    domainsView.dispose();
+    bookmarksView.dispose();
     recentlyClosed?.dispose();
     state = confirmedState = suspendedTree = undefined;
   },
@@ -855,8 +871,8 @@ function render(motionKey = null) {
   renderPending = false;
   state = pointerMoves?.project(state) || state;
   const recentOpen = recentlyClosed?.render();
-  const domainsOpen = domainsView.update(state, currentSnapshotDetails());
-  if (domainsOpen || recentOpen) {
+  const bookmarksOpen = bookmarksView.update();
+  if (bookmarksOpen || recentOpen) {
     previousRender = null;
     return;
   }
@@ -924,8 +940,6 @@ function render(motionKey = null) {
   $('sidebar-header').classList.toggle('domain-mode', Boolean(domainFilter));
   $('domain-tools').hidden = !domainFilter;
   $('domain-search-tools').hidden = !domainFilter;
-  $('domain-back').hidden = !domainFromDirectory;
-  domainsView.detail(domainFromDirectory && Boolean(domainFilter));
   if (domainFilter) {
     const results = projection.domainTabs;
     const visibleResults = projection.matchingRows
@@ -982,7 +996,7 @@ function render(motionKey = null) {
 }
 
 function showSearch(show = true, { restoreFocus = true } = {}) {
-  if (show) domainsView.close({ restoreFocus: false });
+  if (show) bookmarksView.close();
   if (show && domainFilter) leaveDomain({ restoreFocus: false });
   if (show || restoreFocus) cancelGroupClick();
   if (show) closeMenu();
@@ -1005,7 +1019,7 @@ function showSearch(show = true, { restoreFocus = true } = {}) {
   }
 }
 
-function filterByDomain(domain, sourceId, fromDirectory = false) {
+function filterByDomain(domain, sourceId) {
   if (!domain) return;
   cancelGroupClick();
   closeMenu();
@@ -1013,7 +1027,6 @@ function filterByDomain(domain, sourceId, fromDirectory = false) {
     domainOrigin = searchOpen ? searchOrigin : { scroll: tree.scrollTop, selected };
     if (searchOpen) showSearch(false, { restoreFocus: false });
   }
-  domainFromDirectory = fromDirectory;
   $('domain-search').value = '';
   domainFilter = domain;
   domainSourceId = sourceId;
@@ -1028,10 +1041,8 @@ function leaveDomain({ restoreFocus = true } = {}) {
   closeMenu();
   domainFilter = null;
   domainProjector.clear();
-  domainFromDirectory = false;
   domainVisibleTabs = [];
   $('domain-search').value = '';
-  domainsView.detail(false);
   domainSourceId = null;
   selected = domainOrigin?.selected;
   searchScroll = domainOrigin?.scroll ?? 0;
@@ -1217,7 +1228,12 @@ pointerMoves = createPointerMove({
   shelf: $('pinned-tabs'),
   getState: () => confirmedState,
   canStart: () =>
-    Boolean(state) && !domainFilter && !movingItem && !activeActions && !$('dialog').open,
+    Boolean(state) &&
+    !bookmarksView.isOpen &&
+    !domainFilter &&
+    !movingItem &&
+    !activeActions &&
+    !$('dialog').open,
   announce,
   commit: commitMove,
 
@@ -1268,7 +1284,7 @@ recentlyClosed = createRecentActivity({
   beforeOpen() {
     cancelGroupClick();
     closeMenu();
-    domainsView.close({ restoreFocus: false });
+    bookmarksView.close();
     treeMotion.finishAll();
     if (domainFilter) leaveDomain({ restoreFocus: false });
     if (searchOpen) showSearch(false, { restoreFocus: false });
@@ -1286,11 +1302,6 @@ $('domain-close').addEventListener('click', () => leaveDomain());
 $('domain-search').addEventListener('input', () => {
   searchScroll = 0;
   render();
-});
-$('domain-back').prepend(icon('back'));
-$('domain-back').addEventListener('click', () => {
-  leaveDomain({ restoreFocus: false });
-  domainsView.open({ restore: true });
 });
 $('domain-actions').append(icon('more'));
 $('domain-actions').addEventListener('click', (event) =>
@@ -1360,7 +1371,7 @@ document.addEventListener('pointerdown', (event) => {
   const dismissDomain = domainFilter && event.target.closest('footer');
   // Clearing the filter must not move or replace a target before its click.
   if (
-    event.target.closest('.row, .pinned-tab, .recently-closed-row, .domains-row') ||
+    event.target.closest('.row, .pinned-tab, .recently-closed-row, .bookmark-row') ||
     dismissSearch ||
     dismissDomain
   )
@@ -1421,7 +1432,7 @@ document.addEventListener('keydown', (event) => {
   if (menuKey(event)) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
-    if (recentlyClosed?.focusSearch()) return;
+    if (bookmarksView.focusSearch() || recentlyClosed?.focusSearch()) return;
     if (domainFilter) {
       $('domain-search').focus();
       $('domain-search').select();
@@ -1446,14 +1457,16 @@ dropTarget($('home'), 'inside', null);
 
 async function start() {
   if (demo) {
-    const { connectDemo } = await import('../../preview/session.js');
+    const { connectDemo, demoBrowser } = await import('../../preview/session.js');
     const controller = await connectDemo(scheduleRefresh, closeFilter);
     if (disposed) return;
     windowId = 1;
+    bookmarkBrowser = demoBrowser();
     request = (type, args = {}) => controller.request({ type, windowId, ...args });
   } else if (globalThis.browser?.runtime?.id) {
     const currentWindow = await browser.windows.getCurrent();
     if (disposed) return;
+    bookmarkBrowser = browser;
     windowId = currentWindow.id;
     windowFocused = Boolean(currentWindow.focused);
     browser.windows.onFocusChanged?.addListener((id) => {

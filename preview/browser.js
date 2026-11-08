@@ -1,5 +1,6 @@
 import { MODEL_KEY, TAB_KEY, VIEW_KEY, emptyModel } from '../extension/src/model.js';
 import { serializeModel, serializeMembership } from '../extension/src/persistence.js';
+import { memoryBookmarks } from './bookmarks.js';
 
 export function memoryEvent() {
   const listeners = new Set();
@@ -21,6 +22,7 @@ export function memoryBrowser({
   memberships = {},
   containers = [],
   events = false,
+  bookmarks,
 } = {}) {
   let liveTabs = structuredClone(tabs).map((tab) => ({
     ...(tab.active ? { lastAccessed: Date.now() } : {}),
@@ -48,6 +50,7 @@ export function memoryBrowser({
     Object.entries(memberships).map(([id, value]) => [Number(id), serializeMembership(value)]),
   );
   const windowValues = new Map();
+  const extraTabValues = new Map();
   const extraWindowValues = new Map();
   const sessionStorage = {};
   const closed = [];
@@ -67,6 +70,7 @@ export function memoryBrowser({
   };
 
   const api = {
+    ...memoryBookmarks(bookmarks),
     runtime: { getURL: (path) => `moz-extension://tabernacle-preview/${path}` },
     storage: {
       onChanged: memoryEvent(),
@@ -121,12 +125,18 @@ export function memoryBrowser({
 
       getTabValue: async (id, key) => {
         getTab(id);
-        return key === TAB_KEY ? structuredClone(tabValues.get(id)) : undefined;
+        return structuredClone(
+          key === TAB_KEY ? tabValues.get(id) : extraTabValues.get(id)?.get(key),
+        );
       },
 
       setTabValue: async (id, key, value) => {
         getTab(id);
         if (key === TAB_KEY) tabValues.set(id, structuredClone(value));
+        else {
+          if (!extraTabValues.has(id)) extraTabValues.set(id, new Map());
+          extraTabValues.get(id).set(key, structuredClone(value));
+        }
       },
 
       getWindowValue: async (id, key) =>

@@ -6,94 +6,154 @@ try {
   await page.route('**/pane-refresh-fixture', (route) =>
     route.fulfill({
       contentType: 'text/html',
-      body: '<!doctype html><main><button id="tree-toggle">Fold</button><button id="recently-closed-toggle">History</button></main>',
+      body: '<!doctype html><main><button id="tree-toggle">Fold</button><footer><button id="recently-closed-toggle">History</button></footer></main>',
     }),
   );
   await page.goto(`${base}/pane-refresh-fixture`);
   const result = await page.evaluate(async () => {
-    const { createDomainsView } = await import('/extension/src/domains-view.js');
+    const { createBookmarksView } = await import('/extension/src/bookmarks-view.js');
+    const { memoryBookmarks } = await import('/preview/bookmarks.js');
+    const api = memoryBookmarks([
+      {
+        id: 'root',
+        children: [
+          {
+            id: 'folder',
+            type: 'folder',
+            title: 'References',
+            children: Array.from({ length: 500 }, (_, index) => ({
+              id: `b${index}`,
+              type: 'bookmark',
+              title: `Bookmark ${index}`,
+              url: `https://example.test/${index}`,
+            })),
+          },
+        ],
+      },
+    ]);
     const root = document.querySelector('main');
-    const state = {
-      groups: [{ id: 'folder', name: 'Original', parentId: null }],
-      domainPins: [],
-      tabs: Array.from({ length: 1000 }, (_, i) => ({
-        id: i + 1,
-        index: i,
-        title: `Tab ${i + 1}`,
-        url: `https://host${Math.floor(i / 2)}.example.test/${i}`,
-        groupId: 'folder',
-      })),
+    const state = { groups: [], view: { scopeId: null }, look: { connectingLines: true } };
+    let reads = 0;
+    const getTree = api.bookmarks.getTree;
+    api.bookmarks.getTree = () => {
+      reads++;
+      return getTree();
     };
-    const options = {
+    const calls = [];
+    let release;
+    const view = createBookmarksView({
       root,
       getState: () => state,
+      getBrowser: () => api,
 
       onOpen() {},
 
       onClose() {},
-    };
-    const domains = createDomainsView(options);
-    const results = {};
-    const observer = new MutationObserver(() => {});
-    const observe = (node) =>
-      observer.observe(node, {
-        attributes: true,
-        childList: true,
-        characterData: true,
-        subtree: true,
-      });
-    const changedRows = (selector) =>
-      [...new Set(observer.takeRecords().map((record) => record.target.closest?.(selector)))]
-        .filter(Boolean)
-        .map((row) => row.dataset.id || row.dataset.domain);
 
-    domains.open();
-    const pane = root.querySelector('.domains-view');
-    const domainRow = (host) => pane.querySelector(`[data-domain="${host}.example.test"]`);
-    const selectedCount = domainRow('host200').querySelector('.domains-tab-count').firstChild;
-    observe(pane);
-    domains.update(state);
-    results.domainsUnchanged = changedRows('.domains-row');
-    // Titles and source IDs can change without changing the displayed domain.
-    state.tabs[0].title = 'New page title';
-    state.tabs[0].id = 2000;
-    domains.update(state);
-    results.domainsMetadata = changedRows('.domains-row');
-    state.domainPins.push('host0.example.test');
-    domains.update(state);
-    results.pinLabel = domainRow('host0').querySelector('.domains-pin').title;
-    results.pinPressed = domainRow('host0')
-      .querySelector('.domains-pin')
-      .getAttribute('aria-pressed');
-    state.tabs.push({ id: 3000, url: 'https://host0.example.test/extra' });
-    domains.update(state);
-    results.domainCount = domainRow('host0')
-      .querySelector('.domains-open-domain')
-      .getAttribute('aria-label');
-    results.domainTextPreserved =
-      selectedCount === domainRow('host200').querySelector('.domains-tab-count').firstChild;
-    results.domainRows = pane.querySelectorAll('.domains-row').length;
-    domainRow('host200').querySelector('.domains-pin').focus();
-    state.tabs = state.tabs.filter((tab) => !tab.url.startsWith('https://host200.'));
-    domains.update(state);
-    results.domainFocusRetained = Boolean(document.activeElement.closest('.domains-row'));
+      onSelect: (request) => {
+        calls.push(request);
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      },
+    });
+
+    const waitFor = async (condition) => {
+      const end = Date.now() + 3000;
+      while (!condition()) {
+        if (Date.now() > end) throw new Error('Bookmark view did not settle');
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+
+    view.open();
+    await waitFor(() => root.querySelectorAll('.bookmark-row').length === 501);
+    const selected = root.querySelector('[data-bookmark-id="b200"]');
+    selected.focus();
+    const observer = new MutationObserver(() => {});
+    observer.observe(root.querySelector('#bookmarks-tree'), {
+      attributes: true,
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    for (let i = 0; i < 10; i++) view.update();
+    const idleMutations = observer.takeRecords().length;
+    const idleReads = reads;
+    await api.bookmarks.update('b0', { title: 'Changed title' });
+    await waitFor(() =>
+      root.querySelector('[data-bookmark-id="b0"]').textContent.includes('Changed title'),
+    );
+    const focused = selected === document.activeElement;
+    const retained = selected === root.querySelector('[data-bookmark-id="b200"]');
     observer.disconnect();
-    domains.close();
-    results.domainsReleased = pane.querySelectorAll('.domains-row').length;
-    domains.dispose();
-    return results;
+    selected.querySelector('.label').click();
+    selected.click();
+    const busyCalls = calls.length;
+    release(null);
+    await Promise.resolve();
+    selected.click();
+    const sameOperation = calls[0].operationId === calls[1].operationId;
+    release(true);
+    await waitFor(() => !view.isOpen);
+    const released = root.querySelectorAll('.bookmark-row').length;
+    selected.click();
+    const staleCalls = calls.length;
+    let finishRead;
+    api.bookmarks.getTree = () =>
+      new Promise((resolve) => {
+        finishRead = resolve;
+      });
+    view.open();
+    await waitFor(() => finishRead);
+    view.close();
+    finishRead(await getTree());
+    await Promise.resolve();
+    await Promise.resolve();
+    const lateRows = root.querySelectorAll('.bookmark-row').length;
+    let finishPermission;
+    let latePermissionReads = 0;
+    api.permissions.contains = () =>
+      new Promise((resolve) => {
+        finishPermission = resolve;
+      });
+    api.bookmarks.getTree = () => {
+      latePermissionReads++;
+      return getTree();
+    };
+    view.open();
+    view.close();
+    finishPermission(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    view.dispose();
+    return {
+      idleMutations,
+      idleReads,
+      focused,
+      retained,
+      busyCalls,
+      sameOperation,
+      released,
+      staleCalls,
+      lateRows,
+      latePermissionReads,
+    };
   });
-  expect(result.domainsUnchanged).toEqual([]);
-  expect(result.domainsMetadata).toEqual([]);
-  expect(result.pinLabel).toBe('Unpin host0.example.test');
-  expect(result.pinPressed).toBe('true');
-  expect(result.domainCount).toBe('host0.example.test, 3 tabs');
-  expect(result.domainTextPreserved).toBe(true);
-  expect(result.domainRows).toBe(500);
-  expect(result.domainFocusRetained).toBe(true);
-  expect(result.domainsReleased).toBe(0);
+  expect(result).toEqual({
+    idleMutations: 0,
+    idleReads: 1,
+    focused: true,
+    retained: true,
+    busyCalls: 1,
+    sameOperation: true,
+    released: 0,
+    staleCalls: 2,
+    lateRows: 0,
+    latePermissionReads: 0,
+  });
   console.log(
-    'Pane refresh: sparse DOM changes, full results, selection, focus and release passed.',
+    '✓ Bookmark pane sparse refresh, row identity, focus, busy/retry guards, stale targets and release',
   );
 } finally {
   await close();

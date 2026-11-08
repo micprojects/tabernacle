@@ -630,6 +630,7 @@ export function createDialogs({
 
   return {
     ...collections,
+    showDialog,
     createDialog,
     renameDialog,
     appearanceDialog,
