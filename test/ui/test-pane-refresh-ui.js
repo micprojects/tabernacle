@@ -67,7 +67,7 @@ try {
     };
 
     view.open();
-    await waitFor(() => root.querySelectorAll('.bookmark-row').length === 501);
+    await waitFor(() => root.querySelectorAll('.bookmark-row').length === 500);
     const selected = root.querySelector('[data-bookmark-id="b200"]');
     selected.focus();
     const observer = new MutationObserver(() => {});

@@ -20,10 +20,14 @@ try {
   await page.goto(`${base}/extension/sidebar.html?demo`);
   await expect(trigger).toBeEnabled();
   await trigger.click();
-  await expect(pane.getByRole('button', { name: /^New bookmark/ })).toHaveCount(0);
+  await expect(
+    pane.locator('.pane-heading').getByRole('button', { name: /^New bookmark/ }),
+  ).toHaveCount(0);
   await expect(pane.locator('.bookmarks-results')).toBeHidden();
+  await pane.getByRole('tab', { name: 'Other', exact: true }).click();
+  await expect(pane.getByText('No bookmarks in Other Bookmarks.')).toBeVisible();
+  await pane.getByRole('tab', { name: 'Toolbar', exact: true }).click();
   await expect(row('design-bookmarks').locator('.bookmark-count')).toHaveText('2');
-  await expect(row('unfiled_____').locator('..').getByText('Empty folder')).toBeVisible();
   await search.fill('mozilla MDN');
   await expect(row('mdn-bookmark')).toBeVisible();
   await expect(row('mdn-bookmark').locator('.label mark')).toHaveText('MDN');
@@ -55,12 +59,19 @@ try {
 
   // An explicit collapse survives reopening, including the empty expansion set.
   await option('Collapse all folders');
-  await expect(pane.getByRole('treeitem')).toHaveCount(3);
+  await expect(pane.locator('.bookmark-row')).toHaveCount(2);
   await pane.getByRole('button', { name: 'Back to tabs' }).click();
   await trigger.click();
-  await expect(pane.getByRole('treeitem')).toHaveCount(3);
+  await expect(pane.locator('.bookmark-row')).toHaveCount(2);
   await option('Expand all folders');
-  await expect(row('library-bookmark')).toBeVisible();
+  await expect(row('mdn-bookmark')).toBeVisible();
+
+  // Put a destination in this location for the same-root hover cancellation check.
+  await page.evaluate(() =>
+    tabernacleDemoSession.browser.bookmarks.move('reading-bookmarks', { parentId: 'toolbar_____' }),
+  );
+  await expect(row('reading-bookmarks')).toBeVisible();
+  await row('reading-bookmarks').click();
 
   // Hover expansion is temporary until a valid drop; Escape keeps the panel open.
   await row('reading-bookmarks').click();
@@ -93,11 +104,11 @@ try {
   await expect(pickerTree.getByRole('treeitem', { name: 'Home', exact: true })).toHaveCount(0);
   await folderSearch.fill('Reading');
   await expect(pickerTree.getByRole('treeitem')).toHaveCount(1);
-  await expect(pickerTree.locator('.folder-picker-path')).toHaveText('Bookmarks Menu / Reading');
+  await expect(pickerTree.locator('.folder-picker-path')).toHaveText('Bookmarks Toolbar / Reading');
   await folderSearch.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(destination).toBeFocused();
-  await expect(destination).toHaveText('Bookmarks Menu / Reading');
+  await expect(destination).toHaveText('Bookmarks Toolbar / Reading');
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   const created = pane.getByRole('treeitem', { name: 'New reading', exact: true });
@@ -142,6 +153,10 @@ try {
     node.scrollTop = 700;
   });
   const scroll = await list.evaluate((node) => node.scrollTop);
+  await pane.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+  await expect(list).toHaveJSProperty('scrollTop', 0);
+  await pane.getByRole('tab', { name: 'Toolbar', exact: true }).click();
+  await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBe(scroll);
   await pane.getByRole('button', { name: 'Back to tabs' }).click();
   await expect(pane.getByRole('treeitem')).toHaveCount(0);
   await trigger.click();

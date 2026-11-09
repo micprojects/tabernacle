@@ -22,7 +22,7 @@ const fixture = {
   capture: { sourceSize: { width: 320, height: 600 }, scale: 2 },
 };
 await mkdir('test-results', { recursive: true });
-const wait = (fn) => session.driver.wait(() => session.evaluate(fn), 10000);
+const wait = (fn, message) => session.driver.wait(() => session.evaluate(fn), 10000, message);
 const send = (type, args = {}) =>
   session.evaluate(
     async ({ type, args }) => {
@@ -80,6 +80,17 @@ try {
     });
     return { folder: folder.id, nested: nested.id, first: first.id, second: second.id };
   }, url);
+  await wait(() => document.querySelector('.bookmark-location[aria-selected="true"]'));
+  assert.equal(
+    await session.evaluate(
+      () =>
+        document.querySelector('.bookmark-location[aria-selected="true"]').dataset.bookmarkRootId,
+    ),
+    'menu________',
+  );
+  await session.evaluate(() =>
+    document.querySelector('[data-bookmark-root-id="toolbar_____"]').click(),
+  );
   await wait(() => document.querySelector('#bookmarks-tree [aria-label="Project references"]'));
   await session.evaluate(() => document.querySelector('#bookmarks-toggle').click());
   const container = await send('createContainer', {
@@ -105,11 +116,32 @@ try {
       document.querySelector('.bookmarks-destination-label').textContent ===
       'Open in Research tabs',
   );
+  // The shared footer toggle expands every bookmark depth without changing the tab tree.
+  await session.evaluate(() => document.getElementById('tree-toggle').click());
+  assert.deepEqual(
+    await session.evaluate(() => ({
+      open: !document.getElementById('bookmarks-view').hidden,
+      expanded: [...document.querySelectorAll('.bookmark-row.group-row')].map((node) =>
+        node.getAttribute('aria-expanded'),
+      ),
+      controls: document.getElementById('tree-toggle').getAttribute('aria-controls'),
+    })),
+    { open: true, expanded: ['true', 'true'], controls: 'bookmarks-tree' },
+  );
+  await session.evaluate(() => document.getElementById('tree-toggle').click());
+  assert.equal(await session.evaluate(() => document.querySelectorAll('.bookmark-row').length), 1);
+  assert.equal(
+    await session.evaluate(() => document.getElementById('tree-toggle').getAttribute('aria-label')),
+    'Expand all in Bookmarks Toolbar',
+  );
+  assert.deepEqual((await send('snapshot')).view, before.view);
+  assert.deepEqual(await session.evaluate(() => browser.bookmarks.getTree()), savedBookmarks);
   await session.evaluate(() => {
     const search = document.getElementById('bookmarks-search');
     search.value = 'CAFÉ';
     search.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  assert.equal(await session.evaluate(() => document.getElementById('tree-toggle').disabled), true);
   const search = await session.evaluate(() =>
     [...document.querySelectorAll('#bookmarks-tree [role="treeitem"]')].map((node) => ({
       label: node.getAttribute('aria-label'),
@@ -118,16 +150,31 @@ try {
   );
   assert.deepEqual(
     search.map((item) => item.label),
-    ['Bookmarks Toolbar', 'Project references', 'Research', 'Reference café'],
+    ['Project references', 'Research', 'Reference café'],
   );
   assert.deepEqual(
     search.map((item) => item.level),
-    ['1', '2', '3', '4'],
+    ['1', '2', '3'],
   );
   await session.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
   await writeFile('test-results/bookmarks-firefox.png', await session.screenshot(fixture.capture));
+  const layout = await session.evaluate(() => {
+    const heading = document.querySelector('#bookmarks-view .pane-heading').getBoundingClientRect();
+    const footer = document.querySelector('.sidebar > footer').getBoundingClientRect();
+    return {
+      headingTop: heading.top,
+      headingHeight: heading.height,
+      footerBottom: footer.bottom,
+      viewportHeight: innerHeight,
+      scrollY,
+    };
+  });
+  assert.equal(layout.headingTop, 0);
+  assert(layout.headingHeight > 0);
+  assert.equal(layout.footerBottom, layout.viewportHeight);
+  assert.equal(layout.scrollY, 0);
   await session.evaluate(() =>
     document
       .getElementById('bookmarks-search')
@@ -206,6 +253,10 @@ try {
     document.getElementById('bookmarks-toggle').click();
     return browser.bookmarks.move(second, { parentId: nested, index: 0 });
   }, bookmarks);
+  await wait(() => document.querySelector('[data-bookmark-root-id="toolbar_____"]'));
+  await session.evaluate(() =>
+    document.querySelector('[data-bookmark-root-id="toolbar_____"]').click(),
+  );
   await wait(() => document.querySelector('#bookmarks-tree [aria-label="Project references"]'));
   await session.evaluate(() => {
     const field = document.getElementById('bookmarks-search');
@@ -308,6 +359,66 @@ try {
     ),
   };
   assert.equal(newFolder.result.parentId, bookmarks.folder);
+  // The native sidebar's branch-end plus creates in that folder, with shared counts.
+  await session.evaluate(() => {
+    const search = document.getElementById('bookmarks-search');
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await session.evaluate(
+    (id) => document.querySelector(`[data-bookmark-id="${id}"]`).click(),
+    newFolder.result.id,
+  );
+  await session.evaluate(
+    (id) => document.querySelector(`[data-bookmark-parent-id="${id}"] button`).click(),
+    newFolder.result.id,
+  );
+  await wait(() => document.getElementById('dialog').open);
+  assert.equal(
+    await session.evaluate(() => document.getElementById('bookmark-create-in').textContent),
+    'Bookmarks Toolbar / Project references / Saved references',
+  );
+  await session.evaluate((url) => {
+    document.querySelector('#dialog-content input[aria-label="Name"]').value = 'Quick reference';
+    document.querySelector('#dialog-content input[aria-label="Address"]').value = `${url}?quick`;
+    document.getElementById('dialog-form').requestSubmit();
+  }, url);
+  await wait(() => !document.getElementById('dialog').open);
+  const quick = [...(await nativeIndex()).byId.values()].find(
+    (node) => node.title === 'Quick reference',
+  );
+  assert.equal(quick.parentId, newFolder.result.id);
+  for (const visible of [true, false]) {
+    await send('setLook', { value: { folderCounts: visible }, partial: true });
+    await session.driver.wait(
+      () =>
+        session.evaluate(
+          ({ id, visible }) => {
+            const count = document.querySelector(`[data-bookmark-id="${id}"] .bookmark-count`);
+            return count && (getComputedStyle(count).display !== 'none') === visible;
+          },
+          { id: newFolder.result.id, visible },
+        ),
+      10000,
+      'Bookmark counts should follow the broadcast appearance setting',
+    );
+  }
+  assert.equal(
+    await session.evaluate(() => document.querySelectorAll('.bookmark-row button').length),
+    0,
+  );
+  assert.match(
+    await session.evaluate((id) => {
+      const add = document.querySelector(`[data-bookmark-parent-id="${id}"]`);
+      return getComputedStyle(add, '::before').maskImage;
+    }, newFolder.result.id),
+    /tree-guide-end.svg/,
+  );
+  await writeFile(
+    'test-results/bookmarks-tree-controls-firefox.png',
+    await session.screenshot(fixture.capture),
+  );
+  await session.evaluate((id) => browser.bookmarks.remove(id), quick.id);
   const newBookmark = await change('create', null, {
     type: 'bookmark',
     parentId: newFolder.result.id,
@@ -337,6 +448,10 @@ try {
 
   // Native pointer capture and insertion markers in the actual Firefox sidebar.
   await session.evaluate(() => document.querySelector('#bookmarks-toggle').click());
+  await wait(() => document.querySelector('[data-bookmark-root-id="toolbar_____"]'));
+  await session.evaluate(() =>
+    document.querySelector('[data-bookmark-root-id="toolbar_____"]').click(),
+  );
   await wait(() => document.querySelector('#bookmarks-tree [aria-label="Project references"]'));
   await session.evaluate(() => {
     const search = document.getElementById('bookmarks-search');
@@ -387,6 +502,74 @@ try {
     await session.screenshot(fixture.capture),
   );
 
+  // Dropping on a location segment moves to its native root and reveals the bookmark there.
+  const crossRoot = await change('create', null, {
+    type: 'bookmark',
+    parentId: bookmarks.folder,
+    title: 'Cross-root reference',
+    url: `${url}?cross-root`,
+  });
+  await wait(() => document.querySelector('#bookmarks-tree [aria-label="Cross-root reference"]'));
+  await wait(
+    () => document.getElementById('toast').hidden,
+    'The previous move notice covered the next drag source',
+  );
+  await session.evaluate(() =>
+    document
+      .querySelector('#bookmarks-tree [aria-label="Cross-root reference"]')
+      .scrollIntoView({ block: 'nearest' }),
+  );
+  const crossStart = await point(crossRoot.result.id, 0.5);
+  const rootTarget = await session.evaluate(() => {
+    const rect = document
+      .querySelector('[data-bookmark-root-id="unfiled_____"]')
+      .getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  await session.driver
+    .actions()
+    .move(crossStart)
+    .press(Button.LEFT)
+    .move({ ...crossStart, y: crossStart.y + 7, duration: 120 })
+    .move({
+      x: Math.round(offset.x + rootTarget.x),
+      y: Math.round(offset.y + rootTarget.y),
+      duration: 220,
+    })
+    .perform();
+  await wait(
+    () => document.querySelector('[data-bookmark-root-id="unfiled_____"].drop-inside'),
+    'The Other location did not become a drop target',
+  );
+  await session.driver.actions().release(Button.LEFT).perform();
+  await wait(
+    () =>
+      document
+        .querySelector('[data-bookmark-root-id="unfiled_____"]')
+        .getAttribute('aria-selected') === 'true',
+    'The completed root drop did not reveal Other bookmarks',
+  );
+  assert.equal((await nativeIndex()).byId.get(crossRoot.result.id).parentId, 'unfiled_____');
+  await wait(() => document.querySelector('#bookmarks-tree [aria-label="Cross-root reference"]'));
+  assert.equal(
+    await session.evaluate(() =>
+      document
+        .querySelector('#bookmarks-tree [aria-label="Cross-root reference"]')
+        .getAttribute('aria-level'),
+    ),
+    '1',
+  );
+  await change('delete', crossRoot.result.id);
+  await session.evaluate(() =>
+    document.querySelector('[data-bookmark-root-id="toolbar_____"]').click(),
+  );
+  await wait(
+    () =>
+      document.querySelector('#bookmarks-tree [aria-label="Reference café"]') ||
+      document.querySelector('#bookmarks-tree [aria-label="Edited café reference"]'),
+  );
+  console.log('✓ Native cross-root segment drop and destination reveal verified');
+
   // Edits from another window are seen here and cannot overwrite a stale draft.
   const draft = bookmarkRecord((await nativeIndex()).byId.get(bookmarks.first));
   const external = await session.evaluate(async (id) => {
@@ -435,7 +618,9 @@ try {
 
   // Only the confirmed subtree is removed; the moved bookmark keeps its identity.
   await session.evaluate((id) => {
-    document.querySelector(`[data-bookmark-id="${id}"] .bookmark-more`).click();
+    document
+      .querySelector(`[data-bookmark-id="${id}"]`)
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
     const remove = [...document.querySelectorAll('#menu [role="menuitem"]')].find(
       (node) => node.textContent === 'Delete folder',
     );
@@ -492,6 +677,10 @@ try {
       .evaluate(() => ({
         status: document.querySelector('#bookmarks-view [role="status"]')?.textContent,
         hidden: document.getElementById('bookmarks-view')?.hidden,
+        selectedRoot: document.querySelector('.bookmark-location[aria-selected="true"]')?.dataset
+          .bookmarkRootId,
+        dragPreview: document.querySelector('#bookmarks-view .move-preview')?.textContent,
+        toast: document.getElementById('toast')?.textContent,
         rows: [...document.querySelectorAll('.bookmark-row')].map((node) => ({
           id: node.dataset.bookmarkId,
           title: node.textContent,

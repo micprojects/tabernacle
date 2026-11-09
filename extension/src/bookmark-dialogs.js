@@ -10,6 +10,7 @@ import { createFolderPicker } from './folder-picker.js';
 
 export function createBookmarkDialogs({
   getIndex,
+  getRootId,
   getState,
   request,
   showDialog,
@@ -84,6 +85,7 @@ export function createBookmarkDialogs({
     const node = index.byId.get(id);
     return (
       (node?.type === 'folder' ? node.id : node?.parentId) ||
+      getRootId() ||
       (index.byId.has('unfiled_____') ? 'unfiled_____' : folders(index)[0]?.node.id)
     );
   }
@@ -388,5 +390,5 @@ export function createBookmarkDialogs({
     }
   }
 
-  return { openMenu, drop, edit, remove };
+  return { openMenu, drop, edit, remove, create };
 }

@@ -1,10 +1,36 @@
 // Firefox owns bookmark identities, hierarchy and order. This is a temporary
 // projection only; browsing and searching never write to the bookmark store.
-export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new Set()) {
+export function bookmarkRoots(tree) {
+  const names = new Map([
+    ['menu________', 'Bookmarks'],
+    ['toolbar_____', 'Toolbar'],
+    ['unfiled_____', 'Other'],
+    ['mobile______', 'Mobile'],
+  ]);
+  const order = [...names.keys()];
+  return (
+    (tree[0]?.children || [])
+      .filter((node) => node.type === 'folder' || Array.isArray(node.children))
+      // Firefox also exposes an empty Sync root that is normally absent from its Library.
+      .filter((node) => node.id !== 'mobile______' || node.children?.length)
+      .map((node) => ({
+        id: node.id,
+        label: names.get(node.id) || node.title || 'Untitled folder',
+        title: node.title || names.get(node.id) || 'Untitled folder',
+      }))
+      .sort((a, b) => {
+        const rank = (id) => (order.includes(id) ? order.indexOf(id) : order.length);
+        return rank(a.id) - rank(b.id);
+      })
+  );
+}
+
+export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new Set(), rootId) {
   const needle = query.trim().toLocaleLowerCase();
   const terms = needle.split(/\s+/).filter(Boolean);
   const entries = [];
-  const stack = [...(tree[0]?.children || [])].reverse().map((node) => ({ node, depth: 1 }));
+  const root = rootId ? tree[0]?.children?.find((node) => node.id === rootId) : tree[0];
+  const stack = [...(root?.children || [])].reverse().map((node) => ({ node, depth: 1 }));
   const matching = new Set();
   const parents = new Map();
   while (stack.length) {
