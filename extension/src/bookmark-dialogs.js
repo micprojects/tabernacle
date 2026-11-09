@@ -6,6 +6,7 @@ import {
 } from './bookmark-edit.js';
 import { createSidebarControls } from './sidebar/controls.js';
 import { icon } from './icons.js';
+import { createFolderPicker } from './folder-picker.js';
 
 export function createBookmarkDialogs({
   getIndex,
@@ -15,6 +16,7 @@ export function createBookmarkDialogs({
   menu,
   refresh,
   reveal,
+  expandAll,
   announce,
 }) {
   const { el, button } = createSidebarControls();
@@ -78,16 +80,32 @@ export function createBookmarkDialogs({
     return result;
   }
 
-  function destination(content, index, value, exclude) {
-    const select = field(content, 'Bookmark folder', '', 'select');
-    for (const { node, label } of folders(index, exclude)) {
-      const option = el('option', '', label);
-      option.value = node.id;
-      select.append(option);
-    }
-    select.value = value;
-    if (!select.value) select.selectedIndex = 0;
-    return select;
+  function parentFor(index, id) {
+    const node = index.byId.get(id);
+    return (
+      (node?.type === 'folder' ? node.id : node?.parentId) ||
+      (index.byId.has('unfiled_____') ? 'unfiled_____' : folders(index)[0]?.node.id)
+    );
+  }
+
+  function destination(content, index, value, exclude, onChange) {
+    const groups = folders(index, exclude).map(({ node }) => ({
+      id: node.id,
+      name: node.title || 'Untitled folder',
+      parentId: node.parentId === index.rootId ? null : node.parentId,
+    }));
+    const picker = createFolderPicker({
+      getState: () => ({ groups }),
+      parentId: groups.some((group) => group.id === value) ? value : groups[0]?.id,
+      dialog: document.getElementById('dialog'),
+      labelText: 'Bookmark folder',
+      helpText: '',
+      idPrefix: 'bookmark-',
+      includeHome: false,
+      onChange,
+    });
+    content.append(picker.element);
+    return picker;
   }
 
   function edit(id) {
@@ -119,6 +137,7 @@ export function createBookmarkDialogs({
   function create(type, parentId) {
     const index = getIndex();
     if (!index) return announce('Reload your bookmarks before creating an item.', true);
+    parentId = parentFor(index, parentId);
     const content = el('div');
     const tab = getState().tabs.find((tab) => tab.active);
     const name = field(content, 'Name', type === 'bookmark' ? tab?.title || '' : '');
@@ -130,12 +149,13 @@ export function createBookmarkDialogs({
         title: address ? 'New bookmark' : 'New bookmark folder',
         submit: 'Create',
         content,
+        cleanup: parent.destroy,
         restoreId: parentId,
         onSubmit: () =>
           submit({
             kind: 'create',
             type,
-            parentId: parent.value,
+            parentId: parent.getValue(),
             title: name.value,
             ...(address ? { url: address.value } : {}),
           }),
@@ -150,13 +170,13 @@ export function createBookmarkDialogs({
     const node = index?.byId.get(id);
     if (!node) return announce('That bookmark is no longer available.', true);
     const content = el('div');
-    const parent = destination(content, index, node.parentId, id);
+    const parent = destination(content, index, node.parentId, id, () => positions());
     const position = field(content, 'Position', '', 'select');
 
     function positions() {
       position.replaceChildren(el('option', '', 'At the end'));
       position.firstElementChild.value = '';
-      for (const sibling of index.byId.get(parent.value)?.children || []) {
+      for (const sibling of index.byId.get(parent.getValue())?.children || []) {
         if (sibling.id === id) continue;
         const option = el(
           'option',
@@ -168,7 +188,6 @@ export function createBookmarkDialogs({
       }
     }
 
-    parent.addEventListener('change', positions);
     positions();
     const submit = submitter();
     show(
@@ -177,18 +196,19 @@ export function createBookmarkDialogs({
         description: `Move “${node.title}” within your Firefox bookmarks.`,
         submit: 'Move',
         content,
+        cleanup: parent.destroy,
         restoreId: id,
         onSubmit: () =>
           submit({
             kind: 'move',
             id,
             expected: bookmarkRecord(node),
-            targetId: position.value || parent.value,
+            targetId: position.value || parent.getValue(),
             position: position.value ? 'before' : 'inside',
           }),
         afterSubmit: () => reveal(id),
       },
-      parent,
+      parent.element.querySelector('button'),
     );
   }
 
@@ -296,9 +316,19 @@ export function createBookmarkDialogs({
     const index = getIndex();
     if (!index) return;
     const node = index.byId.get(id);
-    const parentId = node?.type === 'folder' ? id : node?.parentId || folders(index)[0]?.node.id;
+    const parentId = parentFor(index, id);
     const editable = bookmarkEditable(index, id);
     const items = [
+      ...(node?.type === 'bookmark'
+        ? [
+            {
+              label: 'Show in folder',
+              icon: 'group',
+              run: () => reveal(id, { clearSearch: true }),
+            },
+            null,
+          ]
+        : []),
       ...(editable
         ? [
             {
@@ -326,7 +356,15 @@ export function createBookmarkDialogs({
             },
           ]
         : []),
-      ...(!id ? [null, { label: 'Unfinished changes…', icon: 'history', run: recovery }] : []),
+      ...(!id
+        ? [
+            null,
+            { label: 'Expand all folders', icon: 'expand', run: () => expandAll(true) },
+            { label: 'Collapse all folders', icon: 'collapse', run: () => expandAll(false) },
+            null,
+            { label: 'Unfinished changes…', icon: 'history', run: recovery },
+          ]
+        : []),
     ];
     const trigger = event.currentTarget || event.target;
     const rect = trigger.getBoundingClientRect();

@@ -373,6 +373,7 @@ const bookmarkDialogs = createBookmarkDialogs({
   menu,
   refresh: bookmarksView.refresh,
   reveal: bookmarksView.reveal,
+  expandAll: bookmarksView.expandAll,
   announce,
 });
 

@@ -5,6 +5,7 @@ export const uiSuites = [
   'test-domain-filter-ui',
   'test-bookmarks-ui',
   'test-bookmark-editing-ui',
+  'test-bookmark-polish-ui',
   'test-pane-refresh-ui',
   'test-tab-collection-ui',
   'test-duplicate-selection-ui',

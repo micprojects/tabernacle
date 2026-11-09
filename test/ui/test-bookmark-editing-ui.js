@@ -142,7 +142,9 @@ try {
   // Keyboard-accessible move includes a position amongst every sibling.
   await row(bookmark.id).press('Shift+F10');
   await menu.getByRole('menuitem', { name: 'Move…' }).click();
-  await dialog.getByRole('combobox', { name: 'Bookmark folder' }).selectOption('design-bookmarks');
+  await dialog.getByLabel('Bookmark folder', { exact: true }).click();
+  await dialog.getByRole('searchbox', { name: 'Find a folder' }).fill('Project references');
+  await dialog.getByRole('treeitem', { name: 'Project references', exact: true }).click();
   await dialog.getByRole('combobox', { name: 'Position' }).selectOption('mdn-bookmark');
   await save('Move');
   expect((await nodes()).find((node) => node.id === bookmark.id).index).toBe(0);
