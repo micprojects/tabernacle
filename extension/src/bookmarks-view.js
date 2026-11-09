@@ -27,13 +27,13 @@ export function createBookmarksView({
   pane.hidden = true;
   pane.setAttribute('aria-labelledby', 'bookmarks-title');
   const heading = el('div', 'pane-heading');
-  const dismiss = button('Back to tabs', 'back', () => close(true), 'pane-back');
-  dismiss.append(el('span', '', 'Tabs'));
+  const dismiss = button('Back to tabs', null, () => close(true), 'pane-back');
+  dismiss.textContent = 'Back to tabs';
   const title = el('h1', '', 'Bookmarks');
   title.id = 'bookmarks-title';
   const manage = button('Bookmark actions', 'more', (event) => onMenu?.(null, event));
   manage.disabled = true;
-  heading.append(dismiss, title, manage);
+  heading.append(title, dismiss, manage);
   const destination = el('p', 'bookmarks-destination');
   const destinationLabel = el('span', 'bookmarks-destination-label');
   const containerLabel = el('span', 'bookmarks-container');
