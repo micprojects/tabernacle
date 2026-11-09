@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createController } from '../extension/src/controller.js';
 import { memoryBrowser } from '../preview/browser.js';
 import { TAB_KEY, tabSubtree, unpinnedTabTree, sortTabs } from '../extension/src/model.js';
+import { projectTabClose } from '../extension/src/tab-close.js';
 
 function fixture() {
   const api = memoryBrowser({
@@ -635,7 +636,21 @@ test('single parent close promotes the first child into its slot and preserves t
     for (const collapsed of [false, true]) {
       const { api, send, restart } = promotionFixture({ nested, collapsed });
       const before = await send('snapshot');
+      const original = structuredClone(before.tabs);
+      const projected = projectTabClose(before.tabs, get(before, 2));
+      assert.deepEqual(before.tabs, original, 'Pending close must not mutate confirmed state');
       const state = await send('closeTab', { id: 2, promoteFirstChild: true });
+      const placement = (tabs) =>
+        tabs.map(({ id, treeId, groupId, parentTabId, order, ancestors, collapsed }) => ({
+          id,
+          treeId,
+          groupId,
+          parentTabId,
+          order,
+          ancestors,
+          collapsed,
+        }));
+      assert.deepEqual(placement(projected), placement(state.tabs));
       assert.equal(state.tabs.length, 7);
       assert.equal(get(state, 3).parentTabId, nested ? 1 : null);
       assert.equal(get(state, 3).order, get(before, 2).order);
@@ -668,6 +683,21 @@ test('single parent close promotes the first child into its slot and preserves t
       assert.equal(get(undone, restored.id).collapsed, collapsed);
     }
   }
+});
+
+test('pending close ignores confirmed removals and changed identities, and matches successive promotion', async () => {
+  const { send } = promotionFixture();
+  const before = await send('snapshot');
+  assert.equal(projectTabClose(before.tabs, { id: 2, treeId: 'different' }), before.tabs);
+  assert.equal(projectTabClose(before.tabs, { id: 999, treeId: 't2' }), before.tabs);
+  const first = projectTabClose(before.tabs, get(before, 2));
+  assert.equal(projectTabClose(first, get(before, 2)), first);
+  const second = projectTabClose(first, get(before, 3));
+  await send('closeTab', { id: 2, promoteFirstChild: true });
+  const after = await send('closeTab', { id: 3, promoteFirstChild: true });
+  const tree = (tabs) =>
+    tabs.map(({ id, parentTabId, order, ancestors }) => ({ id, parentTabId, order, ancestors }));
+  assert.deepEqual(tree(second), tree(after.tabs));
 });
 
 test('successive first-child promotions can be undone without changing the original hierarchy', async () => {

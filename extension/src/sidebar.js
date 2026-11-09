@@ -29,6 +29,7 @@ import { createRecentActivity } from './recently-closed.js';
 import { createActivityLauncher } from './activity-launcher.js';
 import { openDemoPage } from './internal-pages.js';
 import { groupById, tabChildren } from './model.js';
+import { projectTabClose } from './tab-close.js';
 
 const controls = createSidebarControls();
 const { el, button } = controls;
@@ -143,6 +144,7 @@ function acceptState(next) {
   const collapsed = new Set(next.view.collapsed);
   let scopeId = next.view.scopeId;
   let tabs = next.tabs;
+  let pins = next.pins;
   // Replay local view changes in order so older replies cannot undo a newer
   // navigation, including the first click's toggle before a double-click.
   for (const { type, args } of pendingViewActions) {
@@ -158,6 +160,11 @@ function acceptState(next) {
               ? { ...tab, active: false }
               : tab,
         );
+    } else if (type === 'closeTab') {
+      const projected = projectTabClose(tabs, args);
+      if (projected !== tabs)
+        pins = pins.filter((pin) => pin.kind !== 'tab' || pin.id !== args.treeId);
+      tabs = projected;
     } else {
       scopeId = args.id;
       if (scopeId !== null && typeof args.collapsed === 'boolean') {
@@ -166,7 +173,7 @@ function acceptState(next) {
       }
     }
   }
-  state = { ...next, tabs, view: { ...next.view, scopeId, collapsed: [...collapsed] } };
+  state = { ...next, tabs, pins, view: { ...next.view, scopeId, collapsed: [...collapsed] } };
   snapshotState = pendingViewActions.length ? null : state;
   snapshotDetails = snapshotState ? readSnapshot?.details(next) : null;
 }
@@ -409,11 +416,14 @@ function action(type, args = {}) {
     !activeActions &&
     args.toggleChildren !== false &&
     index.children.get(tab.id)?.length;
-  const viewAction = ['toggleGroup', 'enterGroup', 'toggleTab'].includes(type)
-    ? { type, args }
-    : clickToggles
-      ? { type: 'toggleTab', args: { id: args.id } }
-      : null;
+  const closing = type === 'closeTab' && state.tabs.find((tab) => tab.id === args.id);
+  const viewAction = closing
+    ? { type, args: { ...args, treeId: closing.treeId } }
+    : ['toggleGroup', 'enterGroup', 'toggleTab'].includes(type)
+      ? { type, args }
+      : clickToggles
+        ? { type: 'toggleTab', args: { id: args.id } }
+        : null;
   if (viewAction) {
     pendingViewActions.push(viewAction);
     acceptState(confirmedState);
@@ -560,26 +570,39 @@ function selectRow(row) {
 }
 
 function closeTab(id) {
+  if (!state.tabs.some((tab) => tab.id === id)) return;
   const args = { id, promoteFirstChild: true };
-  if (domainFilter) {
-    const domain = domainFilter;
-    const rows = [...tree.querySelectorAll('.tab-row')];
-    const position = rows.findIndex((row) => row.dataset.id === String(id));
-    const focused = document.activeElement;
-    const hadFocus = rows[position]?.contains(focused) || $('menu').contains(focused);
-    action('closeTab', args).then((next) => {
-      if (!next || domainFilter !== domain || !hadFocus) return;
-      // Do not steal focus if the user has already moved elsewhere while closing.
-      if (document.activeElement !== focused && document.activeElement !== document.body) return;
-      const remaining = [...tree.querySelectorAll('.tab-row')];
-      const activeId = next.tabs.find((tab) => tab.active)?.id;
-      const target =
-        remaining.find((row) => Number(row.dataset.id) === activeId) ||
-        remaining[Math.max(0, position - 1)];
-      if (target) selectRow(target);
-      else $('domain-close').focus();
-    });
-  } else action('closeTab', args);
+  const domain = domainFilter;
+  const scope = state.view.scopeId;
+  const focused = document.activeElement;
+  const row = document.querySelector(`[data-key="tab:${id}"]`);
+  const hadFocus = row?.contains(focused) || $('menu').contains(focused);
+  const pinned = row?.classList.contains('pinned-tab');
+  const rows = () =>
+    (pinned ? projection.pins : projection.visibleRows).filter((row) => Boolean(row.tab));
+  const position = rows().findIndex((row) => row.tab.id === id);
+  const result = action('closeTab', args);
+  // Keep keyboard focus usable while Firefox is still completing the close.
+  if (hadFocus) {
+    const remaining = rows();
+    const neighbour =
+      remaining[Math.max(0, domain ? position - 1 : Math.min(position, remaining.length - 1))];
+    const target = neighbour && treeRenderer.mount(neighbour.key);
+    if (target) selectRow(target);
+    else $(domain ? 'domain-close' : 'new-tab').focus();
+  }
+  const pendingFocus = document.activeElement;
+  result.then((next) => {
+    if (disposed || !hadFocus || domainFilter !== domain || state.view.scopeId !== scope) return;
+    // A later deliberate focus change owns focus, including while a prompt is open.
+    if (document.activeElement !== pendingFocus && document.activeElement !== document.body) return;
+    const key =
+      !next && state.tabs.some((tab) => tab.id === id)
+        ? `tab:${id}`
+        : domain && next?.tabs.find((tab) => tab.active)?.id;
+    const target = key && treeRenderer.mount(typeof key === 'number' ? `tab:${key}` : key);
+    if (target) selectRow(target);
+  });
 }
 
 function activateTab(id) {
