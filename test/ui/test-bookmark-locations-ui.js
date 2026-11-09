@@ -132,7 +132,7 @@ try {
   });
   await drop(id, 'Toolbar');
   await expect(page.locator('#toast')).toContainText('Lost root move reply');
-  await action('Unfinished changes…');
+  await pane.getByRole('button', { name: 'Review changes', exact: true }).click();
   await dialog.getByRole('button', { name: 'Retry change' }).click();
   await expect(dialog).toContainText('Change completed.');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();

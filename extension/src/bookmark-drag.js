@@ -10,9 +10,6 @@ export function createBookmarkDrag({
   restoreExpansion,
 }) {
   const events = new AbortController();
-  const marker = document.createElement('div');
-  marker.className = 'move-marker';
-  marker.hidden = true;
   const preview = document.createElement('div');
   preview.className = 'move-preview';
   preview.setAttribute('role', 'status');
@@ -24,7 +21,6 @@ export function createBookmarkDrag({
     suppressClick = false;
 
   function clear() {
-    marker.hidden = true;
     marked?.classList.remove('drop-inside');
     marked = null;
   }
@@ -42,38 +38,30 @@ export function createBookmarkDrag({
     const location = hit?.closest('.bookmark-location');
     const row = location || hit?.closest('.bookmark-row');
     session.target = null;
-    let feedback = 'Drop on a bookmark or folder.';
+    let feedback = 'Drop on a folder to move this item.';
     let nextHover;
     if (row && root.contains(row)) {
-      const targetId = location ? row.dataset.bookmarkRootId : row.dataset.bookmarkId;
-      const node = getIndex()?.byId.get(targetId);
-      const rect = row.getBoundingClientRect();
-      const offset = (y - rect.top) / rect.height;
-      const position =
-        location || (node?.type === 'folder' && offset > 0.25 && offset < 0.75)
-          ? 'inside'
-          : offset < 0.5
-            ? 'before'
-            : 'after';
+      const index = getIndex();
+      const hovered = index?.byId.get(
+        location ? row.dataset.bookmarkRootId : row.dataset.bookmarkId,
+      );
+      const node = hovered?.type === 'folder' ? hovered : index?.byId.get(hovered?.parentId);
+      const targetId = node?.id;
       try {
-        bookmarkMove(getIndex(), session.id, targetId, position);
-        session.target = { targetId, position };
-        feedback = `${position === 'inside' ? 'Into' : position === 'before' ? 'Before' : 'After'} “${node.title || 'Untitled'}”`;
-        if (position === 'inside') {
-          row.classList.add('drop-inside');
-          marked = row;
-          if (!location) nextHover = targetId;
+        bookmarkMove(index, session.id, targetId, 'inside');
+        if (index.byId.get(session.id)?.parentId === targetId) {
+          feedback = 'Already in this folder.';
         } else {
-          marker.hidden = false;
-          const edge =
-            position === 'before' ? rect.top : row.parentElement.getBoundingClientRect().bottom;
-          const clipped = Math.max(bounds.top, Math.min(bounds.bottom, edge));
-          marker.classList.toggle('offscreen', clipped !== edge);
-          Object.assign(marker.style, {
-            left: `${rect.left}px`,
-            top: `${clipped}px`,
-            width: `${rect.width}px`,
-          });
+          session.target = { targetId, position: 'inside' };
+          feedback = `Into “${node.title || 'Untitled folder'}”`;
+          marked =
+            hovered === node
+              ? row
+              : root.querySelector(
+                  `[data-bookmark-id="${CSS.escape(targetId)}"], [data-bookmark-root-id="${CSS.escape(targetId)}"]`,
+                );
+          marked?.classList.add('drop-inside');
+          if (!location) nextHover = targetId;
         }
       } catch (error) {
         feedback = error.message;
@@ -100,7 +88,6 @@ export function createBookmarkDrag({
     clearTimeout(hoverTimer);
     hoverId = null;
     clear();
-    marker.remove();
     preview.remove();
     previous?.row.classList.remove('dragging');
     root.classList.remove('moving-item', 'move-invalid');
@@ -159,7 +146,7 @@ export function createBookmarkDrag({
         root.setPointerCapture(event.pointerId);
         session.row.classList.add('dragging');
         root.classList.add('moving-item');
-        root.append(marker, preview);
+        root.append(preview);
         paint();
       }
       if (session.active) event.preventDefault();
@@ -212,7 +199,6 @@ export function createBookmarkDrag({
     dispose() {
       cancel();
       events.abort();
-      marker.remove();
     },
   };
 }

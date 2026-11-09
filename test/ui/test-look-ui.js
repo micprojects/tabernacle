@@ -108,7 +108,7 @@ try {
     exact: true,
   });
 
-  const counts = settings.getByRole('checkbox', { name: 'Show folder tab counts', exact: true });
+  const counts = settings.getByRole('checkbox', { name: 'Show folder counts', exact: true });
   const folderCount = group.locator('.group-count');
   await expect(counts).not.toBeChecked();
   await expect(folderCount).toBeHidden();

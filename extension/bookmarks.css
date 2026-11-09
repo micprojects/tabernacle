@@ -63,13 +63,15 @@
   outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
-.bookmarks-status {
+.bookmarks-status,
+.bookmark-recovery-status {
   padding: 8px 16px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
 }
-.bookmarks-status p {
+.bookmarks-status p,
+.bookmark-recovery-status p {
   margin: 0 0 8px;
 }
 .bookmarks-tree {

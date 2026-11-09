@@ -6,7 +6,7 @@ try {
   await page.route('**/pane-refresh-fixture', (route) =>
     route.fulfill({
       contentType: 'text/html',
-      body: '<!doctype html><main><button id="tree-toggle">Fold</button><footer><button id="recently-closed-toggle">History</button></footer></main>',
+      body: '<!doctype html><main><button id="tree-toggle">Fold</button><footer><button id="new-tab">New tab</button><button id="new-group">New folder</button><button id="recently-closed-toggle">History</button></footer></main>',
     }),
   );
   await page.goto(`${base}/pane-refresh-fixture`);

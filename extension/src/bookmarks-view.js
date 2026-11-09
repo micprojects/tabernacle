@@ -11,6 +11,8 @@ export function createBookmarksView({
   root,
   getState,
   getBrowser,
+  getPendingChanges = async () => [],
+  onRecover,
   onOpen,
   onClose,
   onSelect,
@@ -76,7 +78,18 @@ export function createBookmarksView({
   const allow = button('Allow bookmarks', null, grant, 'pane-back');
   allow.textContent = 'Allow bookmarks';
   status.append(message, allow, retry);
-  content.append(searchField, results, status, list);
+  const recoveryStatus = el('div', 'bookmark-recovery-status');
+  recoveryStatus.hidden = true;
+  const recoveryMessage = el('p');
+  recoveryMessage.setAttribute('role', 'status');
+  const review = button('Review changes', null, () => onRecover?.(), 'pane-back');
+  review.textContent = 'Review changes';
+  review.hidden = true;
+  const retryRecovery = button('Check changes again', null, () => refresh(), 'pane-back');
+  retryRecovery.textContent = 'Try again';
+  retryRecovery.hidden = true;
+  recoveryStatus.append(recoveryMessage, review, retryRecovery);
+  content.append(searchField, results, status, recoveryStatus, list);
   pane.append(heading, destination, locations, content);
   root.prepend(pane);
   const trigger = button('Bookmarks', 'bookmark', () => (pane.hidden ? open() : close(true)), '');
@@ -86,6 +99,8 @@ export function createBookmarksView({
   trigger.setAttribute('aria-expanded', 'false');
   root.querySelector('#recently-closed-toggle').before(trigger);
   const fold = root.querySelector('#tree-toggle');
+  const createBookmark = root.querySelector('#new-tab');
+  const createFolder = root.querySelector('#new-group');
   let foldDisabled, tree, index, api, timer, loading;
   let disposed = false;
   let generation = 0;
@@ -268,6 +283,33 @@ export function createBookmarksView({
         subscriptions.push([event, changed]);
       }
     }
+    const storage = api.storage?.onChanged;
+    if (storage) {
+      const listener = (changes, area) => {
+        if (area === 'local' && Object.hasOwn(changes, 'tabernacle.bookmark-edits.v1')) changed();
+      };
+
+      storage.addListener(listener);
+      subscriptions.push([storage, listener]);
+    }
+  }
+
+  async function refreshRecovery(current) {
+    try {
+      const pending = await getPendingChanges();
+      if (current !== generation || disposed || pane.hidden) return;
+      recoveryMessage.textContent = pending.length
+        ? `${pending.length === 1 ? 'A bookmark change needs' : 'Bookmark changes need'} attention.`
+        : '';
+      review.hidden = !pending.length;
+      retryRecovery.hidden = true;
+      recoveryStatus.hidden = !pending.length;
+    } catch (error) {
+      if (current !== generation || disposed || pane.hidden) return;
+      recoveryMessage.textContent = `Could not check bookmark changes. ${error.message}`;
+      retryRecovery.hidden = false;
+      recoveryStatus.hidden = false;
+    }
   }
 
   async function refresh() {
@@ -279,6 +321,8 @@ export function createBookmarksView({
       const permitted = await api.permissions.contains({ permissions: ['bookmarks'] });
       if (current !== generation || disposed || pane.hidden) return;
       if (!permitted) {
+        recoveryStatus.hidden = true;
+        review.hidden = true;
         loadError = null;
         tree = null;
         index = null;
@@ -300,7 +344,7 @@ export function createBookmarksView({
       // Listen before the read so edits made while getTree() is in flight
       // schedule a fresh read instead of leaving a stale tree until reopening.
       subscribe();
-      const next = await api.bookmarks.getTree();
+      const [next] = await Promise.all([api.bookmarks.getTree(), refreshRecovery(current)]);
       if (current !== generation || disposed || pane.hidden) return;
       if (!Array.isArray(next) || !Array.isArray(next[0]?.children))
         throw new Error('Firefox returned an unreadable bookmark tree.');
@@ -325,6 +369,7 @@ export function createBookmarksView({
       if (current === generation) {
         loading = false;
         updateFold();
+        updateCreationControls();
       }
     }
   }
@@ -368,7 +413,12 @@ export function createBookmarksView({
   function makeAdd() {
     const item = el('div', 'new-tab-item bookmark-add');
     item.setAttribute('role', 'treeitem');
-    const add = button('', null, () => onCreate?.(item.dataset.bookmarkParentId), 'new-tab-action');
+    const add = button(
+      '',
+      null,
+      () => onCreate?.('bookmark', item.dataset.bookmarkParentId),
+      'new-tab-action',
+    );
     const slot = el('span', 'icon-slot');
     slot.append(icon('plus'));
     add.append(slot);
@@ -410,7 +460,8 @@ export function createBookmarksView({
 
   function render() {
     if (!tree || pane.hidden || disposed) return;
-    const focused = document.activeElement?.closest('.bookmark-row, .bookmark-add');
+    const focusedControl = document.activeElement;
+    const focused = focusedControl?.closest('.bookmark-row, .bookmark-add');
     const focusedId = focused?.dataset.bookmarkId || focused?.dataset.bookmarkParentId;
     const oldIndex = entries.findIndex((entry) => entry.id === focusedId);
     const scroll = captureScroll(list, '.bookmark-row', 'data-bookmark-id');
@@ -502,8 +553,12 @@ export function createBookmarksView({
     );
     restoreScroll(list, scroll);
     updateFold();
-    if (focusedId && !focused?.isConnected)
-      (rows.get(focusedId)?.row || rows.get(selectedId)?.row || search).focus({
+    updateCreationControls();
+    if (focusedId && document.activeElement !== focusedControl)
+      (focusedControl.isConnected
+        ? focusedControl
+        : rows.get(focusedId)?.row || rows.get(selectedId)?.row || search
+      ).focus({
         preventScroll: true,
       });
   }
@@ -540,6 +595,28 @@ export function createBookmarksView({
     if (fold.dataset.icon !== glyph) {
       fold.dataset.icon = glyph;
       fold.replaceChildren(icon(glyph));
+    }
+  }
+
+  function creationParent() {
+    const parent = index?.byId.get(rootId);
+    return parent?.type === 'folder' && !parent.unmodifiable ? parent : null;
+  }
+
+  function updateCreationControls() {
+    if (disposed) return;
+    const parent = creationParent();
+    for (const [control, label] of [
+      [createBookmark, pane.hidden ? 'New tab' : 'New bookmark'],
+      [createFolder, pane.hidden ? 'New folder' : 'New bookmark folder'],
+    ]) {
+      control.disabled = pane.hidden ? !getState() : !parent;
+      setAttribute(control, 'aria-label', label);
+      setAttribute(
+        control,
+        'title',
+        !pane.hidden && parent ? `${label} in ${parent.title || 'Untitled folder'}` : label,
+      );
     }
   }
 
@@ -683,6 +760,7 @@ export function createBookmarksView({
     fold.disabled = foldDisabled;
     tree = null;
     index = null;
+    updateCreationControls();
     manage.disabled = true;
     entries = [];
     rows.clear();
@@ -728,6 +806,7 @@ export function createBookmarksView({
       label + (containerText ? ` · ${containerText} container` : ' · No container');
     list.classList.toggle('show-connecting-lines', state.look.connectingLines);
     list.classList.toggle('show-folder-counts', Boolean(state.look.folderCounts));
+    updateCreationControls();
     return true;
   }
 
@@ -753,6 +832,8 @@ export function createBookmarksView({
       if (
         !trigger.contains(event.target) &&
         !fold.contains(event.target) &&
+        !createBookmark.contains(event.target) &&
+        !createFolder.contains(event.target) &&
         event.target.closest('footer')
       )
         close();
@@ -775,6 +856,26 @@ export function createBookmarksView({
     expandAll,
     getIndex: () => index,
     getRootId: () => rootId,
+
+    create(type) {
+      if (pane.hidden || !creationParent()) return;
+      onCreate?.(type, rootId);
+    },
+
+    creationMenu(event) {
+      if (
+        event.isComposing ||
+        (event.type === 'keydown' &&
+          event.key !== 'ContextMenu' &&
+          !(event.shiftKey && event.key === 'F10'))
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (pane.hidden || !creationParent()) return;
+      event.currentTarget.focus({ preventScroll: true });
+      onMenu?.(rootId, event);
+    },
 
     async reveal(id, { clearSearch = false } = {}) {
       await refresh();

@@ -129,12 +129,14 @@ try {
     await add.evaluate((node) => getComputedStyle(node.parentElement, '::before').maskImage),
   ).toContain('tree-guide-end.svg');
   await send('setLook', { value: { connectingLines: false }, partial: true });
+  await expect(pane.locator('#bookmarks-tree')).not.toHaveClass(/show-connecting-lines/);
   expect(
     await add.evaluate((node) => getComputedStyle(node.parentElement, '::before').content),
   ).toBe('none');
   await expect(add).toBeVisible();
   await send('setLook', { value: { connectingLines: true }, partial: true });
-  await row('fonts-bookmark').press('ArrowDown');
+  await expect(pane.locator('#bookmarks-tree')).toHaveClass(/show-connecting-lines/);
+  await row('mdn-bookmark').press('ArrowDown');
   await expect(add).toBeFocused();
   expect(await composingKey(add, 'Enter')).toBe(false);
   await add.press('Enter');
@@ -149,7 +151,7 @@ try {
   await expect(row('design-bookmarks')).toBeFocused();
   await add.focus();
   await add.press('ArrowUp');
-  await expect(row('fonts-bookmark')).toBeFocused();
+  await expect(row('mdn-bookmark')).toBeFocused();
   await add.press('Shift+F10');
   await page.locator('#menu').getByRole('menuitem', { name: 'New bookmark…', exact: true }).click();
   await expect(dialog.getByLabel('Bookmark folder', { exact: true })).toHaveText(
@@ -158,7 +160,7 @@ try {
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.screenshot({ path: 'test-results/bookmarks-tree-controls-320.png' });
   await row('design-bookmarks').press('ArrowRight');
-  await expect(row('mdn-bookmark')).toBeFocused();
+  await expect(row('fonts-bookmark')).toBeFocused();
   await page.keyboard.press('ArrowLeft');
   await expect(row('design-bookmarks')).toBeFocused();
   await page.keyboard.press('Control+k');

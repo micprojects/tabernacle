@@ -126,11 +126,13 @@ const bookmarksView = createBookmarksView({
 
   onClose: () => render(),
   onSelect: ({ id, groupId, operationId }) => action('openBookmark', { id, groupId, operationId }),
+  getPendingChanges: () => request('getBookmarkEdits'),
+  onRecover: () => bookmarkDialogs.recovery(),
   onMenu: (...args) => bookmarkDialogs.openMenu(...args),
   onMove: (...args) => bookmarkDialogs.drop(...args),
   onEdit: (id) => bookmarkDialogs.edit(id),
   onDelete: (id) => bookmarkDialogs.remove(id),
-  onCreate: (id) => bookmarkDialogs.create('bookmark', id),
+  onCreate: (...args) => bookmarkDialogs.create(...args),
 });
 
 function acceptState(next) {
@@ -862,8 +864,10 @@ function render(motionKey = null) {
   }
   renderAppearance();
   refreshCollectionDialog();
-  $('new-tab').disabled = false;
-  $('new-group').disabled = false;
+  if (!bookmarksView.isOpen) {
+    $('new-tab').disabled = false;
+    $('new-group').disabled = false;
+  }
   $('recently-closed-toggle').disabled = false;
   // A refresh may finish after dragstart. Keep the source/targets in the DOM
   // until dragend so native HTML drag-and-drop is not cancelled mid-gesture.
@@ -1340,13 +1344,23 @@ $('search').addEventListener('input', () => {
 });
 $('reveal').addEventListener('click', () => blankAreaAction('revealActive'));
 $('new-tab').addEventListener('click', (event) => {
+  if (bookmarksView.isOpen) return bookmarksView.create('bookmark');
   const result = action('newTab', { groupId: state.view.scopeId });
   treeMotion.addFeedback(event.currentTarget);
   return result;
 });
-$('new-tab').addEventListener('contextmenu', (event) => newTabMenu(event, state?.view.scopeId));
-$('new-tab').addEventListener('keydown', (event) => newTabMenu(event, state?.view.scopeId));
-$('new-group').addEventListener('click', () => createDialog());
+
+function footerCreationMenu(event) {
+  if (bookmarksView.isOpen) bookmarksView.creationMenu(event);
+  else newTabMenu(event, state?.view.scopeId);
+}
+
+$('new-tab').addEventListener('contextmenu', footerCreationMenu);
+$('new-tab').addEventListener('keydown', footerCreationMenu);
+$('new-group').addEventListener('click', () => {
+  if (bookmarksView.isOpen) bookmarksView.create('folder');
+  else createDialog();
+});
 $('tree-toggle').addEventListener('click', async () => {
   if (bookmarksView.isOpen) {
     bookmarksView.toggleExpansion();

@@ -52,8 +52,8 @@ test('location projection removes only the native root row and scopes search wit
     rows.map(({ id, depth, parentId }) => [id, depth, parentId]),
     [
       ['design-bookmarks', 1, undefined],
-      ['mdn-bookmark', 2, 'design-bookmarks'],
       ['fonts-bookmark', 2, 'design-bookmarks'],
+      ['mdn-bookmark', 2, 'design-bookmarks'],
       ['news-bookmark', 1, undefined],
     ],
   );
@@ -66,7 +66,7 @@ test('location projection removes only the native root row and scopes search wit
   assert.deepEqual(demoBookmarks, original);
 });
 
-test('bookmark projection keeps Firefox order, hierarchy, empty folders and local folds', () => {
+test('bookmark projection preserves native root order, hierarchy, empty folders and local folds', () => {
   const original = structuredClone(demoBookmarks);
   const expanded = new Set(['toolbar_____']);
   const rows = bookmarkRows(demoBookmarks, expanded);
@@ -90,7 +90,7 @@ test('quick search matches titles, URLs and folders across collapsed branches wi
   }
   assert.deepEqual(
     bookmarkRows(demoBookmarks, new Set(), 'Design').map((row) => row.id),
-    ['toolbar_____', 'design-bookmarks', 'mdn-bookmark', 'fonts-bookmark'],
+    ['toolbar_____', 'design-bookmarks', 'fonts-bookmark', 'mdn-bookmark'],
   );
   assert.deepEqual(bookmarkRows(demoBookmarks, new Set(), 'missing'), []);
   assert.deepEqual(
@@ -99,6 +99,51 @@ test('quick search matches titles, URLs and folders across collapsed branches wi
     ),
     ['toolbar_____', 'design-bookmarks'],
   );
+});
+
+test('alphabetical projection sorts each folder naturally without changing saved order or identities', () => {
+  const bookmark = (id, title) => ({
+    id,
+    title,
+    type: 'bookmark',
+    url: `https://example.test/${id}`,
+  });
+  const tree = [
+    {
+      id: 'root',
+      children: [
+        {
+          id: 'menu',
+          type: 'folder',
+          children: [
+            bookmark('ten', 'page 10'),
+            {
+              id: 'z-folder',
+              type: 'folder',
+              title: 'Zebra',
+              children: [bookmark('z', 'Zulu'), bookmark('a', 'alpha')],
+            },
+            bookmark('two', 'Page 2'),
+            { id: 'a-folder', type: 'folder', title: 'alpha', children: [] },
+            bookmark('same-first', 'Éclair'),
+            bookmark('same-second', 'eclair'),
+            { id: 'separator', type: 'separator' },
+          ],
+        },
+      ],
+    },
+  ];
+  const before = structuredClone(tree);
+  const expanded = new Set(['z-folder']);
+  assert.deepEqual(
+    bookmarkRows(tree, expanded, '', new Set(), 'menu').map(({ id }) => id),
+    ['a-folder', 'z-folder', 'a', 'z', 'same-first', 'same-second', 'two', 'ten'],
+  );
+  assert.deepEqual(
+    bookmarkRows(tree, expanded, 'page', new Set(), 'menu').map(({ id }) => id),
+    ['two', 'ten'],
+  );
+  assert.deepEqual(tree, before);
 });
 
 test('separators are omitted and untitled bookmarks retain their address', () => {
