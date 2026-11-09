@@ -101,7 +101,9 @@ try {
   await session.evaluate(() => document.querySelector('#bookmarks-toggle').click());
   await wait(() => document.querySelector('#bookmarks-tree [aria-label="Project references"]'));
   await wait(
-    () => document.querySelector('.bookmarks-destination').textContent === 'Open in Research tabs',
+    () =>
+      document.querySelector('.bookmarks-destination-label').textContent ===
+      'Open in Research tabs',
   );
   await session.evaluate(() => {
     const search = document.getElementById('bookmarks-search');
@@ -126,9 +128,10 @@ try {
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
   await writeFile('test-results/bookmarks-firefox.png', await session.screenshot(fixture.capture));
-  await session.evaluate(
-    (id) => document.querySelector(`[data-bookmark-id="${id}"]`).click(),
-    bookmarks.first,
+  await session.evaluate(() =>
+    document
+      .getElementById('bookmarks-search')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
   await wait(() => document.getElementById('bookmarks-view').hidden);
   await session.driver.wait(
@@ -269,11 +272,42 @@ try {
     return { operation, result: await send('editBookmark', operation) };
   };
 
-  const newFolder = await change('create', null, {
-    type: 'folder',
-    parentId: bookmarks.folder,
-    title: 'Saved references',
+  // Create through the context menu and searchable destination picker.
+  await session.evaluate((id) => {
+    document
+      .querySelector(`[data-bookmark-id="${id}"]`)
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    [...document.querySelectorAll('#menu [role="menuitem"]')]
+      .find((item) => item.textContent === 'New folder…')
+      .click();
+    document.querySelector('#dialog-content input[aria-label="Name"]').value = 'Saved references';
+    document.getElementById('bookmark-create-in').click();
+    const search = document.querySelector('#dialog-content input[aria-label="Find a folder"]');
+    search.value = 'Project references';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+  }, bookmarks.folder);
+  await wait(() =>
+    document.querySelector('#bookmark-folder-picker-tree [aria-label="Project references"]'),
+  );
+  assert.equal(
+    await session.evaluate(() =>
+      document.querySelector('#bookmark-folder-picker-tree [aria-label="Home"]'),
+    ),
+    null,
+  );
+  await session.evaluate(() => {
+    document
+      .querySelector('#bookmark-folder-picker-tree [aria-label="Project references"]')
+      .click();
+    document.getElementById('dialog-form').requestSubmit();
   });
+  await wait(() => !document.getElementById('dialog').open);
+  const newFolder = {
+    result: [...(await nativeIndex()).byId.values()].find(
+      (node) => node.title === 'Saved references',
+    ),
+  };
+  assert.equal(newFolder.result.parentId, bookmarks.folder);
   const newBookmark = await change('create', null, {
     type: 'bookmark',
     parentId: newFolder.result.id,

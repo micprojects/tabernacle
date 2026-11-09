@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bookmarkRows, bookmarkUrl } from '../extension/src/bookmarks.js';
+import { bookmarkRows, bookmarkUrl, bookmarkHighlights } from '../extension/src/bookmarks.js';
 import { demoBookmarks } from '../preview/bookmarks.js';
 
 test('bookmark projection keeps Firefox order, hierarchy, empty folders and local folds', () => {
@@ -63,4 +63,32 @@ test('bookmark addresses cannot execute script or privilege-bearing URLs', () =>
     'https://',
   ])
     assert.throws(() => bookmarkUrl(url), /bookmark/);
+});
+
+test('bookmark search combines words across the title and address in any order', () => {
+  const rows = bookmarkRows(demoBookmarks, new Set(), 'mozilla MDN');
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ['toolbar_____', 'design-bookmarks', 'mdn-bookmark'],
+  );
+  assert.equal(rows.filter((row) => row.match).length, 1);
+  assert.equal(rows.at(-1).match, true);
+  assert.deepEqual(bookmarkRows(demoBookmarks, new Set(), 'MDN fonts'), []);
+});
+
+test('bookmark highlights merge overlaps and preserve literal titles', () => {
+  const title = '<MDN> Web Docs & MDN';
+  const parts = bookmarkHighlights(title, 'mdn web docs web');
+  assert.equal(parts.map((part) => part.text).join(''), title);
+  assert.deepEqual(
+    parts.filter((part) => part.match).map((part) => part.text),
+    ['MDN', 'Web', 'Docs', 'MDN'],
+  );
+  assert.deepEqual(bookmarkHighlights('Bookmarks', 'book bookmarks'), [
+    { text: 'Bookmarks', match: true },
+  ]);
+  assert.deepEqual(bookmarkHighlights('İstanbul guide', 'guide'), [
+    { text: 'İstanbul ', match: false },
+    { text: 'guide', match: true },
+  ]);
 });

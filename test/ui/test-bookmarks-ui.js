@@ -38,7 +38,8 @@ try {
   await expect(search).toBeFocused();
   await expect(page.locator('#tree .row')).toHaveCount(0);
   await expect(page.locator('#tree-toggle')).toBeDisabled();
-  await expect(pane.locator('.bookmarks-destination')).toHaveText('Open in Design');
+  await expect(pane.locator('.bookmarks-destination-label')).toHaveText('Open in Design');
+  await expect(pane.locator('.bookmarks-container')).not.toBeEmpty();
   await expect(row('design-bookmarks')).toHaveAttribute('aria-expanded', 'false');
   expect(
     await row('design-bookmarks').evaluate((node) => {
@@ -84,6 +85,8 @@ try {
 
   // Live bookmark edits retain focus and a failed read leaves the last good tree.
   await trigger.click();
+  await expect(search).toHaveValue('MDN');
+  await page.getByRole('button', { name: 'Clear bookmark search' }).click();
   await row('mdn-bookmark').focus();
   await page.evaluate(() =>
     tabernacleDemoSession.browser.bookmarks.update('mdn-bookmark', {

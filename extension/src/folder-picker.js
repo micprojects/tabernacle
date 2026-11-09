@@ -19,6 +19,7 @@ export function createFolderPicker({
   labelText = 'Create in',
   helpText = 'Defaults to your current folder',
   idPrefix = '',
+  includeHome = true,
 }) {
   let selectedId = parentId;
   let rows = [];
@@ -37,6 +38,7 @@ export function createFolderPicker({
   const value = el('span', 'folder-picker-value');
   trigger.append(icon('group'), value, icon('chevron', 'folder-picker-chevron'));
   const help = el('p', 'folder-picker-help', helpText);
+  help.hidden = !helpText;
   help.id = `${idPrefix}create-in-help`;
   const popup = el('div', 'folder-picker-popup');
   popup.hidden = true;
@@ -58,7 +60,10 @@ export function createFolderPicker({
   field.append(label, trigger, help, popup);
 
   function pathFor(id) {
-    return ['Home', ...groupPath(getState(), id).map((group) => group.name)].join(' / ');
+    return [
+      ...(includeHome ? ['Home'] : []),
+      ...groupPath(getState(), id).map((group) => group.name),
+    ].join(' / ');
   }
 
   function updateValue() {
@@ -82,6 +87,7 @@ export function createFolderPicker({
   }
 
   function choose(id) {
+    if (!includeHome && id === null) return;
     selectedId = id;
     updateValue();
     onChange?.(id);
@@ -113,7 +119,11 @@ export function createFolderPicker({
     const folders = createFolderIndex(getState());
     const query = search.value.trim().toLocaleLowerCase();
     const entries = [];
-    const pending = [{ group: { id: null, name: 'Home' }, depth: 0, path: 'Home' }];
+    const pending = includeHome
+      ? [{ group: { id: null, name: 'Home' }, depth: 0, path: 'Home' }]
+      : [...(folders.children.get(null) || [])]
+          .reverse()
+          .map((group) => ({ group, depth: 0, path: group.name }));
     while (pending.length) {
       const { group, depth, path } = pending.pop();
       const nested = folders.children.get(group.id) || [];
@@ -196,7 +206,8 @@ export function createFolderPicker({
               expanded.delete(entry.id);
               render(entry.id);
             } else if (!query && entry.id !== null) {
-              focusRow(rows.findIndex((item) => item.id === entry.parentId));
+              const parent = rows.findIndex((item) => item.id === entry.parentId);
+              if (parent >= 0) focusRow(parent);
             }
             break;
           case 'Enter':

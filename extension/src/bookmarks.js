@@ -2,6 +2,7 @@
 // projection only; browsing and searching never write to the bookmark store.
 export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new Set()) {
   const needle = query.trim().toLocaleLowerCase();
+  const terms = needle.split(/\s+/).filter(Boolean);
   const entries = [];
   const stack = [...(tree[0]?.children || [])].reverse().map((node) => ({ node, depth: 1 }));
   const matching = new Set();
@@ -11,8 +12,10 @@ export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new S
     if (node.type === 'separator') continue;
     const folder = node.type === 'folder' || Array.isArray(node.children);
     const title = node.title || node.url || 'Untitled folder';
-    const matched =
-      matchedParent || `${title}\n${node.url || ''}`.toLocaleLowerCase().includes(needle);
+    const match = terms.every((term) =>
+      `${title}\n${node.url || ''}`.toLocaleLowerCase().includes(term),
+    );
+    const matched = matchedParent || match;
     parents.set(node.id, parentId);
     if (needle && matched) {
       let id = node.id;
@@ -21,7 +24,16 @@ export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new S
         id = parents.get(id);
       }
     }
-    entries.push({ id: node.id, title, url: node.url, folder, depth, parentId });
+    entries.push({
+      id: node.id,
+      title,
+      url: node.url,
+      folder,
+      depth,
+      parentId,
+      match,
+      childCount: node.children?.length || 0,
+    });
     for (const child of [...(node.children || [])].reverse())
       stack.push({ node: child, depth: depth + 1, parentId: node.id, matchedParent: matched });
   }
@@ -36,6 +48,50 @@ export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new S
       entry.folder && (needle ? !searchCollapsed.has(entry.id) : expanded.has(entry.id));
     return show;
   });
+}
+
+// Return text fragments; callers create text nodes rather than interpreting HTML.
+export function bookmarkHighlights(text, query) {
+  const value = text.toLocaleLowerCase();
+  // Some letters lowercase into multiple code units (for example İ → i̇).
+  // Map matches back to the original title instead of shifting the highlight.
+  const offsets = [];
+  if (value.length !== text.length) {
+    let start = 0;
+    for (const character of text) {
+      for (let i = 0; i < character.toLocaleLowerCase().length; i++)
+        offsets.push([start, start + character.length]);
+      start += character.length;
+    }
+  }
+  const ranges = [];
+  for (const term of new Set(query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean))) {
+    let at = value.indexOf(term);
+    while (at >= 0) {
+      ranges.push(
+        offsets.length
+          ? [offsets[at][0], offsets[at + term.length - 1][1]]
+          : [at, at + term.length],
+      );
+      at = value.indexOf(term, at + term.length);
+    }
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const range of ranges) {
+    const last = merged.at(-1);
+    if (last && range[0] <= last[1]) last[1] = Math.max(last[1], range[1]);
+    else merged.push(range);
+  }
+  const parts = [];
+  let at = 0;
+  for (const [start, end] of merged) {
+    if (start > at) parts.push({ text: text.slice(at, start), match: false });
+    parts.push({ text: text.slice(start, end), match: true });
+    at = end;
+  }
+  if (at < text.length) parts.push({ text: text.slice(at), match: false });
+  return parts;
 }
 
 export function bookmarkUrl(value) {

@@ -1,10 +1,21 @@
 import { bookmarkEditable, bookmarkMove, bookmarkRecord } from './bookmark-edit.js';
 
-export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
+export function createBookmarkDrag({
+  root,
+  list,
+  getIndex,
+  expand,
+  commit,
+  captureExpansion,
+  restoreExpansion,
+}) {
   const events = new AbortController();
   const marker = document.createElement('div');
   marker.className = 'move-marker';
   marker.hidden = true;
+  const preview = document.createElement('div');
+  preview.className = 'move-preview';
+  preview.setAttribute('role', 'status');
   let session,
     frame,
     hoverTimer,
@@ -29,6 +40,7 @@ export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
     }
     const row = document.elementFromPoint(x, y)?.closest('.bookmark-row');
     session.target = null;
+    let feedback = 'Drop on a bookmark or folder.';
     let nextHover;
     if (row && list.contains(row)) {
       const targetId = row.dataset.bookmarkId;
@@ -44,6 +56,7 @@ export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
       try {
         bookmarkMove(getIndex(), session.id, targetId, position);
         session.target = { targetId, position };
+        feedback = `${position === 'inside' ? 'Into' : position === 'before' ? 'Before' : 'After'} “${node.title || 'Untitled'}”`;
         if (position === 'inside') {
           row.classList.add('drop-inside');
           marked = row;
@@ -60,10 +73,15 @@ export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
             width: `${rect.width}px`,
           });
         }
-      } catch {
-        /* Invalid destinations are never committed. */
+      } catch (error) {
+        feedback = error.message;
       }
     }
+    const text = `Move “${session.expected.title || 'Untitled'}”\n${feedback}`;
+    if (preview.textContent !== text) preview.textContent = text;
+    const rect = preview.getBoundingClientRect();
+    preview.style.left = `${Math.max(bounds.left + 4, Math.min(x + 12, bounds.right - rect.width - 4))}px`;
+    preview.style.top = `${Math.min(y + 20, window.innerHeight - rect.height - 8)}px`;
     root.classList.toggle('move-invalid', !session.target);
     if (nextHover !== hoverId) {
       clearTimeout(hoverTimer);
@@ -73,7 +91,7 @@ export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
     frame = requestAnimationFrame(paint);
   }
 
-  function cancel() {
+  function finish(keepExpansion = false) {
     const previous = session;
     session = null;
     cancelAnimationFrame(frame);
@@ -81,12 +99,16 @@ export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
     hoverId = null;
     clear();
     marker.remove();
+    preview.remove();
     previous?.row.classList.remove('dragging');
     root.classList.remove('moving-item', 'move-invalid');
     if (previous && root.hasPointerCapture(previous.pointerId))
       root.releasePointerCapture(previous.pointerId);
+    if (previous?.expansion && !keepExpansion) restoreExpansion?.(previous.expansion);
     return previous;
   }
+
+  const cancel = () => finish();
 
   root.addEventListener(
     'pointerdown',
@@ -130,11 +152,12 @@ export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
         Math.hypot(session.x - session.startX, session.y - session.startY) >= 5
       ) {
         session.active = true;
+        session.expansion = captureExpansion?.();
         suppressClick = true;
         root.setPointerCapture(event.pointerId);
         session.row.classList.add('dragging');
         root.classList.add('moving-item');
-        root.append(marker);
+        root.append(marker, preview);
         paint();
       }
       if (session.active) event.preventDefault();
@@ -151,7 +174,7 @@ export function createBookmarkDrag({ root, list, getIndex, expand, commit }) {
         cancelAnimationFrame(frame);
         paint();
       }
-      const ended = cancel();
+      const ended = finish(Boolean(session.target));
       if (ended.active && ended.target)
         commit(ended.id, ended.target.targetId, ended.target.position, ended.expected);
     },

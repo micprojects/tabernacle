@@ -1,10 +1,11 @@
 import { icon } from './icons.js';
-import { bookmarkRows } from './bookmarks.js';
+import { bookmarkRows, bookmarkHighlights } from './bookmarks.js';
 import { createSidebarControls } from './sidebar/controls.js';
 import { reconcileChildren, setAttribute } from './dom.js';
 import { captureScroll, restoreScroll } from './view-state.js';
 import { indexBookmarks, bookmarkEditable } from './bookmark-edit.js';
 import { createBookmarkDrag } from './bookmark-drag.js';
+import { groupContainer } from './model.js';
 
 export function createBookmarksView({
   root,
@@ -33,6 +34,9 @@ export function createBookmarksView({
   manage.disabled = true;
   heading.append(dismiss, title, manage);
   const destination = el('p', 'bookmarks-destination');
+  const destinationLabel = el('span', 'bookmarks-destination-label');
+  const containerLabel = el('span', 'bookmarks-container');
+  destination.append(destinationLabel, containerLabel);
   const searchField = el('label', 'recent-search');
   const search = el('input');
   search.id = 'bookmarks-search';
@@ -41,7 +45,16 @@ export function createBookmarksView({
   search.setAttribute('aria-label', 'Search bookmarks');
   search.setAttribute('aria-controls', 'bookmarks-tree');
   search.autocomplete = 'off';
-  searchField.append(icon('search'), search);
+  const clearSearch = button(
+    'Clear bookmark search',
+    'closeSmall',
+    () => clearQuery(),
+    'bookmark-search-clear',
+  );
+  clearSearch.hidden = true;
+  searchField.append(icon('search'), search, clearSearch);
+  const results = el('span', 'bookmarks-results');
+  results.setAttribute('aria-live', 'polite');
   const list = el('div', 'tree bookmarks-tree');
   list.id = 'bookmarks-tree';
   list.setAttribute('role', 'tree');
@@ -54,7 +67,7 @@ export function createBookmarksView({
   const allow = button('Allow bookmarks', null, grant, 'pane-back');
   allow.textContent = 'Allow bookmarks';
   status.append(message, allow, retry);
-  pane.append(heading, destination, searchField, status, list);
+  pane.append(heading, destination, searchField, results, status, list);
   root.prepend(pane);
   const trigger = button('Bookmarks', 'bookmark', () => (pane.hidden ? open() : close(true)), '');
   trigger.id = 'bookmarks-toggle';
@@ -74,11 +87,21 @@ export function createBookmarksView({
   let selectedId;
   let pendingOpen;
   let loadError;
+  let initialised = false;
+  let savedScroll;
   const subscriptions = [];
   const drag = createBookmarkDrag({
     root: pane,
     list,
     getIndex: () => index,
+    captureExpansion: () => ({ expanded: new Set(expanded), collapsed: new Set(searchCollapsed) }),
+
+    restoreExpansion(saved) {
+      expanded = saved.expanded;
+      searchCollapsed.clear();
+      for (const id of saved.collapsed) searchCollapsed.add(id);
+      render();
+    },
 
     expand(id) {
       expanded.add(id);
@@ -147,6 +170,8 @@ export function createBookmarksView({
         tree = null;
         index = null;
         manage.disabled = true;
+        clearSearch.hidden = true;
+        results.textContent = '';
         rows.clear();
         entries = [];
         list.replaceChildren();
@@ -162,17 +187,23 @@ export function createBookmarksView({
       if (current !== generation || disposed || pane.hidden) return;
       if (!Array.isArray(next) || !Array.isArray(next[0]?.children))
         throw new Error('Firefox returned an unreadable bookmark tree.');
-      if (!tree && !expanded.size)
+      if (!initialised) {
         expanded = new Set(
           next[0].children.filter((node) => node.type === 'folder').map((node) => node.id),
         );
+      }
       const nextIndex = indexBookmarks(next);
       tree = next;
       index = nextIndex;
+      initialised = true;
       manage.disabled = false;
       loadError = null;
       search.disabled = false;
       render();
+      if (savedScroll) {
+        restoreScroll(list, savedScroll);
+        savedScroll = null;
+      }
     } catch (error) {
       if (current === generation && !disposed && !pane.hidden) {
         loadError = `Could not load bookmarks. ${error.message}`;
@@ -205,20 +236,48 @@ export function createBookmarksView({
     row.setAttribute('role', 'treeitem');
     const slot = el('span', 'icon-slot');
     const label = el('span', 'label');
-    row.append(slot, label);
+    const text = el('span', 'bookmark-text');
+    const address = el('span', 'bookmark-address');
+    text.append(label, address);
+    row.append(slot, text);
     const branch = el('div', 'branch');
     branch.setAttribute('role', 'group');
-    if (entry.folder) row.append(icon('chevron', 'group-chevron'));
+    const count = el('span', 'bookmark-count');
+    if (entry.folder) row.append(count, icon('chevron', 'group-chevron'));
     const more = button(
       `Actions for ${entry.title}`,
       'more',
-      (event) => onMenu?.(entry.id, event),
+      (event) => {
+        focus(entry.id);
+        onMenu?.(entry.id, event);
+      },
       'icon-button bookmark-more',
     );
     more.tabIndex = -1;
+    more.setAttribute('aria-haspopup', 'menu');
     row.append(more);
     wrapper.append(row);
-    return { wrapper, row, slot, label, branch, more };
+    const empty = el('p', 'bookmark-empty', 'Empty folder');
+    return { wrapper, row, slot, label, branch, more, address, count, empty };
+  }
+
+  function highlight(node, text) {
+    const key = JSON.stringify([text, search.value]);
+    if (node.dataset.highlight === key) return;
+    node.dataset.highlight = key;
+    node.replaceChildren(
+      ...bookmarkHighlights(text, search.value).map((part) =>
+        part.match ? el('mark', '', part.text) : document.createTextNode(part.text),
+      ),
+    );
+  }
+
+  function clearQuery() {
+    savedScroll = null;
+    search.value = '';
+    searchCollapsed.clear();
+    render();
+    search.focus();
   }
 
   function render() {
@@ -228,6 +287,12 @@ export function createBookmarksView({
     const oldIndex = entries.findIndex((entry) => entry.id === focusedId);
     const scroll = captureScroll(list, '.bookmark-row', 'data-bookmark-id');
     entries = bookmarkRows(tree, expanded, search.value, searchCollapsed);
+    clearSearch.hidden = !search.value;
+    const searching = Boolean(search.value.trim());
+    const matchCount = entries.filter((entry) => entry.match).length;
+    results.textContent = searching
+      ? `${matchCount} ${matchCount === 1 ? 'match' : 'matches'}`
+      : '';
     const alive = new Set(entries.map((entry) => entry.id));
     if (!alive.has(selectedId))
       selectedId = entries[Math.max(0, Math.min(oldIndex, entries.length - 1))]?.id;
@@ -242,7 +307,37 @@ export function createBookmarksView({
       setAttribute(item.row, 'title', entry.url ? `${entry.title}\n${entry.url}` : entry.title);
       setAttribute(item.more, 'aria-label', `Actions for ${entry.title}`);
       setAttribute(item.more, 'title', `Actions for ${entry.title}`);
-      if (item.label.textContent !== entry.title) item.label.textContent = entry.title;
+      highlight(item.label, entry.title);
+      item.address.hidden = !searching || !entry.url;
+      if (entry.url) {
+        let address = entry.url;
+        try {
+          address = new URL(entry.url).host || entry.url;
+        } catch {
+          /* Preserve unusual bookmark addresses. */
+        }
+        // Show the matching address when the host alone cannot explain a URL match.
+        if (
+          searching &&
+          search.value
+            .trim()
+            .toLocaleLowerCase()
+            .split(/\s+/)
+            .some(
+              (term) =>
+                entry.url.toLocaleLowerCase().includes(term) &&
+                !address.toLocaleLowerCase().includes(term),
+            )
+        )
+          address = entry.url;
+        highlight(item.address, address);
+      }
+      if (entry.folder) {
+        const count = String(entry.childCount);
+        if (item.count.textContent !== count) item.count.textContent = count;
+        item.count.setAttribute('aria-label', `${count} items`);
+        item.count.title = `${count} ${entry.childCount === 1 ? 'item' : 'items'} in this folder`;
+      }
       const glyph = entry.folder ? (entry.expanded ? 'groupOpen' : 'group') : 'bookmark';
       if (item.glyph !== glyph) {
         item.slot.replaceChildren(icon(glyph));
@@ -260,6 +355,8 @@ export function createBookmarksView({
       if (entry.folder) {
         const branch = rows.get(entry.id).branch;
         const nested = children.get(entry.id) || [];
+        if (!nested.length && !entry.childCount && entry.expanded)
+          nested.push(rows.get(entry.id).empty);
         reconcileChildren(branch, nested);
         branch.hidden = !nested.length;
       }
@@ -325,10 +422,16 @@ export function createBookmarksView({
     focus(item.entry.id);
     activate(item);
   });
+  list.addEventListener('focusin', (event) => {
+    const id = event.target.closest('.bookmark-row')?.dataset.bookmarkId;
+    if (!rows.has(id) || selectedId === id) return;
+    selectedId = id;
+    for (const [key, item] of rows) setAttribute(item.row, 'tabindex', key === id ? 0 : -1);
+  });
   list.addEventListener('keydown', (event) => {
     if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     const item = rows.get(event.target.closest('.bookmark-row')?.dataset.bookmarkId);
-    if (!item) return;
+    if (!item || event.target.closest('button')) return;
     const entry = item.entry;
     const rowIndex = entries.indexOf(entry);
     let next;
@@ -345,8 +448,9 @@ export function createBookmarksView({
     } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
       onMenu?.(entry.id, { target: item.row, type: 'keyboard' });
     } else if (event.key === 'F2' && bookmarkEditable(index, entry.id)) onEdit?.(entry.id);
-    else if (event.key === 'Delete' && bookmarkEditable(index, entry.id)) onDelete?.(entry.id);
-    else if (event.key === 'Enter' || event.key === ' ') activate(item);
+    else if (event.key === 'Delete' && bookmarkEditable(index, entry.id)) {
+      if (!event.repeat) onDelete?.(entry.id);
+    } else if (event.key === 'Enter' || event.key === ' ') activate(item);
     else return;
     event.preventDefault();
     event.stopPropagation();
@@ -366,19 +470,28 @@ export function createBookmarksView({
     });
   });
   search.addEventListener('input', () => {
+    savedScroll = null;
     searchCollapsed.clear();
     render();
     list.scrollTop = 0;
   });
   search.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
     if (event.key === 'ArrowDown' && entries.length) {
       event.preventDefault();
-      focus(entries[0].id);
+      focus((entries.find((entry) => entry.match) || entries[0]).id);
+    } else if (event.key === 'Enter' && search.value.trim()) {
+      const entry = entries.find((entry) => entry.match);
+      if (!entry) return;
+      event.preventDefault();
+      focus(entry.id);
+      if (!entry.folder) activate(rows.get(entry.id));
     }
   });
 
   function close(restoreFocus = false) {
     if (pane.hidden) return;
+    savedScroll = captureScroll(list, '.bookmark-row', 'data-bookmark-id');
     generation++;
     sessionToken++;
     unsubscribe();
@@ -407,10 +520,9 @@ export function createBookmarksView({
     pane.hidden = false;
     root.classList.add('bookmarks-open');
     trigger.setAttribute('aria-expanded', 'true');
-    search.value = '';
     search.disabled = false;
-    searchCollapsed.clear();
     search.focus();
+    search.select();
     update();
     refresh();
   }
@@ -421,8 +533,17 @@ export function createBookmarksView({
     const state = getState();
     const folder = state.groups.find((group) => group.id === state.view.scopeId);
     const label = `Open in ${folder?.name || 'Home'}`;
-    if (destination.textContent !== label) destination.textContent = label;
-    destination.title = label;
+    if (destinationLabel.textContent !== label) destinationLabel.textContent = label;
+    const containerId = groupContainer(state, folder?.id);
+    const container = state.containers?.find((entry) => entry.cookieStoreId === containerId);
+    const containerText =
+      containerId && containerId !== 'firefox-default'
+        ? container?.name || 'Unavailable container'
+        : '';
+    if (containerLabel.textContent !== containerText) containerLabel.textContent = containerText;
+    containerLabel.hidden = !containerText;
+    destination.title =
+      label + (containerText ? ` · ${containerText} container` : ' · No container');
     list.classList.toggle('show-connecting-lines', state.look.connectingLines);
     return true;
   }
@@ -438,11 +559,8 @@ export function createBookmarksView({
       )
         return;
       event.preventDefault();
-      if (event.target === search && search.value) {
-        search.value = '';
-        searchCollapsed.clear();
-        render();
-      } else close(true);
+      if (search.value) clearQuery();
+      else close(true);
     },
     { signal: events.signal },
   );
@@ -468,9 +586,10 @@ export function createBookmarksView({
     refresh,
     getIndex: () => index,
 
-    async reveal(id) {
+    async reveal(id, { clearSearch = false } = {}) {
       await refresh();
       if (!index || pane.hidden || disposed) return;
+      if (clearSearch) search.value = '';
       let node = index.byId.get(id);
       while (node) {
         expanded.add(node.parentId);
@@ -484,6 +603,21 @@ export function createBookmarksView({
       }
       if (rows.has(id)) focus(id);
       else search.focus();
+    },
+
+    expandAll(value) {
+      if (!index) return;
+      search.value = '';
+      searchCollapsed.clear();
+      expanded = value
+        ? new Set(
+            [...index.byId.values()]
+              .filter((node) => node.type === 'folder')
+              .map((node) => node.id),
+          )
+        : new Set();
+      render();
+      search.focus();
     },
 
     get isOpen() {
