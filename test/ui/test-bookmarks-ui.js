@@ -14,6 +14,7 @@ const pane = page.locator('#bookmarks-view');
 const trigger = page.getByRole('button', { name: 'Bookmarks', exact: true });
 const search = page.getByRole('searchbox', { name: 'Search bookmarks' });
 const row = (id) => page.locator(`[data-bookmark-id="${id}"]`);
+const fold = page.locator('#tree-toggle');
 
 try {
   await page.goto(`${base}/extension/sidebar.html?demo`);
@@ -32,14 +33,59 @@ try {
       };
     });
   await page.locator('[data-key="group:design"]').dblclick();
+  const addStyle = await page
+    .locator('#tree .new-tab-action')
+    .first()
+    .evaluate((node) => {
+      const style = getComputedStyle(node);
+      return { height: style.minHeight, padding: style.padding, radius: style.borderRadius };
+    });
   const before = await send('snapshot');
   await trigger.click();
   await expect(pane).toBeVisible();
   await expect(search).toBeFocused();
   await expect(page.locator('#tree .row')).toHaveCount(0);
-  await expect(page.locator('#tree-toggle')).toBeDisabled();
+  await expect(fold).toBeEnabled();
+  await expect(fold).toHaveAttribute('aria-controls', 'bookmarks-tree');
   await expect(pane.locator('.bookmarks-destination-label')).toHaveText('Open in Design');
   await expect(pane.locator('.bookmarks-container')).not.toBeEmpty();
+  await expect(pane.getByRole('tab', { name: 'Bookmarks', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(row('reading-bookmarks')).toBeVisible();
+  await expect(row('menu________')).toHaveCount(0);
+  const originalBookmarks = await page.evaluate(() =>
+    tabernacleDemoSession.browser.bookmarks.getTree(),
+  );
+  await expect(fold).toHaveAccessibleName('Expand all in Bookmarks Menu');
+  await fold.focus();
+  await fold.press('Enter');
+  await expect(pane).toBeVisible();
+  await expect(row('reading-bookmarks')).toHaveAttribute('aria-expanded', 'true');
+  await expect(fold).toHaveAccessibleName('Collapse all in Bookmarks Menu');
+  await expect(fold).toHaveAttribute('data-icon', 'collapse');
+  await expect(fold).toBeFocused();
+  await fold.press('Space');
+  await expect(row('reading-bookmarks')).toHaveAttribute('aria-expanded', 'false');
+  await expect(fold).toHaveAttribute('data-icon', 'expand');
+  await fold.click();
+  await pane.getByRole('tab', { name: 'Other', exact: true }).click();
+  await expect(fold).toBeDisabled();
+  await expect(fold).toHaveAttribute('title', 'Nothing to expand or collapse here');
+  await pane.getByRole('tab', { name: 'Toolbar', exact: true }).click();
+  await expect(fold).toHaveAccessibleName('Expand all in Bookmarks Toolbar');
+  await fold.click();
+  await expect(row('mdn-bookmark')).toBeVisible();
+  await fold.click();
+  await expect(row('mdn-bookmark')).toHaveCount(0);
+  await pane.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+  await expect(row('reading-bookmarks')).toHaveAttribute('aria-expanded', 'true');
+  await pane.getByRole('tab', { name: 'Toolbar', exact: true }).click();
+  expect((await send('snapshot')).view).toEqual(before.view);
+  expect(await page.evaluate(() => tabernacleDemoSession.browser.bookmarks.getTree())).toEqual(
+    originalBookmarks,
+  );
   await expect(row('design-bookmarks')).toHaveAttribute('aria-expanded', 'false');
   expect(
     await row('design-bookmarks').evaluate((node) => {
@@ -54,6 +100,63 @@ try {
   await row('design-bookmarks').click();
   await expect(page.locator('#toast')).toBeHidden();
   await expect(row('mdn-bookmark')).toBeVisible();
+  await expect(pane.locator('.bookmark-row button')).toHaveCount(0);
+
+  // Bookmark counts use the live tab-folder setting and the same visibility rule.
+  const bookmarkCount = row('design-bookmarks').locator('.bookmark-count');
+  await expect(bookmarkCount).toBeHidden();
+  await send('setLook', { value: { folderCounts: true }, partial: true });
+  await expect(bookmarkCount).toBeVisible();
+  await expect(bookmarkCount).toHaveText('2');
+  await pane.getByRole('button', { name: 'Back to tabs' }).click();
+  await expect(fold).toHaveAttribute('aria-controls', 'tree');
+  await expect(fold).toHaveAccessibleName(/all in Design$/);
+  await expect(page.locator('#tree')).toHaveClass(/show-folder-counts/);
+  await send('setLook', { value: { folderCounts: false }, partial: true });
+  await expect(page.locator('#tree')).not.toHaveClass(/show-folder-counts/);
+  await trigger.click();
+  await expect(bookmarkCount).toBeHidden();
+
+  // The shared add row ends the branch with the same curve, including an empty folder.
+  const add = pane.getByRole('button', { name: 'New bookmark in Design references', exact: true });
+  expect(
+    await add.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return { height: style.minHeight, padding: style.padding, radius: style.borderRadius };
+    }),
+  ).toEqual(addStyle);
+  expect(
+    await add.evaluate((node) => getComputedStyle(node.parentElement, '::before').maskImage),
+  ).toContain('tree-guide-end.svg');
+  await send('setLook', { value: { connectingLines: false }, partial: true });
+  expect(
+    await add.evaluate((node) => getComputedStyle(node.parentElement, '::before').content),
+  ).toBe('none');
+  await expect(add).toBeVisible();
+  await send('setLook', { value: { connectingLines: true }, partial: true });
+  await row('fonts-bookmark').press('ArrowDown');
+  await expect(add).toBeFocused();
+  expect(await composingKey(add, 'Enter')).toBe(false);
+  await add.press('Enter');
+  const dialog = page.locator('#dialog');
+  await expect(dialog.getByLabel('Bookmark folder', { exact: true })).toHaveText(
+    'Bookmarks Toolbar / Design references',
+  );
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(row('design-bookmarks')).toBeFocused();
+  await add.focus();
+  await add.press('ArrowLeft');
+  await expect(row('design-bookmarks')).toBeFocused();
+  await add.focus();
+  await add.press('ArrowUp');
+  await expect(row('fonts-bookmark')).toBeFocused();
+  await add.press('Shift+F10');
+  await page.locator('#menu').getByRole('menuitem', { name: 'New bookmark…', exact: true }).click();
+  await expect(dialog.getByLabel('Bookmark folder', { exact: true })).toHaveText(
+    'Bookmarks Toolbar / Design references',
+  );
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.screenshot({ path: 'test-results/bookmarks-tree-controls-320.png' });
   await row('design-bookmarks').press('ArrowRight');
   await expect(row('mdn-bookmark')).toBeFocused();
   await page.keyboard.press('ArrowLeft');
@@ -61,13 +164,20 @@ try {
   await page.keyboard.press('Control+k');
   await expect(search).toBeFocused();
   await search.fill('developer.mozilla');
-  await expect(pane.getByRole('treeitem')).toHaveCount(3);
+  await expect(fold).toBeDisabled();
+  await expect(fold).toHaveAttribute(
+    'title',
+    'Clear search to expand or collapse bookmark folders',
+  );
+  await expect(pane.locator('.bookmark-add')).toHaveCount(0);
+  await expect(pane.getByRole('treeitem')).toHaveCount(2);
   await expect(row('mdn-bookmark')).toBeVisible();
   expect(await composingKey(search, 'Escape')).toBe(false);
   await expect(search).toHaveValue('developer.mozilla');
   await search.fill('no match');
   await expect(pane.getByRole('status')).toHaveText('No matching bookmarks.');
   await search.press('Escape');
+  await expect(fold).toBeEnabled();
   await expect(search).toHaveValue('');
   await expect(pane).toBeVisible();
   await search.fill('MDN');
@@ -141,6 +251,7 @@ try {
     tabernacleDemoSession.browser.permissions.remove({ permissions: ['bookmarks'] }),
   );
   await expect(pane.getByRole('button', { name: 'Allow bookmarks' })).toBeVisible();
+  await expect(fold).toBeDisabled();
   await expect(pane.getByRole('treeitem')).toHaveCount(0);
   await pane.getByRole('button', { name: 'Allow bookmarks' }).click();
   await expect(row('design-bookmarks')).toBeVisible();

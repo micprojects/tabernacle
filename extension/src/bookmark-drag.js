@@ -38,17 +38,19 @@ export function createBookmarkDrag({
       if (y < bounds.top + 28) list.scrollTop -= 7;
       else if (y > bounds.bottom - 28) list.scrollTop += 7;
     }
-    const row = document.elementFromPoint(x, y)?.closest('.bookmark-row');
+    const hit = document.elementFromPoint(x, y);
+    const location = hit?.closest('.bookmark-location');
+    const row = location || hit?.closest('.bookmark-row');
     session.target = null;
     let feedback = 'Drop on a bookmark or folder.';
     let nextHover;
-    if (row && list.contains(row)) {
-      const targetId = row.dataset.bookmarkId;
+    if (row && root.contains(row)) {
+      const targetId = location ? row.dataset.bookmarkRootId : row.dataset.bookmarkId;
       const node = getIndex()?.byId.get(targetId);
       const rect = row.getBoundingClientRect();
       const offset = (y - rect.top) / rect.height;
       const position =
-        node?.type === 'folder' && offset > 0.25 && offset < 0.75
+        location || (node?.type === 'folder' && offset > 0.25 && offset < 0.75)
           ? 'inside'
           : offset < 0.5
             ? 'before'
@@ -60,7 +62,7 @@ export function createBookmarkDrag({
         if (position === 'inside') {
           row.classList.add('drop-inside');
           marked = row;
-          nextHover = targetId;
+          if (!location) nextHover = targetId;
         } else {
           marker.hidden = false;
           const edge =

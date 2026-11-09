@@ -130,6 +130,7 @@ const bookmarksView = createBookmarksView({
   onMove: (...args) => bookmarkDialogs.drop(...args),
   onEdit: (id) => bookmarkDialogs.edit(id),
   onDelete: (id) => bookmarkDialogs.remove(id),
+  onCreate: (id) => bookmarkDialogs.create('bookmark', id),
 });
 
 function acceptState(next) {
@@ -367,6 +368,7 @@ const {
 
 const bookmarkDialogs = createBookmarkDialogs({
   getIndex: bookmarksView.getIndex,
+  getRootId: bookmarksView.getRootId,
   getState: () => state,
   request: (...args) => request(...args),
   showDialog,
@@ -646,6 +648,7 @@ function updateTreeToggle(query) {
     ? `${branches.expanded ? 'Collapse' : 'Expand'} all in ${scope}`
     : 'Expand or collapse folders and tabs';
   toggle.disabled = changingTree || Boolean(query || domainFilter) || !hasBranches;
+  setAttribute(toggle, 'aria-controls', 'tree');
   setAttribute(toggle, 'aria-label', label);
   setAttribute(toggle, 'aria-busy', String(changingTree));
   toggle.title = domainFilter
@@ -1345,6 +1348,10 @@ $('new-tab').addEventListener('contextmenu', (event) => newTabMenu(event, state?
 $('new-tab').addEventListener('keydown', (event) => newTabMenu(event, state?.view.scopeId));
 $('new-group').addEventListener('click', () => createDialog());
 $('tree-toggle').addEventListener('click', async () => {
+  if (bookmarksView.isOpen) {
+    bookmarksView.toggleExpansion();
+    return;
+  }
   if (!state || changingTree || domainFilter || $('search').value.trim()) return;
   const branches = scopeBranches(index, state.view);
   if (!branches.groupIds.size && !branches.tabs.length) return;

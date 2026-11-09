@@ -48,6 +48,7 @@ async function drag(id, targetId, fraction = 0.5, cancel = false) {
 try {
   await page.goto(`${base}/extension/sidebar.html?demo`);
   await page.getByRole('button', { name: 'Bookmarks', exact: true }).click();
+  await page.getByRole('tab', { name: 'Toolbar', exact: true }).click();
   await row('design-bookmarks').click();
   const tabs = (await send('snapshot')).tabs;
   await row('mdn-bookmark').press('F2');
@@ -62,7 +63,7 @@ try {
     'https://reference.test/edited',
   );
 
-  await row('design-bookmarks').getByRole('button').click();
+  await row('design-bookmarks').press('Shift+F10');
   await menu.getByRole('menuitem', { name: 'Rename folder…' }).click();
   await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('Project references');
   await save();
@@ -129,7 +130,8 @@ try {
   await save('Create');
   const folder = (await nodes()).find((node) => node.title === 'Saved reading');
   expect(folder.parentId).toBe('design-bookmarks');
-  await itemMenu(folder.id, 'New bookmark…');
+  await row(folder.id).press('ArrowRight');
+  await page.getByRole('button', { name: `New bookmark in ${folder.title}`, exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('Useful page');
   await dialog.getByRole('textbox', { name: 'Address', exact: true }).fill('not an address');
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
@@ -167,7 +169,7 @@ try {
   expect(await nodes()).toEqual(beforeCancel);
   expect((await send('snapshot')).tabs).toEqual(tabs);
 
-  await row('toolbar_____').click({ button: 'right' });
+  await page.getByRole('tab', { name: 'Toolbar', exact: true }).click({ button: 'right' });
   await expect(menu.getByRole('menuitem', { name: /Delete|Rename|Move/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
@@ -201,7 +203,8 @@ try {
       return result;
     };
   });
-  await itemMenu(folder.id, 'New bookmark…');
+  await row(folder.id).press('ArrowRight');
+  await page.getByRole('button', { name: `New bookmark in ${folder.title}`, exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('Retry reference');
   await dialog.getByRole('textbox', { name: 'Address', exact: true }).fill('https://retry.test/');
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();

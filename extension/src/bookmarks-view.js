@@ -1,9 +1,9 @@
 import { icon } from './icons.js';
-import { bookmarkRows, bookmarkHighlights } from './bookmarks.js';
+import { bookmarkRows, bookmarkHighlights, bookmarkRoots } from './bookmarks.js';
 import { createSidebarControls } from './sidebar/controls.js';
 import { reconcileChildren, setAttribute } from './dom.js';
 import { captureScroll, restoreScroll } from './view-state.js';
-import { indexBookmarks, bookmarkEditable } from './bookmark-edit.js';
+import { indexBookmarks, bookmarkEditable, bookmarkSubtree } from './bookmark-edit.js';
 import { createBookmarkDrag } from './bookmark-drag.js';
 import { groupContainer } from './model.js';
 
@@ -18,6 +18,7 @@ export function createBookmarksView({
   onMove,
   onEdit,
   onDelete,
+  onCreate,
 }) {
   const { el, button } = createSidebarControls();
   const events = new AbortController();
@@ -37,6 +38,13 @@ export function createBookmarksView({
   const destinationLabel = el('span', 'bookmarks-destination-label');
   const containerLabel = el('span', 'bookmarks-container');
   destination.append(destinationLabel, containerLabel);
+  const locations = el('div', 'bookmark-locations');
+  locations.setAttribute('role', 'tablist');
+  locations.setAttribute('aria-label', 'Bookmark locations');
+  locations.hidden = true;
+  const content = el('div', 'bookmarks-content');
+  content.id = 'bookmarks-content';
+  content.setAttribute('role', 'tabpanel');
   const searchField = el('label', 'recent-search');
   const search = el('input');
   search.id = 'bookmarks-search';
@@ -59,6 +67,7 @@ export function createBookmarksView({
   list.id = 'bookmarks-tree';
   list.setAttribute('role', 'tree');
   list.setAttribute('aria-label', 'Bookmarks');
+  const rootAdd = makeAdd();
   const status = el('div', 'bookmarks-status');
   const message = el('p');
   message.setAttribute('role', 'status');
@@ -67,7 +76,8 @@ export function createBookmarksView({
   const allow = button('Allow bookmarks', null, grant, 'pane-back');
   allow.textContent = 'Allow bookmarks';
   status.append(message, allow, retry);
-  pane.append(heading, destination, searchField, results, status, list);
+  content.append(searchField, results, status, list);
+  pane.append(heading, destination, locations, content);
   root.prepend(pane);
   const trigger = button('Bookmarks', 'bookmark', () => (pane.hidden ? open() : close(true)), '');
   trigger.id = 'bookmarks-toggle';
@@ -87,7 +97,10 @@ export function createBookmarksView({
   let selectedId;
   let pendingOpen;
   let loadError;
-  let initialised = false;
+  let rootId;
+  let roots = [];
+  const rootTabs = new Map();
+  const rootViews = new Map();
   let savedScroll;
   const subscriptions = [];
   const drag = createBookmarkDrag({
@@ -111,6 +124,106 @@ export function createBookmarksView({
 
     commit: (...args) => onMove?.(...args),
   });
+
+  function renderLocations() {
+    roots = bookmarkRoots(tree);
+    if (!roots.some((item) => item.id === rootId)) {
+      rootId = roots[0]?.id;
+      selectedId = undefined;
+      savedScroll = null;
+    }
+    const tabs = roots.map((item) => {
+      let tab = rootTabs.get(item.id);
+      if (!tab) {
+        tab = button(item.label, null, () => selectRoot(item.id), 'bookmark-location');
+        tab.id = `bookmark-location-${item.id}`;
+        tab.dataset.bookmarkRootId = item.id;
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-controls', content.id);
+        tab.addEventListener('contextmenu', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          selectRoot(item.id);
+          onMenu?.(item.id, event);
+        });
+        rootTabs.set(item.id, tab);
+      }
+      if (tab.textContent !== item.label) tab.textContent = item.label;
+      setAttribute(tab, 'aria-label', item.label);
+      setAttribute(tab, 'title', item.title);
+      return tab;
+    });
+    reconcileChildren(locations, tabs);
+    for (const id of rootTabs.keys())
+      if (!roots.some((item) => item.id === id)) {
+        rootTabs.delete(id);
+        rootViews.delete(id);
+      }
+    locations.hidden = !tabs.length;
+    updateLocation();
+  }
+
+  function updateLocation() {
+    for (const [id, tab] of rootTabs) {
+      setAttribute(tab, 'aria-selected', id === rootId);
+      setAttribute(tab, 'tabindex', id === rootId ? 0 : -1);
+    }
+    const current = roots.find((item) => item.id === rootId);
+    if (current) {
+      setAttribute(content, 'aria-labelledby', rootTabs.get(rootId).id);
+      setAttribute(list, 'aria-label', current.title);
+      search.placeholder =
+        rootId === 'menu________'
+          ? 'Search bookmarks'
+          : `Search ${current.label.toLocaleLowerCase()} bookmarks`;
+      search.title = `Search ${current.title}`;
+    }
+  }
+
+  function selectRoot(id) {
+    if (id === rootId || !rootTabs.has(id)) return;
+    drag.cancel();
+    rootViews.set(rootId, {
+      selectedId,
+      scroll: captureScroll(list, '.bookmark-row', 'data-bookmark-id'),
+    });
+    rootId = id;
+    const saved = rootViews.get(id);
+    selectedId = saved?.selectedId;
+    savedScroll = null;
+    updateLocation();
+    render();
+    list.scrollTop = 0;
+    restoreScroll(list, saved?.scroll);
+  }
+
+  locations.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+    const at = roots.findIndex((item) => item.id === event.target.dataset.bookmarkRootId);
+    if (at < 0) return;
+    let next;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      const direction =
+        (event.key === 'ArrowRight' ? 1 : -1) *
+        (getComputedStyle(locations).direction === 'rtl' ? -1 : 1);
+      next = (at + direction + roots.length) % roots.length;
+    } else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = roots.length - 1;
+    else if (event.key === 'ArrowDown') search.focus();
+    else return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (next !== undefined) {
+      selectRoot(roots[next].id);
+      rootTabs.get(rootId).focus();
+      rootTabs.get(rootId).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  });
+
+  function resetScroll() {
+    savedScroll = null;
+    for (const saved of rootViews.values()) saved.scroll = null;
+  }
 
   function showStatus(text, { permission = false, failed = false } = {}) {
     message.textContent = text;
@@ -172,6 +285,10 @@ export function createBookmarksView({
         manage.disabled = true;
         clearSearch.hidden = true;
         results.textContent = '';
+        locations.hidden = true;
+        locations.replaceChildren();
+        rootTabs.clear();
+        roots = [];
         rows.clear();
         entries = [];
         list.replaceChildren();
@@ -187,15 +304,10 @@ export function createBookmarksView({
       if (current !== generation || disposed || pane.hidden) return;
       if (!Array.isArray(next) || !Array.isArray(next[0]?.children))
         throw new Error('Firefox returned an unreadable bookmark tree.');
-      if (!initialised) {
-        expanded = new Set(
-          next[0].children.filter((node) => node.type === 'folder').map((node) => node.id),
-        );
-      }
       const nextIndex = indexBookmarks(next);
       tree = next;
       index = nextIndex;
-      initialised = true;
+      renderLocations();
       manage.disabled = false;
       loadError = null;
       search.disabled = false;
@@ -210,7 +322,10 @@ export function createBookmarksView({
         showStatus(loadError, { failed: true });
       }
     } finally {
-      if (current === generation) loading = false;
+      if (current === generation) {
+        loading = false;
+        updateFold();
+      }
     }
   }
 
@@ -242,23 +357,36 @@ export function createBookmarksView({
     row.append(slot, text);
     const branch = el('div', 'branch');
     branch.setAttribute('role', 'group');
-    const count = el('span', 'bookmark-count');
+    const count = el('span', 'group-count bookmark-count');
     if (entry.folder) row.append(count, icon('chevron', 'group-chevron'));
-    const more = button(
-      `Actions for ${entry.title}`,
-      'more',
-      (event) => {
-        focus(entry.id);
-        onMenu?.(entry.id, event);
-      },
-      'icon-button bookmark-more',
-    );
-    more.tabIndex = -1;
-    more.setAttribute('aria-haspopup', 'menu');
-    row.append(more);
     wrapper.append(row);
     const empty = el('p', 'bookmark-empty', 'Empty folder');
-    return { wrapper, row, slot, label, branch, more, address, count, empty };
+    const add = entry.folder ? makeAdd() : null;
+    return { wrapper, row, slot, label, branch, address, count, empty, add };
+  }
+
+  function makeAdd() {
+    const item = el('div', 'new-tab-item bookmark-add');
+    item.setAttribute('role', 'treeitem');
+    const add = button('', null, () => onCreate?.(item.dataset.bookmarkParentId), 'new-tab-action');
+    const slot = el('span', 'icon-slot');
+    slot.append(icon('plus'));
+    add.append(slot);
+    item.append(add);
+    return item;
+  }
+
+  function appendAdd(children, item, parentId, depth) {
+    const parent = index.byId.get(parentId);
+    if (search.value.trim() || !parent || parent.unmodifiable) return;
+    const label = `New bookmark in ${parent.title || 'Untitled folder'}`;
+    const add = item.firstElementChild;
+    setAttribute(item, 'data-bookmark-parent-id', parentId);
+    setAttribute(item, 'aria-label', label);
+    setAttribute(item, 'aria-level', depth);
+    setAttribute(add, 'aria-label', label);
+    setAttribute(add, 'title', label);
+    children.push(item);
   }
 
   function highlight(node, text) {
@@ -273,7 +401,7 @@ export function createBookmarksView({
   }
 
   function clearQuery() {
-    savedScroll = null;
+    resetScroll();
     search.value = '';
     searchCollapsed.clear();
     render();
@@ -282,13 +410,14 @@ export function createBookmarksView({
 
   function render() {
     if (!tree || pane.hidden || disposed) return;
-    const focused = document.activeElement?.closest('.bookmark-row');
-    const focusedId = focused?.dataset.bookmarkId;
+    const focused = document.activeElement?.closest('.bookmark-row, .bookmark-add');
+    const focusedId = focused?.dataset.bookmarkId || focused?.dataset.bookmarkParentId;
     const oldIndex = entries.findIndex((entry) => entry.id === focusedId);
     const scroll = captureScroll(list, '.bookmark-row', 'data-bookmark-id');
-    entries = bookmarkRows(tree, expanded, search.value, searchCollapsed);
+    entries = rootId ? bookmarkRows(tree, expanded, search.value, searchCollapsed, rootId) : [];
     clearSearch.hidden = !search.value;
     const searching = Boolean(search.value.trim());
+    list.classList.toggle('searching', searching);
     const matchCount = entries.filter((entry) => entry.match).length;
     results.textContent = searching
       ? `${matchCount} ${matchCount === 1 ? 'match' : 'matches'}`
@@ -305,8 +434,6 @@ export function createBookmarksView({
       setAttribute(item.row, 'aria-level', entry.depth);
       setAttribute(item.row, 'tabindex', selectedId === entry.id ? 0 : -1);
       setAttribute(item.row, 'title', entry.url ? `${entry.title}\n${entry.url}` : entry.title);
-      setAttribute(item.more, 'aria-label', `Actions for ${entry.title}`);
-      setAttribute(item.more, 'title', `Actions for ${entry.title}`);
       highlight(item.label, entry.title);
       item.address.hidden = !searching || !entry.url;
       if (entry.url) {
@@ -353,13 +480,15 @@ export function createBookmarksView({
     }
     for (const entry of entries)
       if (entry.folder) {
-        const branch = rows.get(entry.id).branch;
+        const item = rows.get(entry.id);
+        const branch = item.branch;
         const nested = children.get(entry.id) || [];
-        if (!nested.length && !entry.childCount && entry.expanded)
-          nested.push(rows.get(entry.id).empty);
+        if (entry.expanded) appendAdd(nested, item.add, entry.id, entry.depth + 1);
+        if (!nested.length && !entry.childCount && entry.expanded) nested.push(item.empty);
         reconcileChildren(branch, nested);
         branch.hidden = !nested.length;
       }
+    appendAdd(children.get(null), rootAdd, rootId, 1);
     reconcileChildren(list, children.get(null));
     for (const id of rows.keys()) if (!alive.has(id)) rows.delete(id);
     showStatus(
@@ -368,10 +497,11 @@ export function createBookmarksView({
           ? ''
           : search.value.trim()
             ? 'No matching bookmarks.'
-            : 'No bookmarks yet.'),
+            : `No bookmarks in ${roots.find((item) => item.id === rootId)?.title || 'this location'}.`),
       { failed: Boolean(loadError) },
     );
     restoreScroll(list, scroll);
+    updateFold();
     if (focusedId && !focused?.isConnected)
       (rows.get(focusedId)?.row || rows.get(selectedId)?.row || search).focus({
         preventScroll: true,
@@ -382,6 +512,49 @@ export function createBookmarksView({
     selectedId = id;
     for (const [key, item] of rows) setAttribute(item.row, 'tabindex', key === id ? 0 : -1);
     rows.get(id)?.row.focus();
+  }
+
+  function updateFold() {
+    if (pane.hidden || disposed) return;
+    const folders = entries.filter((entry) => entry.folder);
+    const isExpanded = folders.some((entry) => entry.expanded);
+    const scope = roots.find((item) => item.id === rootId)?.title || 'bookmarks';
+    const label = folders.length
+      ? `${isExpanded ? 'Collapse' : 'Expand'} all in ${scope}`
+      : 'Expand or collapse bookmark folders';
+    const searching = Boolean(search.value.trim());
+    fold.disabled = !index || searching || !folders.length;
+    setAttribute(fold, 'aria-controls', list.id);
+    setAttribute(fold, 'aria-label', label);
+    setAttribute(fold, 'aria-busy', false);
+    setAttribute(
+      fold,
+      'title',
+      searching
+        ? 'Clear search to expand or collapse bookmark folders'
+        : folders.length
+          ? label
+          : 'Nothing to expand or collapse here',
+    );
+    const glyph = isExpanded ? 'collapse' : 'expand';
+    if (fold.dataset.icon !== glyph) {
+      fold.dataset.icon = glyph;
+      fold.replaceChildren(icon(glyph));
+    }
+  }
+
+  function expandAll(value, { focusSearch = true } = {}) {
+    if (!index || !rootId) return;
+    search.value = '';
+    resetScroll();
+    searchCollapsed.clear();
+    for (const node of bookmarkSubtree(index, rootId))
+      if (node.type === 'folder') {
+        if (value) expanded.add(node.id);
+        else expanded.delete(node.id);
+      }
+    render();
+    if (focusSearch) search.focus();
   }
 
   async function activate(item) {
@@ -431,55 +604,63 @@ export function createBookmarksView({
   list.addEventListener('keydown', (event) => {
     if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     const item = rows.get(event.target.closest('.bookmark-row')?.dataset.bookmarkId);
-    if (!item || event.target.closest('button')) return;
-    const entry = item.entry;
-    const rowIndex = entries.indexOf(entry);
+    const add = event.target.closest('.bookmark-add')?.querySelector('button');
+    if (!item && !add) return;
+    const entry = item?.entry;
+    const controls = [...list.querySelectorAll('.bookmark-row, .bookmark-add button')];
+    const rowIndex = controls.indexOf(add || item.row);
+    const parentId = add ? add.parentElement.dataset.bookmarkParentId : entry.parentId;
     let next;
-    if (event.key === 'ArrowDown') next = entries[Math.min(rowIndex + 1, entries.length - 1)];
-    else if (event.key === 'ArrowUp') next = entries[Math.max(0, rowIndex - 1)];
-    else if (event.key === 'Home') next = entries[0];
-    else if (event.key === 'End') next = entries.at(-1);
+    if (event.key === 'ArrowDown') next = controls[Math.min(rowIndex + 1, controls.length - 1)];
+    else if (event.key === 'ArrowUp') next = controls[Math.max(0, rowIndex - 1)];
+    else if (event.key === 'Home') next = controls[0];
+    else if (event.key === 'End') next = controls.at(-1);
     else if (event.key === 'ArrowRight') {
-      if (entry.folder && !entry.expanded) activate(item);
-      else if (entries[rowIndex + 1]?.parentId === entry.id) next = entries[rowIndex + 1];
+      if (entry?.folder && !entry.expanded) activate(item);
+      else if (entry?.folder)
+        next = item.branch.querySelector('.bookmark-row, .bookmark-add button');
     } else if (event.key === 'ArrowLeft') {
-      if (entry.folder && entry.expanded) activate(item);
-      else next = rows.get(entry.parentId)?.entry;
+      if (entry?.folder && entry.expanded) activate(item);
+      else next = rows.get(parentId)?.row || (add && rootTabs.get(parentId));
     } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
-      onMenu?.(entry.id, { target: item.row, type: 'keyboard' });
-    } else if (event.key === 'F2' && bookmarkEditable(index, entry.id)) onEdit?.(entry.id);
-    else if (event.key === 'Delete' && bookmarkEditable(index, entry.id)) {
+      onMenu?.(entry?.id || parentId, { target: add || item.row, type: 'keyboard' });
+    } else if (entry && event.key === 'F2' && bookmarkEditable(index, entry.id)) onEdit?.(entry.id);
+    else if (entry && event.key === 'Delete' && bookmarkEditable(index, entry.id)) {
       if (!event.repeat) onDelete?.(entry.id);
-    } else if (event.key === 'Enter' || event.key === ' ') activate(item);
+    } else if (entry && (event.key === 'Enter' || event.key === ' ')) activate(item);
     else return;
     event.preventDefault();
     event.stopPropagation();
-    if (next) focus(next.id);
+    next?.focus();
   });
   list.addEventListener('contextmenu', (event) => {
     const row = event.target.closest('.bookmark-row');
-    if (!row) return;
+    const add = event.target.closest('.bookmark-add');
     event.preventDefault();
     event.stopPropagation();
-    focus(row.dataset.bookmarkId);
-    onMenu?.(row.dataset.bookmarkId, {
-      target: row,
+    if (row) focus(row.dataset.bookmarkId);
+    onMenu?.(row?.dataset.bookmarkId || add?.dataset.bookmarkParentId || null, {
+      target: row || add?.firstElementChild || list,
       type: 'contextmenu',
       clientX: event.clientX,
       clientY: event.clientY,
     });
   });
   search.addEventListener('input', () => {
-    savedScroll = null;
+    resetScroll();
     searchCollapsed.clear();
     render();
     list.scrollTop = 0;
   });
   search.addEventListener('keydown', (event) => {
     if (event.isComposing) return;
-    if (event.key === 'ArrowDown' && entries.length) {
-      event.preventDefault();
-      focus((entries.find((entry) => entry.match) || entries[0]).id);
+    if (event.key === 'ArrowDown') {
+      const entry = entries.find((entry) => entry.match) || entries[0];
+      const target = entry ? rows.get(entry.id)?.row : list.querySelector('.bookmark-add button');
+      if (target) {
+        event.preventDefault();
+        target.focus();
+      }
     } else if (event.key === 'Enter' && search.value.trim()) {
       const entry = entries.find((entry) => entry.match);
       if (!entry) return;
@@ -524,6 +705,7 @@ export function createBookmarksView({
     search.focus();
     search.select();
     update();
+    updateFold();
     refresh();
   }
 
@@ -545,6 +727,7 @@ export function createBookmarksView({
     destination.title =
       label + (containerText ? ` · ${containerText} container` : ' · No container');
     list.classList.toggle('show-connecting-lines', state.look.connectingLines);
+    list.classList.toggle('show-folder-counts', Boolean(state.look.folderCounts));
     return true;
   }
 
@@ -567,7 +750,12 @@ export function createBookmarksView({
   document.addEventListener(
     'click',
     (event) => {
-      if (!trigger.contains(event.target) && event.target.closest('footer')) close();
+      if (
+        !trigger.contains(event.target) &&
+        !fold.contains(event.target) &&
+        event.target.closest('footer')
+      )
+        close();
     },
     { capture: true, signal: events.signal },
   );
@@ -584,40 +772,44 @@ export function createBookmarksView({
     close,
     update,
     refresh,
+    expandAll,
     getIndex: () => index,
+    getRootId: () => rootId,
 
     async reveal(id, { clearSearch = false } = {}) {
       await refresh();
       if (!index || pane.hidden || disposed) return;
-      if (clearSearch) search.value = '';
+      if (clearSearch) {
+        search.value = '';
+        resetScroll();
+      }
       let node = index.byId.get(id);
+      let location = node;
+      while (location && location.parentId !== index.rootId)
+        location = index.byId.get(location.parentId);
+      if (location) selectRoot(location.id);
       while (node) {
         expanded.add(node.parentId);
         searchCollapsed.delete(node.parentId);
         node = index.byId.get(node.parentId);
       }
       render();
+      if (rootTabs.has(id)) {
+        rootTabs.get(id).focus();
+        return;
+      }
       if (id && index.byId.has(id) && !rows.has(id)) {
         search.value = '';
+        resetScroll();
         render();
       }
       if (rows.has(id)) focus(id);
       else search.focus();
     },
 
-    expandAll(value) {
-      if (!index) return;
-      search.value = '';
-      searchCollapsed.clear();
-      expanded = value
-        ? new Set(
-            [...index.byId.values()]
-              .filter((node) => node.type === 'folder')
-              .map((node) => node.id),
-          )
-        : new Set();
-      render();
-      search.focus();
+    toggleExpansion() {
+      if (pane.hidden || fold.disabled) return;
+      expandAll(!entries.some((entry) => entry.folder && entry.expanded), { focusSearch: false });
     },
 
     get isOpen() {

@@ -1,7 +1,70 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bookmarkRows, bookmarkUrl, bookmarkHighlights } from '../extension/src/bookmarks.js';
+import {
+  bookmarkRows,
+  bookmarkUrl,
+  bookmarkHighlights,
+  bookmarkRoots,
+} from '../extension/src/bookmarks.js';
 import { demoBookmarks } from '../preview/bookmarks.js';
+
+test('bookmark locations default to Menu and keep unfamiliar Firefox roots accessible', () => {
+  const tree = structuredClone(demoBookmarks);
+  tree[0].children.push({ id: 'custom', type: 'folder', title: 'Imported', children: [] });
+  assert.deepEqual(
+    bookmarkRoots(tree).map(({ id, label }) => [id, label]),
+    [
+      ['menu________', 'Bookmarks'],
+      ['toolbar_____', 'Toolbar'],
+      ['unfiled_____', 'Other'],
+      ['custom', 'Imported'],
+    ],
+  );
+  tree[0].children = tree[0].children.filter((node) => node.id !== 'menu________');
+  assert.equal(bookmarkRoots(tree)[0].id, 'toolbar_____');
+});
+
+test('Mobile bookmarks appear when populated without exposing the empty Sync root', () => {
+  const tree = structuredClone(demoBookmarks);
+  const mobile = { id: 'mobile______', type: 'folder', title: 'Mobile Bookmarks', children: [] };
+  tree[0].children.push(mobile);
+  assert.equal(bookmarkRoots(tree).length, 3);
+  mobile.children.push({
+    id: 'phone',
+    type: 'bookmark',
+    title: 'Saved on phone',
+    url: 'https://example.test/',
+  });
+  assert.equal(bookmarkRoots(tree).at(-1).label, 'Mobile');
+  assert.equal(bookmarkRows(tree, new Set(), '', new Set(), mobile.id)[0].id, 'phone');
+});
+
+test('location projection removes only the native root row and scopes search without changing bookmarks', () => {
+  const original = structuredClone(demoBookmarks);
+  const rows = bookmarkRows(
+    demoBookmarks,
+    new Set(['design-bookmarks']),
+    '',
+    new Set(),
+    'toolbar_____',
+  );
+  assert.deepEqual(
+    rows.map(({ id, depth, parentId }) => [id, depth, parentId]),
+    [
+      ['design-bookmarks', 1, undefined],
+      ['mdn-bookmark', 2, 'design-bookmarks'],
+      ['fonts-bookmark', 2, 'design-bookmarks'],
+      ['news-bookmark', 1, undefined],
+    ],
+  );
+  assert.deepEqual(bookmarkRows(demoBookmarks, new Set(), 'MDN', new Set(), 'menu________'), []);
+  assert.deepEqual(
+    bookmarkRows(demoBookmarks, new Set(), 'MDN', new Set(), 'toolbar_____').map(({ id }) => id),
+    ['design-bookmarks', 'mdn-bookmark'],
+  );
+  assert.deepEqual(bookmarkRows(demoBookmarks, new Set(), '', new Set(), 'missing'), []);
+  assert.deepEqual(demoBookmarks, original);
+});
 
 test('bookmark projection keeps Firefox order, hierarchy, empty folders and local folds', () => {
   const original = structuredClone(demoBookmarks);
