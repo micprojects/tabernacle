@@ -52,8 +52,8 @@ export function createRecentActivity({
   dismiss.type = 'button';
   dismiss.title = 'Back to tabs (Esc)';
   dismiss.setAttribute('aria-label', 'Back to tabs');
-  dismiss.append(icon('back'), el('span', '', 'Tabs'));
-  heading.append(dismiss, title);
+  dismiss.textContent = 'Back to tabs';
+  heading.append(title, dismiss);
   const filters = el('div', 'recent-filters');
   filters.setAttribute('role', 'group');
   filters.setAttribute('aria-label', 'Filter recent activity');

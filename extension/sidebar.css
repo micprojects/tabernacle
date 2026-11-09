@@ -321,8 +321,6 @@ header {
   flex: 1;
   min-width: 0;
   margin: 0;
-  padding-inline-start: 12px;
-  border-inline-start: 1px solid var(--line);
   font-size: 15px;
   font-weight: 600;
   line-height: 1.3;
@@ -415,8 +413,8 @@ header {
     gap: 8px;
     padding-inline: 8px;
   }
-  .pane-heading h1 {
-    padding-inline-start: 8px;
+  .pane-heading {
+    gap: 4px;
   }
 }
 @media (forced-colors: active) {
