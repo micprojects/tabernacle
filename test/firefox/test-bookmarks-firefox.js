@@ -50,6 +50,12 @@ try {
     await session.evaluate(() => browser.permissions.contains({ permissions: ['bookmarks'] })),
     false,
   );
+  assert.deepEqual(
+    await session.evaluate(() =>
+      ['new-tab', 'new-group'].map((id) => document.getElementById(id).disabled),
+    ),
+    [true, true],
+  );
   // Grant only this optional permission in the owned temporary Firefox profile.
   await session.chrome(async () => {
     const id = 'tabernacle@michaelprojects.com';
@@ -248,7 +254,7 @@ try {
   assert(other.correctUrl);
   console.log('✓ Native second-window destination verified');
 
-  // Bookmark changes in Firefox appear in the open tree, including reordered children.
+  // Native reordering leaves the displayed children alphabetical.
   await session.evaluate(({ folder, nested, second }) => {
     document.getElementById('bookmarks-toggle').click();
     return browser.bookmarks.move(second, { parentId: nested, index: 0 });
@@ -268,16 +274,23 @@ try {
     () =>
       session.evaluate(
         (id) => document.querySelector('#bookmarks-tree .tab-row')?.dataset.bookmarkId === id,
-        bookmarks.second,
+        bookmarks.first,
       ),
     10000,
-    'Bookmark move did not refresh tree order',
+    'Bookmark move did not retain alphabetical display',
   );
   assert.deepEqual(
     await session.evaluate(() =>
       [...document.querySelectorAll('#bookmarks-tree .tab-row')].map(
         (node) => node.dataset.bookmarkId,
       ),
+    ),
+    [bookmarks.first, bookmarks.second],
+  );
+  assert.deepEqual(
+    await session.evaluate(
+      async (id) => (await browser.bookmarks.getChildren(id)).map((node) => node.id),
+      bookmarks.nested,
     ),
     [bookmarks.second, bookmarks.first],
   );
@@ -323,20 +336,25 @@ try {
     return { operation, result: await send('editBookmark', operation) };
   };
 
-  // Create through the context menu and searchable destination picker.
-  await session.evaluate((id) => {
-    document
-      .querySelector(`[data-bookmark-id="${id}"]`)
-      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-    [...document.querySelectorAll('#menu [role="menuitem"]')]
-      .find((item) => item.textContent === 'New folder…')
-      .click();
+  // Footer creation starts in the selected location and keeps the searchable picker.
+  const beforeFooter = await send('snapshot');
+  await session.evaluate(() => document.getElementById('new-group').click());
+  await wait(() => document.getElementById('dialog').open);
+  assert.equal(
+    await session.evaluate(() => document.getElementById('bookmark-create-in').textContent),
+    'Bookmarks Toolbar',
+  );
+  assert.equal(
+    await session.evaluate(() => document.getElementById('bookmarks-view').hidden),
+    false,
+  );
+  await session.evaluate(() => {
     document.querySelector('#dialog-content input[aria-label="Name"]').value = 'Saved references';
     document.getElementById('bookmark-create-in').click();
     const search = document.querySelector('#dialog-content input[aria-label="Find a folder"]');
     search.value = 'Project references';
     search.dispatchEvent(new Event('input', { bubbles: true }));
-  }, bookmarks.folder);
+  });
   await wait(() =>
     document.querySelector('#bookmark-folder-picker-tree [aria-label="Project references"]'),
   );
@@ -359,7 +377,7 @@ try {
     ),
   };
   assert.equal(newFolder.result.parentId, bookmarks.folder);
-  // The native sidebar's branch-end plus creates in that folder, with shared counts.
+  // The footer plus also creates bookmarks, with the selected root as its default.
   await session.evaluate(() => {
     const search = document.getElementById('bookmarks-search');
     search.value = '';
@@ -369,14 +387,23 @@ try {
     (id) => document.querySelector(`[data-bookmark-id="${id}"]`).click(),
     newFolder.result.id,
   );
-  await session.evaluate(
-    (id) => document.querySelector(`[data-bookmark-parent-id="${id}"] button`).click(),
-    newFolder.result.id,
-  );
+  await session.evaluate(() => document.getElementById('new-tab').click());
   await wait(() => document.getElementById('dialog').open);
   assert.equal(
     await session.evaluate(() => document.getElementById('bookmark-create-in').textContent),
-    'Bookmarks Toolbar / Project references / Saved references',
+    'Bookmarks Toolbar',
+  );
+  await session.evaluate(() => {
+    document.getElementById('bookmark-create-in').click();
+    const search = document.querySelector('#dialog-content input[aria-label="Find a folder"]');
+    search.value = 'Saved references';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await wait(() =>
+    document.querySelector('#bookmark-folder-picker-tree [aria-label="Saved references"]'),
+  );
+  await session.evaluate(() =>
+    document.querySelector('#bookmark-folder-picker-tree [aria-label="Saved references"]').click(),
   );
   await session.evaluate((url) => {
     document.querySelector('#dialog-content input[aria-label="Name"]').value = 'Quick reference';
@@ -388,6 +415,9 @@ try {
     (node) => node.title === 'Quick reference',
   );
   assert.equal(quick.parentId, newFolder.result.id);
+  const afterFooter = await send('snapshot');
+  assert.deepEqual(afterFooter.groups, beforeFooter.groups);
+  assert.deepEqual(afterFooter.tabs, beforeFooter.tabs);
   for (const visible of [true, false]) {
     await send('setLook', { value: { folderCounts: visible }, partial: true });
     await session.driver.wait(
@@ -425,8 +455,30 @@ try {
     title: 'Created reference',
     url: `${url}?created`,
   });
+  // A lost completion write leaves the saved operation pending across a sidebar reload.
+  await session.evaluate(async (operationId) => {
+    const key = 'tabernacle.bookmark-edits.v1';
+    const store = (await browser.storage.local.get(key))[key];
+    store.records.find((record) => record.operationId === operationId).phase = 'pending';
+    await browser.storage.local.set({ [key]: store });
+  }, newBookmark.operation.operationId);
   await session.reloadSidebar();
   await wait(() => !document.querySelector('#bookmarks-toggle').disabled);
+  await session.evaluate(() => document.querySelector('#bookmarks-toggle').click());
+  await wait(() => !document.querySelector('.bookmark-recovery-status').hidden);
+  await session.evaluate(() =>
+    document.querySelector('.bookmark-recovery-status [aria-label="Review changes"]').click(),
+  );
+  await wait(() => document.getElementById('dialog').open);
+  await session.evaluate(() =>
+    document.querySelector('#dialog [aria-label="Retry change"]').click(),
+  );
+  await wait(() =>
+    document.getElementById('dialog-content').textContent.includes('Change completed.'),
+  );
+  await session.evaluate(() => document.getElementById('dialog-cancel').click());
+  await wait(() => document.querySelector('.bookmark-recovery-status').hidden);
+  await session.evaluate(() => document.querySelector('#bookmarks-view .pane-back').click());
   assert.deepEqual(await send('editBookmark', newBookmark.operation), newBookmark.result);
   assert.equal(
     [...(await nativeIndex()).byId.values()].filter((node) => node.title === 'Created reference')
@@ -446,7 +498,8 @@ try {
     [bookmarks.second, bookmarks.first],
   );
 
-  // Native pointer capture and insertion markers in the actual Firefox sidebar.
+  const savedOrder = await session.evaluate(() => browser.bookmarks.getTree());
+  // The sorted view preserves Firefox's saved order and uses folder drop targets.
   await session.evaluate(() => document.querySelector('#bookmarks-toggle').click());
   await wait(() => document.querySelector('[data-bookmark-root-id="toolbar_____"]'));
   await session.evaluate(() =>
@@ -459,6 +512,19 @@ try {
     search.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await wait(() => document.querySelector('#bookmarks-tree [aria-label="Created reference"]'));
+  assert.deepEqual(await session.evaluate(() => browser.bookmarks.getTree()), savedOrder);
+  assert.deepEqual(
+    await session.evaluate(
+      (id) =>
+        [
+          ...document
+            .querySelector(`[data-bookmark-id="${id}"]`)
+            .parentElement.querySelectorAll('.bookmark-row'),
+        ].map((row) => row.getAttribute('aria-label')),
+      bookmarks.nested,
+    ),
+    ['Research', 'Edited café reference', 'Second reference'],
+  );
   const offset = await session.chrome(() => {
     const sidebar = document.getElementById('sidebar');
     const outer = sidebar.getBoundingClientRect();
@@ -487,7 +553,11 @@ try {
     .move({ ...start, y: start.y + 7, duration: 120 })
     .move({ ...(await point(bookmarks.second, 0.1)), duration: 180 })
     .perform();
-  await wait(() => !document.querySelector('#bookmarks-view .move-marker').hidden);
+  await wait(() =>
+    document
+      .querySelector('#bookmarks-view .move-preview')
+      ?.textContent.includes('Into “Research”'),
+  );
   await session.driver.actions().release(Button.LEFT).perform();
   await session.driver.wait(
     async () => (await nativeIndex()).byId.get(newBookmark.result.id).parentId === bookmarks.nested,
@@ -495,7 +565,19 @@ try {
   );
   assert.deepEqual(
     (await nativeIndex()).byId.get(bookmarks.nested).children.map((node) => node.id),
-    [newBookmark.result.id, bookmarks.second, bookmarks.first],
+    [bookmarks.second, bookmarks.first, newBookmark.result.id],
+  );
+  assert.deepEqual(
+    await session.evaluate(
+      (id) =>
+        [
+          ...document
+            .querySelector(`[data-bookmark-id="${id}"]`)
+            .parentElement.querySelectorAll('.bookmark-row'),
+        ].map((row) => row.getAttribute('aria-label')),
+      bookmarks.nested,
+    ),
+    ['Research', 'Created reference', 'Edited café reference', 'Second reference'],
   );
   await writeFile(
     'test-results/bookmark-editing-firefox.png',

@@ -1,5 +1,15 @@
 // Firefox owns bookmark identities, hierarchy and order. This is a temporary
 // projection only; browsing and searching never write to the bookmark store.
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const isFolder = (node) => node.type === 'folder' || Array.isArray(node.children);
+const title = (node) => node.title || node.url || 'Untitled folder';
+
+function sortedChildren(node) {
+  return [...(node?.children || [])].sort(
+    (a, b) => Number(isFolder(b)) - Number(isFolder(a)) || collator.compare(title(a), title(b)),
+  );
+}
+
 export function bookmarkRoots(tree) {
   const names = new Map([
     ['menu________', 'Bookmarks'],
@@ -30,7 +40,8 @@ export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new S
   const terms = needle.split(/\s+/).filter(Boolean);
   const entries = [];
   const root = rootId ? tree[0]?.children?.find((node) => node.id === rootId) : tree[0];
-  const stack = [...(root?.children || [])].reverse().map((node) => ({ node, depth: 1 }));
+  const children = rootId ? sortedChildren(root) : [...(root?.children || [])];
+  const stack = children.reverse().map((node) => ({ node, depth: 1 }));
   const matching = new Set();
   const parents = new Map();
   while (stack.length) {
@@ -60,7 +71,7 @@ export function bookmarkRows(tree, expanded, query = '', searchCollapsed = new S
       match,
       childCount: node.children?.length || 0,
     });
-    for (const child of [...(node.children || [])].reverse())
+    for (const child of sortedChildren(node).reverse())
       stack.push({ node: child, depth: depth + 1, parentId: node.id, matchedParent: matched });
   }
   const visible = new Set();

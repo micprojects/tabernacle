@@ -36,7 +36,7 @@ export function createBookmarkDialogs({
   }
 
   // A failed submit keeps its operation ID. Changing the draft starts a new
-  // operation; unfinished work remains available from the Bookmarks menu.
+  // operation; interrupted work remains available from the pane's review notice.
   function submitter() {
     let previous, operationId;
     return async (command) => {
@@ -172,25 +172,7 @@ export function createBookmarkDialogs({
     const node = index?.byId.get(id);
     if (!node) return announce('That bookmark is no longer available.', true);
     const content = el('div');
-    const parent = destination(content, index, node.parentId, id, () => positions());
-    const position = field(content, 'Position', '', 'select');
-
-    function positions() {
-      position.replaceChildren(el('option', '', 'At the end'));
-      position.firstElementChild.value = '';
-      for (const sibling of index.byId.get(parent.getValue())?.children || []) {
-        if (sibling.id === id) continue;
-        const option = el(
-          'option',
-          '',
-          `Before ${sibling.title || (sibling.type === 'separator' ? 'separator' : sibling.url)}`,
-        );
-        option.value = sibling.id;
-        position.append(option);
-      }
-    }
-
-    positions();
+    const parent = destination(content, index, node.parentId, id);
     const submit = submitter();
     show(
       {
@@ -201,13 +183,15 @@ export function createBookmarkDialogs({
         cleanup: parent.destroy,
         restoreId: id,
         onSubmit: () =>
-          submit({
-            kind: 'move',
-            id,
-            expected: bookmarkRecord(node),
-            targetId: position.value || parent.getValue(),
-            position: position.value ? 'before' : 'inside',
-          }),
+          parent.getValue() === node.parentId
+            ? { id }
+            : submit({
+                kind: 'move',
+                id,
+                expected: bookmarkRecord(node),
+                targetId: parent.getValue(),
+                position: 'inside',
+              }),
         afterSubmit: () => reveal(id),
       },
       parent.element.querySelector('button'),
@@ -227,7 +211,7 @@ export function createBookmarkDialogs({
         await reveal(node.parentId);
         announce('Bookmark folder deleted.');
       } catch (error) {
-        announce(`${error.message} Review unfinished changes in the Bookmarks menu.`, true);
+        announce(error.message, true);
       }
       return;
     }
@@ -363,8 +347,6 @@ export function createBookmarkDialogs({
             null,
             { label: 'Expand all folders', icon: 'expand', run: () => expandAll(true) },
             { label: 'Collapse all folders', icon: 'collapse', run: () => expandAll(false) },
-            null,
-            { label: 'Unfinished changes…', icon: 'history', run: recovery },
           ]
         : []),
     ];
@@ -381,14 +363,14 @@ export function createBookmarkDialogs({
   async function drop(id, targetId, position, expected) {
     try {
       const target = bookmarkMove(getIndex(), id, targetId, position);
-      if (target.noOp) return;
+      if (target.noOp || getIndex().byId.get(id)?.parentId === target.parentId) return;
       await submitter()({ kind: 'move', id, targetId, position, expected });
       await reveal(id);
       announce('Bookmark moved.');
     } catch (error) {
-      announce(`${error.message} Review unfinished changes in the Bookmarks menu.`, true);
+      announce(error.message, true);
     }
   }
 
-  return { openMenu, drop, edit, remove, create };
+  return { openMenu, drop, edit, remove, create, recovery };
 }

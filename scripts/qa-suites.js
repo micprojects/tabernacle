@@ -7,6 +7,7 @@ export const uiSuites = [
   'test-bookmark-editing-ui',
   'test-bookmark-polish-ui',
   'test-bookmark-locations-ui',
+  'test-bookmark-footer-ui',
   'test-pane-refresh-ui',
   'test-tab-collection-ui',
   'test-duplicate-selection-ui',

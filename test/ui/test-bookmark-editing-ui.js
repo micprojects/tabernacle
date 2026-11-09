@@ -8,6 +8,8 @@ const row = (id) => page.locator(`[data-bookmark-id="${id}"]`);
 const dialog = page.locator('#dialog');
 const menu = page.locator('#menu');
 const search = page.getByRole('searchbox', { name: 'Search bookmarks' });
+const recovery = page.locator('.bookmark-recovery-status');
+const review = recovery.getByRole('button', { name: 'Review changes', exact: true });
 const send = (type, args = {}) =>
   page.evaluate(
     async ([type, args]) =>
@@ -40,7 +42,10 @@ async function drag(id, targetId, fraction = 0.5, cancel = false) {
   const to = await row(targetId).boundingBox();
   await page.mouse.move(to.x + 40, to.y + to.height * fraction, { steps: 5 });
   if (fraction === 0.5) await expect(row(targetId)).toHaveClass(/drop-inside/);
-  else await expect(page.locator('#bookmarks-view .move-marker')).toBeVisible();
+  else
+    await expect(page.locator('#bookmarks-view .move-preview')).toContainText(
+      'Already in this folder.',
+    );
   if (cancel) await page.keyboard.press('Escape');
   await page.mouse.up();
 }
@@ -49,7 +54,30 @@ try {
   await page.goto(`${base}/extension/sidebar.html?demo`);
   await page.getByRole('button', { name: 'Bookmarks', exact: true }).click();
   await page.getByRole('tab', { name: 'Toolbar', exact: true }).click();
+  await expect(recovery).toBeHidden();
+  await page.getByRole('button', { name: 'Bookmark actions', exact: true }).click();
+  await expect(menu.getByRole('menuitem', { name: 'Unfinished changes…' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await row('design-bookmarks').click();
+  await expect(row('design-bookmarks').locator('..').locator('.bookmark-row .label')).toHaveText([
+    'Design references',
+    'Google Fonts',
+    'MDN Web Docs',
+  ]);
+  const savedOrder = await nodes();
+  await row('mdn-bookmark').focus();
+  await page.evaluate(() =>
+    tabernacleDemoSession.browser.bookmarks.update('mdn-bookmark', { title: 'A reference' }),
+  );
+  await expect(row('design-bookmarks').locator('..').locator('.bookmark-row .label')).toHaveText([
+    'Design references',
+    'A reference',
+    'Google Fonts',
+  ]);
+  await expect(row('mdn-bookmark')).toBeFocused();
+  expect((await nodes()).find((node) => node.id === 'mdn-bookmark').index).toBe(
+    savedOrder.find((node) => node.id === 'mdn-bookmark').index,
+  );
   const tabs = (await send('snapshot')).tabs;
   await row('mdn-bookmark').press('F2');
   await expect(dialog.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
@@ -91,8 +119,7 @@ try {
       await expect(page.locator('#toast')).toContainText('Folder deletion failed');
       await expect(dialog).not.toBeVisible();
       await expect(row(empty.id)).toBeVisible();
-      await page.getByRole('button', { name: 'Bookmark actions', exact: true }).click();
-      await menu.getByRole('menuitem', { name: 'Unfinished changes…' }).click();
+      await review.click();
       await dialog.getByRole('button', { name: 'Retry change' }).click();
       await expect(dialog).toContainText('Change completed.');
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
@@ -141,24 +168,25 @@ try {
   const bookmark = (await nodes()).find((node) => node.title === 'Useful page');
   expect(bookmark.parentId).toBe(folder.id);
 
-  // Keyboard-accessible move includes a position amongst every sibling.
+  // Moves choose a folder; the alphabetical projection never rewrites sibling order.
   await row(bookmark.id).press('Shift+F10');
   await menu.getByRole('menuitem', { name: 'Move…' }).click();
   await dialog.getByLabel('Bookmark folder', { exact: true }).click();
   await dialog.getByRole('searchbox', { name: 'Find a folder' }).fill('Project references');
   await dialog.getByRole('treeitem', { name: 'Project references', exact: true }).click();
-  await dialog.getByRole('combobox', { name: 'Position' }).selectOption('mdn-bookmark');
+  await expect(dialog.getByRole('combobox', { name: 'Position' })).toHaveCount(0);
   await save('Move');
-  expect((await nodes()).find((node) => node.id === bookmark.id).index).toBe(0);
+  const beforeReorder = await nodes();
   await search.fill('Web reference');
   await expect(row('mdn-bookmark')).toBeVisible();
   await search.fill('');
 
-  // Native pointer sequences reorder and move without opening a tab.
+  // Dragging within a folder leaves Firefox order intact; crossing folders still moves.
   await drag(bookmark.id, 'mdn-bookmark', 0.95);
-  await expect
-    .poll(async () => (await nodes()).find((node) => node.id === bookmark.id).index)
-    .toBe(1);
+  expect(await nodes()).toEqual(beforeReorder);
+  await itemMenu(bookmark.id, 'Move…');
+  await save('Move');
+  expect(await nodes()).toEqual(beforeReorder);
   await drag(bookmark.id, folder.id);
   await expect
     .poll(async () => (await nodes()).find((node) => node.id === bookmark.id).parentId)
@@ -210,13 +238,32 @@ try {
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('#dialog-error')).toContainText('Lost create reply');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(review).toBeVisible();
+  const pending = await send('getBookmarkEdits');
+  await page.evaluate(() => {
+    const api = tabernacleDemoSession.browser;
+    window.recoveryRead = api.storage.local.get;
+    api.storage.local.get = async (key) => {
+      if (key === 'tabernacle.bookmark-edits.v1') throw new Error('Recovery read failed');
+      return recoveryRead(key);
+    };
+    api.storage.onChanged.emit({ 'tabernacle.bookmark-edits.v1': {} }, 'local');
+  });
+  await expect(recovery).toContainText('Could not check bookmark changes. Recovery read failed');
+  await expect(review).toBeVisible();
+  await page.evaluate(() => {
+    tabernacleDemoSession.browser.storage.local.get = recoveryRead;
+  });
+  await recovery.getByRole('button', { name: 'Check changes again' }).click();
+  await expect(recovery).toContainText('A bookmark change needs attention.');
+  expect(await send('getBookmarkEdits')).toEqual(pending);
   await page.getByRole('button', { name: 'Back to tabs' }).click();
   await page.getByRole('button', { name: 'Bookmarks', exact: true }).click();
-  await page.getByRole('button', { name: 'Bookmark actions', exact: true }).click();
-  await menu.getByRole('menuitem', { name: 'Unfinished changes…' }).click();
+  await review.click();
   await dialog.getByRole('button', { name: 'Retry change' }).click();
   await expect(dialog).toContainText('Change completed.');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(recovery).toBeHidden();
   expect((await nodes()).filter((node) => node.title === 'Retry reference')).toHaveLength(1);
 
   await row(folder.id).press('Delete');
@@ -245,7 +292,7 @@ try {
   await page.screenshot({ path: 'test-results/bookmark-editing-forced-colours.png' });
   expect(errors).toEqual([]);
   console.log(
-    '✓ Bookmark editing, creation, keyboard moves, pointer reordering, cancellation, protected roots, stale drafts, recoverable creation, deletion and narrow themes',
+    '✓ Alphabetical bookmarks, preserved native order and focus, folder moves, cancellation, contextual recovery, protected roots, deletion and narrow themes',
   );
 } finally {
   await close();
