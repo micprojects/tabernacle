@@ -26,6 +26,7 @@ export const uiSuites = [
   'test-pinned-tabs-ui',
   'test-pinned-folders-ui',
   'test-tab-close-ui',
+  'test-pending-close-ui',
   'test-recently-closed-ui',
   'test-activity-page-ui',
   'test-incremental-pages-ui',

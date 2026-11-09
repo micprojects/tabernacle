@@ -6,6 +6,7 @@ import { createBrowserCache } from './browser-cache.js';
 import { createPresentationCache, immutableCopy } from './presentation-cache.js';
 import { mapSettledBounded } from './bounded-settled.js';
 import { closeFallback, createCloseSelection } from './close-selection.js';
+import { tabCloseUpdates } from './tab-close.js';
 import { createTreeIndex, scopeBranches } from './tree/index.js';
 import { containerDetails } from './containers.js';
 import { removeUnusedCreatedContainer } from './container-rollback.js';
@@ -635,36 +636,8 @@ export function createController(
 
   async function closeWithPromotion(windowId, id) {
     const tabs = await listTabs(windowId);
-    const [parent, first, ...rest] = tabSubtree(tabs, id);
-    if (!first) return closeTabs(windowId, id);
-    const firstBranch = new Set(tabSubtree(tabs, first.id).map((tab) => tab.id));
-    const descendants = [first, ...rest];
-    const updates = new Map();
-    let order = parent.order;
-    // A shared preorder keeps both the promoted tree and an undone close in
-    // the same visual order, even when the children were manually reordered.
-    const fits = descendants.every(
-      (_, index) =>
-        Number.isFinite(order + index * 1024) &&
-        (index === 0 || order + index * 1024 > order + (index - 1) * 1024),
-    );
-    if (!fits) {
-      const peers = sortTabs(
-        tabs.filter(
-          (tab) => tab.groupId === parent.groupId && tab.parentTabId === parent.parentTabId,
-        ),
-      );
-      for (const [index, tab] of peers.entries()) updates.set(tab.id, { order: index * 1024 });
-      order = updates.get(id).order;
-    }
-    for (const [index, tab] of descendants.entries()) {
-      const ancestors = [...tab.ancestors];
-      // Keep the closed parent's key first: Undo then reconnects its original
-      // children. The promoted child is only the fallback while it is absent.
-      if (!firstBranch.has(tab.id))
-        ancestors.splice(ancestors.indexOf(parent.treeId) + 1, 0, first.treeId);
-      updates.set(tab.id, { ancestors, order: order + index * 1024 });
-    }
+    const updates = tabCloseUpdates(tabs, id);
+    if (!updates.size) return closeTabs(windowId, id);
     const changes = [];
     for (const [tabId, update] of updates) {
       const before = await membership(tabId);

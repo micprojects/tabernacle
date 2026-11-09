@@ -640,6 +640,18 @@ async function checkCloseConfirmation() {
       10000,
     );
     const control = await driver.getWindowHandle();
+    const sidebar = new ScreenshotBrowser();
+    sidebar.driver = driver;
+    sidebar.sidebarUrl = `moz-extension://${uuid}/sidebar.html`;
+
+    const inSidebar = async (fn, ...args) => {
+      await driver.setContext(firefox.Context.CHROME);
+      try {
+        return await sidebar.evaluate(fn, ...args);
+      } finally {
+        await driver.setContext(firefox.Context.CONTENT);
+      }
+    };
 
     const call = async (body, ...args) => {
       const result = await driver.executeAsyncScript(
@@ -686,13 +698,39 @@ async function checkCloseConfirmation() {
     report.fixture = f;
     report.before = before;
 
+    await inSidebar(() => {
+      const send = browser.runtime.sendMessage.bind(browser.runtime);
+      browser.runtime.sendMessage = (...args) =>
+        send(...args).then((result) => {
+          if (args[0]?.type === 'tabernacle:closeTab') window.closeResult = result;
+          return result;
+        });
+    });
+
     const attempt = async (type, args, accept) => {
       await driver.switchTo().window(control);
-      await driver.executeScript(
-        `window.closeResult=undefined;window.send(arguments[0],arguments[1]).then(value=>window.closeResult=value,e=>window.closeResult={ok:false,error:e.message});`,
-        type,
-        args,
-      );
+      if (type === 'closeTab') {
+        await driver.wait(
+          () =>
+            inSidebar(
+              (id) => Boolean(document.querySelector(`[data-key="tab:${id}"] .close-tab`)),
+              args.id,
+            ),
+          10000,
+        );
+        const hiddenImmediately = await inSidebar((id) => {
+          window.closeResult = undefined;
+          document.querySelector(`[data-key="tab:${id}"] .close-tab`).click();
+          return !document.querySelector(`[data-key="tab:${id}"]`);
+        }, args.id);
+        assert.equal(hiddenImmediately, true, 'The sidebar hides before Firefox answers the close');
+      } else {
+        await driver.executeScript(
+          `window.closeResult=undefined;window.send(arguments[0],arguments[1]).then(value=>window.closeResult=value,e=>window.closeResult={ok:false,error:e.message});`,
+          type,
+          args,
+        );
+      }
       await driver.switchTo().window(dirtyHandle);
       const alert = await driver.wait(
         async () => {
@@ -712,16 +750,35 @@ async function checkCloseConfirmation() {
       if (accept) await alert.accept();
       else await alert.dismiss();
       await driver.switchTo().window(control);
-      await driver.wait(
-        async () => Boolean(await driver.executeScript('return window.closeResult;')),
-        10000,
-      );
-      const result = await driver.executeScript('return window.closeResult;');
+      const readResult = () =>
+        type === 'closeTab'
+          ? inSidebar(() => window.closeResult)
+          : driver.executeScript('return window.closeResult;');
+      await driver.wait(async () => Boolean(await readResult()), 10000);
+      const result = await readResult();
       const after = await call(
         `return {snapshot:await send('snapshot'),raw:await Promise.all(arguments[0].map(async id=>[id,await browser.sessions.getTabValue(id,'tabernacle.membership.v1').catch(()=>null)]))};`,
         [f.parent, f.child, f.sibling],
       );
       report.stages.push({ type, accept, prompt, result, after });
+      if (type === 'closeTab') {
+        await driver.wait(
+          () =>
+            inSidebar(
+              ({ id, accept }) =>
+                Boolean(document.querySelector(`[data-key="tab:${id}"]`)) === !accept,
+              { id: args.id, accept },
+            ),
+          10000,
+        );
+        const order = await inSidebar(() =>
+          [...document.querySelectorAll('#tree .tab-row')].map((row) => Number(row.dataset.id)),
+        );
+        assert.deepEqual(
+          order.filter((id) => [f.parent, f.child, f.sibling].includes(id)),
+          accept ? [f.child, f.sibling] : [f.parent, f.child, f.sibling],
+        );
+      }
       return { result, after };
     };
 
