@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { exec, fingerprintSource, machineInfo, repositoryRoot } from './memory/common.js';
+import {
+  exec,
+  fingerprintSource,
+  machineInfo,
+  repositoryRoot,
+  requireBenchmarkNode,
+} from './memory/common.js';
 import { runGuarded } from './memory/guard.js';
 import {
   iterationWorkload,
@@ -39,7 +45,7 @@ RAM regression check: a separate 1,000-tab / 100-folder, three-level fixture in 
 --folder-scaling: dedicated 1,000-tab / 500-folder idle comparison, with the same guards; isolates folder growth from tab growth.
 Other exceptional high-capacity tests use benchmark:memory:stress or benchmark:memory:firefox:stress.`);
 } else {
-  assert.equal(Number(process.versions.node.split('.')[0]), 24, 'Use Node 24 from .nvmrc.');
+  await requireBenchmarkNode();
   const fixture = iterationWorkload(options);
   const started = Date.now();
   const resultsRoot = resolve(repositoryRoot, 'test-results/memory/iteration');

@@ -8,6 +8,13 @@ import { cpus, release, totalmem } from 'node:os';
 export const exec = promisify(execFile);
 export const repositoryRoot = resolve(import.meta.dirname, '../..');
 
+export async function requireBenchmarkNode(root = repositoryRoot) {
+  const major = (await readFile(resolve(root, '.nvmrc'), 'utf8')).trim();
+  if (!/^[1-9]\d*$/.test(major)) throw new Error('Expected a Node major version in .nvmrc.');
+  if (process.versions.node.split('.')[0] !== major)
+    throw new Error(`Benchmarks require Node ${major} from .nvmrc. Running ${process.version}.`);
+}
+
 export async function fingerprintSource(root) {
   const files = [];
 

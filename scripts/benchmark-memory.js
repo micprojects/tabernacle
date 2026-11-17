@@ -3,7 +3,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { fingerprintSource, machineInfo, parseOptions, percentile } from './memory/common.js';
+import {
+  fingerprintSource,
+  machineInfo,
+  parseOptions,
+  percentile,
+  requireBenchmarkNode,
+} from './memory/common.js';
 import { runSynthetic } from './memory/synthetic.js';
 import { compareSamples, comparisonPolicy, sampleRange } from './memory/summary.js';
 
@@ -28,6 +34,7 @@ if (options.help) {
 } else {
   if (options.native)
     throw new Error('Native diagnostics use scripts/benchmark-memory-firefox.js.');
+  await requireBenchmarkNode();
   const output = options.output || resolve('test-results/memory', `synthetic-${Date.now()}.json`);
   await mkdir(dirname(output), { recursive: true });
   const runs = [];

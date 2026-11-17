@@ -21,6 +21,7 @@ import {
 
 export async function fingerprintNativeHarness() {
   const files = [
+    '../../.nvmrc',
     '../benchmark-memory-firefox.js',
     '../instrumentation/source.js',
     '../screenshot-browser.js',

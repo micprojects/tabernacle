@@ -90,6 +90,7 @@ export async function freezeSource(destination, ref, root = repositoryRoot) {
 
 export async function iterationHarness() {
   const files = [
+    '.nvmrc',
     'scripts/benchmark-optimisation.js',
     'scripts/firefox-session.js',
     'preview/performance-fixture.js',

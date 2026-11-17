@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fingerprintSource, machineInfo, parseOptions } from './memory/common.js';
+import {
+  fingerprintSource,
+  machineInfo,
+  parseOptions,
+  requireBenchmarkNode,
+} from './memory/common.js';
 import { runGuarded } from './memory/guard.js';
 import { runNative, fingerprintNativeHarness } from './memory/native.js';
 import { compareSamples, comparisonPolicy, sampleRange } from './memory/summary.js';
@@ -28,6 +33,7 @@ if (options.help) {
   process.exitCode = result.status === 'completed' ? 0 : 1;
   process.disconnect();
 } else {
+  await requireBenchmarkNode();
   const output = options.output || resolve('test-results/memory', `native-${Date.now()}.json`);
   await mkdir(dirname(output), { recursive: true });
   const entries = options.baselineRoot

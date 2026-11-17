@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { digest, freezeSource, iterationHarness } from '../../memory/iteration-source.js';
 import { runGuarded } from '../../memory/guard.js';
 import { iterationLimits } from '../../memory/iteration-policy.js';
-import { fingerprintSource } from '../../memory/common.js';
+import { fingerprintSource, requireBenchmarkNode } from '../../memory/common.js';
 import { withWrapperPool } from './variants.mjs';
 
 const [outputArg, ref, variant] = process.argv.slice(2);
@@ -17,6 +17,7 @@ assert(
   !variant || ['--visible-rows', '--wrapper-pool'].includes(variant),
   'Unknown diagnostic variant',
 );
+await requireBenchmarkNode();
 const output = resolve(outputArg);
 await mkdir(output, { recursive: false });
 const source = await freezeSource(resolve(output, 'source'), ref === '-' ? undefined : ref);

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { exec, fingerprintSource, machineInfo, repositoryRoot } from '../../memory/common.js';
+import {
+  exec,
+  fingerprintSource,
+  machineInfo,
+  repositoryRoot,
+  requireBenchmarkNode,
+} from '../../memory/common.js';
 import { runGuarded } from '../../memory/guard.js';
 import { iterationLimits, validateNoise } from '../../memory/iteration-policy.js';
 import { comparisons } from '../../memory/iteration-report.js';
@@ -22,7 +28,7 @@ Supplement to benchmark:optim: fixed 1,000-tab/one-sidebar scrolling and memory-
 Default: three alternating pairs, HEAD versus frozen working tree. --calibrate: five A/A pairs cached for 24 hours. --confirm: five pairs, calibrating first if needed. --pilot: one candidate diagnostic, no comparison.
 No profiler, injected instrumentation, larger-workload option or retries. Full row correctness runs after measurement. The standard benchmark and functional suites remain required.`);
 } else {
-  assert.equal(Number(process.versions.node.split('.')[0]), 24, 'Use Node 24 from .nvmrc.');
+  await requireBenchmarkNode();
   const started = Date.now();
   const resultsRoot = resolve(repositoryRoot, 'test-results/memory/viewport-scroll');
   await mkdir(resultsRoot, { recursive: true });

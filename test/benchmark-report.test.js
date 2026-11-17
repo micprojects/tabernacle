@@ -3,11 +3,27 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { exec, repositoryRoot } from '../scripts/memory/common.js';
+import { exec, repositoryRoot, requireBenchmarkNode } from '../scripts/memory/common.js';
 import { iterationOptions } from '../scripts/memory/iteration-policy.js';
 import { freezeSource, resolveBenchmarkRef } from '../scripts/memory/iteration-source.js';
 import { comparisons, iterationHtml } from '../scripts/memory/iteration-report.js';
 import { iterationMarkdown } from '../scripts/memory/iteration-markdown.js';
+
+test('benchmarks read the Node major from the harness .nvmrc', async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'tabernacle-benchmark-node-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const pin = resolve(root, '.nvmrc');
+  const major = Number(process.versions.node.split('.')[0]);
+  await assert.rejects(requireBenchmarkNode(root), { code: 'ENOENT' });
+  await writeFile(pin, ` ${major}\n`);
+  await requireBenchmarkNode(root);
+  await writeFile(pin, String(major + 1));
+  await assert.rejects(requireBenchmarkNode(root), {
+    message: `Benchmarks require Node ${major + 1} from .nvmrc. Running ${process.version}.`,
+  });
+  await writeFile(pin, '');
+  await assert.rejects(requireBenchmarkNode(root), /Expected a Node major version/);
+});
 
 test('posting defaults are committed HEAD against the latest release without changing optimisation defaults', async () => {
   const { scripts } = JSON.parse(await readFile(new URL('../package.json', import.meta.url)));

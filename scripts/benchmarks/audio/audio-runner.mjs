@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { freezeSource, iterationHarness, digest } from '../../memory/iteration-source.js';
-import { fingerprintSource, machineInfo, exec, percentile } from '../../memory/common.js';
+import {
+  fingerprintSource,
+  machineInfo,
+  exec,
+  percentile,
+  requireBenchmarkNode,
+} from '../../memory/common.js';
 import { runGuarded } from '../../memory/guard.js';
 import { iterationLimits, assessMetric } from '../../memory/iteration-policy.js';
 
@@ -13,7 +19,7 @@ const {
   baseline: baselineRef,
   noise: noiseArg,
 } = audioOptions(process.argv.slice(2));
-assert.equal(process.versions.node.split('.')[0], '24');
+await requireBenchmarkNode();
 const output = resolve(outputArg),
   started = Date.now();
 await mkdir(dirname(output), { recursive: true });
