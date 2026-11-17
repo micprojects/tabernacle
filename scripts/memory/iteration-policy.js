@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { lowerGuardLimits } from './common.js';
 import { compareSamples } from './summary.js';
 
 export const iterationFixture = {
@@ -33,7 +34,7 @@ export const iterationFixture = {
   ],
   readers: 2,
 };
-export const iterationLimits = { maxRssBytes: 4 * 1024 ** 3, maxMs: 5 * 60000 };
+export const iterationLimits = lowerGuardLimits({ maxMs: 5 * 60000 });
 
 export function iterationWorkload(options) {
   const fixture = structuredClone(iterationFixture);

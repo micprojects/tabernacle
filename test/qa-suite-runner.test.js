@@ -136,7 +136,7 @@ test('the iteration benchmark retains its inner resource-stop status in ordinary
       {
         env: { ...process.env, TABERNACLE_MEMORY_GUARD: guarded ? '1' : '0' },
         preflight: ready,
-        guard: async () => ({ status: 'failed', code: 2, reason: 'Inner 3 GiB iteration guard' }),
+        guard: async () => ({ status: 'failed', code: 2, reason: 'Inner iteration RSS guard' }),
       },
     );
     assert.equal(result.status, 'inconclusive');

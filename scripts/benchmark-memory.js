@@ -2,7 +2,8 @@ import { fork } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fingerprintSource, parseOptions, percentile } from './memory/common.js';
+import { isDeepStrictEqual } from 'node:util';
+import { fingerprintSource, machineInfo, parseOptions, percentile } from './memory/common.js';
 import { runSynthetic } from './memory/synthetic.js';
 import { compareSamples, comparisonPolicy, sampleRange } from './memory/summary.js';
 
@@ -50,6 +51,7 @@ if (options.help) {
       : null;
     if (variation) {
       const baseline = await fingerprintSource(options.baselineRoot || options.sourceRoot);
+      const environment = machineInfo();
       if (
         variation.version !== report.version ||
         variation.status !== 'completed' ||
@@ -59,13 +61,14 @@ if (options.help) {
         variation.runs.some(
           (run) =>
             run.source?.sha256 !== baseline.sha256 ||
+            !isDeepStrictEqual(run.environment, environment) ||
             run.fixture?.tabs !== options.tabs ||
             run.fixture?.windows !== options.windows ||
             run.fixture?.readersPerWindow !== options.readers,
         )
       )
         throw new Error(
-          'Variation baseline must be a complete A/A report with matching source and topology.',
+          'Variation baseline must be a complete A/A report with matching source, topology, machine and runtime.',
         );
       report.variationBaseline = options.variationBaseline;
     }

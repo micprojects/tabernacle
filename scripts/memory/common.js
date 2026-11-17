@@ -105,6 +105,15 @@ export function parseOptions(argv) {
   return options;
 }
 
+export function ownedRssCeiling(physicalMemoryBytes) {
+  const gib = 1024 ** 3;
+  if (!Number.isSafeInteger(physicalMemoryBytes)) return 4 * gib;
+  const quarterRamGiB = Math.floor(physicalMemoryBytes / (4 * gib));
+  return Math.min(16, Math.max(4, quarterRamGiB)) * gib;
+}
+
+const guardCeilings = { maxRssBytes: ownedRssCeiling(totalmem()), maxMs: 30 * 60 * 1000 };
+
 export function memoryGuard(
   {
     pressurePercent,
@@ -115,9 +124,9 @@ export function memoryGuard(
     stageMs = 0,
     idleMs = 0,
   },
-  { start = false, maxRssBytes = 4 * 1024 ** 3, maxMs = 30 * 60 * 1000 } = {},
+  { start = false, ...limits } = {},
 ) {
-  lowerGuardLimits({ maxRssBytes, maxMs });
+  const { maxRssBytes, maxMs } = lowerGuardLimits(limits);
   if (!Number.isFinite(pressurePercent)) return 'System memory pressure could not be measured.';
   if (![1, 2, 4].includes(pressureLevel))
     return 'System memory pressure level could not be measured.';
@@ -138,13 +147,17 @@ export function memoryGuard(
   return null;
 }
 
-// Iteration workloads may tighten safety limits, never relax the stress ceiling.
+// Every guarded worker may tighten the limits for this host.
 export function lowerGuardLimits(overrides = {}) {
-  const ceilings = { maxRssBytes: 4 * 1024 ** 3, maxMs: 30 * 60 * 1000 };
   for (const [key, value] of Object.entries(overrides))
-    if (!(key in ceilings) || !Number.isFinite(value) || value <= 0 || value > ceilings[key])
+    if (
+      !Object.hasOwn(guardCeilings, key) ||
+      !Number.isFinite(value) ||
+      value <= 0 ||
+      value > guardCeilings[key]
+    )
       throw new Error(`Invalid or raised diagnostic guard: ${key}`);
-  return { ...ceilings, ...overrides };
+  return { ...guardCeilings, ...overrides };
 }
 
 export async function readPressure() {

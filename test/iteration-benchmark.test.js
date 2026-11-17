@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { totalmem } from 'node:os';
 import {
   iterationOptions,
   iterationFixture,
@@ -8,7 +9,7 @@ import {
   validateNoise,
   assessMetric,
 } from '../scripts/memory/iteration-policy.js';
-import { lowerGuardLimits, memoryGuard } from '../scripts/memory/common.js';
+import { lowerGuardLimits, memoryGuard, ownedRssCeiling } from '../scripts/memory/common.js';
 import {
   comparisons,
   iterationHtml,
@@ -58,10 +59,28 @@ test('routine commands select the bounded benchmark and stress remains explicit'
     assert.throws(() => iterationOptions(args));
 });
 
-test('iteration limits can only tighten the existing independent watchdog', () => {
+test('the owned RSS ceiling follows installed RAM within the supported range', () => {
+  const gib = 1024 ** 3;
+  for (const [ram, ceiling] of [
+    [8, 4],
+    [16, 4],
+    [23, 5],
+    [32, 8],
+    [64, 16],
+    [128, 16],
+  ])
+    assert.equal(ownedRssCeiling(ram * gib), ceiling * gib);
+  for (const invalid of [undefined, null, NaN, Infinity, 0, -1])
+    assert.equal(ownedRssCeiling(invalid), 4 * gib);
+});
+
+test('iteration limits can only tighten the host watchdog', () => {
+  const ceiling = ownedRssCeiling(totalmem());
+  assert.equal(lowerGuardLimits().maxRssBytes, ceiling);
+  assert.equal(iterationLimits.maxRssBytes, ceiling);
   assert.deepEqual(lowerGuardLimits(iterationLimits), iterationLimits);
   for (const limits of [
-    { maxRssBytes: 5 * 1024 ** 3 },
+    { maxRssBytes: ceiling + 1 },
     { maxMs: 31 * 60000 },
     { maxMs: 0 },
     { maxMs: NaN },
@@ -70,10 +89,11 @@ test('iteration limits can only tighten the existing independent watchdog', () =
     assert.throws(() => lowerGuardLimits(limits), /Invalid or raised/);
   const safe = { pressureLevel: 1, pressurePercent: 50, rssBytes: 2.5 * 1024 ** 3, elapsedMs: 0 };
   assert.equal(memoryGuard(safe, iterationLimits), null);
-  assert.equal(iterationLimits.maxRssBytes, 4 * 1024 ** 3);
-  assert.equal(memoryGuard({ ...safe, rssBytes: 3 * 1024 ** 3 }, iterationLimits), null);
-  assert.equal(memoryGuard({ ...safe, rssBytes: 4 * 1024 ** 3 - 1 }, iterationLimits), null);
-  assert.match(memoryGuard({ ...safe, rssBytes: 4 * 1024 ** 3 }, iterationLimits), /4 GiB/);
+  assert.equal(memoryGuard({ ...safe, rssBytes: ceiling - 1 }, iterationLimits), null);
+  assert.equal(
+    memoryGuard({ ...safe, rssBytes: ceiling }, iterationLimits),
+    `Owned process RSS reached the ${ceiling / 1024 ** 3} GiB guard.`,
+  );
   assert.match(memoryGuard({ ...safe, pressureLevel: 4 }, iterationLimits), /critical/);
   assert.match(
     memoryGuard({ ...safe, pressurePercent: 19, lowPressureSamples: 3 }, iterationLimits),
@@ -405,7 +425,7 @@ test(
   },
 );
 
-test('legacy stress CLI remains opt-in and rejects pre-retention A/A reports', async () => {
+test('legacy stress CLI requires opt-in and A/A from the same method and machine', async () => {
   const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { resolve } = await import('node:path');
@@ -418,45 +438,40 @@ test('legacy stress CLI remains opt-in and rejects pre-retention A/A reports', a
       /requires --stress/,
     );
     const output = resolve(directory, 'small.json');
-    await exec(process.execPath, [
+    const args = [
       script,
       '--stress',
       '--tabs',
       '20',
       '--windows',
       '2',
-      '--output',
-      output,
-    ]);
+      '--baseline-root',
+      repositoryRoot,
+      '--pairs',
+      '1',
+    ];
+    await exec(process.execPath, [...args, '--output', output]);
     const report = JSON.parse(await readFile(output, 'utf8'));
     assert.equal(report.status, 'completed');
     assert.equal(report.version, 2);
     assert.equal(report.runs[0].phases[0].displayedTabReferences, 40);
-    report.version = 1;
-    report.runs.push(structuredClone(report.runs[0]));
-    const previous = resolve(directory, 'old-method.json');
-    await writeFile(previous, JSON.stringify(report));
+    const matched = resolve(directory, 'matched.json');
+    await exec(process.execPath, [...args, '--variation-baseline', output, '--output', matched]);
+    assert.equal(JSON.parse(await readFile(matched, 'utf8')).status, 'completed');
+    const previous = resolve(directory, 'previous.json');
     const rejected = resolve(directory, 'rejected.json');
-    await assert.rejects(
-      exec(process.execPath, [
-        script,
-        '--stress',
-        '--tabs',
-        '20',
-        '--windows',
-        '2',
-        '--baseline-root',
-        repositoryRoot,
-        '--variation-baseline',
-        previous,
-        '--output',
-        rejected,
-      ]),
-    );
-    const failure = JSON.parse(await readFile(rejected, 'utf8'));
-    assert.equal(failure.status, 'failed');
-    assert.equal(failure.runs.length, 0);
-    assert.match(failure.error, /Variation baseline/);
+    const otherMachine = structuredClone(report);
+    otherMachine.runs[1].environment.physicalMemoryBytes += 1024 ** 3;
+    for (const invalid of [{ ...report, version: 1 }, otherMachine]) {
+      await writeFile(previous, JSON.stringify(invalid));
+      await assert.rejects(
+        exec(process.execPath, [...args, '--variation-baseline', previous, '--output', rejected]),
+      );
+      const failure = JSON.parse(await readFile(rejected, 'utf8'));
+      assert.equal(failure.status, 'failed');
+      assert.equal(failure.runs.length, 0);
+      assert.match(failure.error, /Variation baseline/);
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

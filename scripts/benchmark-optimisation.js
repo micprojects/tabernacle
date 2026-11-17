@@ -23,6 +23,7 @@ const options = iterationOptions(process.argv.slice(2));
 if (options.help) {
   console.log(`Usage: npm run benchmark:optim -- [--baseline REF] [--candidate REF | --working-tree] [--calibrate | --confirm | --pilot] [--synthetic-only] [--noise REPORT_JSON] [--output DIRECTORY]
 Default: three alternating pairs, HEAD versus a frozen working tree, 1,000 native tabs / two real sidebars plus 100/1,000/10,000 synthetic tabs.
+The watchdog stops at ${iterationLimits.maxRssBytes / 1024 ** 3} GiB of aggregate owned-process RSS on this machine.
 Posting reports: npm run benchmark:report -- [options] (equivalent to --report).
 --report: latest local stable release tag versus committed HEAD; five pairs with matching A/A calibration.
 --baseline REF: old version; latest-release selects the highest local vMAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH tag (no prereleases; no implicit fetch).

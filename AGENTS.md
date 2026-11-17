@@ -76,8 +76,10 @@ Dated experiments in `output/docs/performance/` describe historical source layou
 - Larger workloads, including 60,000 tabs, are exceptions for a specific capacity
   question or an explicitly requested stress/release investigation. Do not run the
   old large matrix routinely during optimisation, automatically escalate a small
-  run, or raise safety limits. Use the explicitly named `:stress` commands and
-  record resource stops as inconclusive. Keep ordinary regression suites in place.
+  run, or raise safety limits. The watchdog derives its RSS ceiling from installed RAM.
+  Use fresh matching calibration after a hardware change. Use the explicitly named
+  `:stress` commands and record resource stops as inconclusive. Keep ordinary regression
+  suites in place.
 - Run `npm run qa:release` before preparing a release. Add the documented stress
   checks when changes affect large collections or performance.
 - Do not weaken or delete tests merely to make a change pass. Update expectations

@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { performanceFixture, performanceBrowser } from '../preview/performance-fixture.js';
-import { memoryGuard, ownedProcesses, parseOptions, percentile } from '../scripts/memory/common.js';
+import {
+  exec,
+  lowerGuardLimits,
+  memoryGuard,
+  ownedProcesses,
+  parseOptions,
+  percentile,
+  repositoryRoot,
+} from '../scripts/memory/common.js';
 import { runGuarded } from '../scripts/memory/guard.js';
 import { runSynthetic } from '../scripts/memory/synthetic.js';
-import { exec, repositoryRoot } from '../scripts/memory/common.js';
 import { compareSamples, sampleRange } from '../scripts/memory/summary.js';
 import { waitForPreflight } from '../scripts/memory/preflight.js';
 
@@ -56,7 +63,12 @@ test('watchdog thresholds preserve preflight and sustained-pressure rules', () =
   assert.equal(memoryGuard({ ...safe, pressurePercent: 19, lowPressureSamples: 2 }), null);
   assert.match(memoryGuard({ ...safe, pressurePercent: 19, lowPressureSamples: 3 }), /20%/);
   assert.match(memoryGuard({ ...safe, pressureLevel: 4 }), /critical/);
-  assert.match(memoryGuard({ ...safe, rssBytes: 4 * 1024 ** 3 }), /4 GiB/);
+  const { maxRssBytes } = lowerGuardLimits();
+  assert.equal(memoryGuard({ ...safe, rssBytes: maxRssBytes - 1 }), null);
+  assert.equal(
+    memoryGuard({ ...safe, rssBytes: maxRssBytes }),
+    `Owned process RSS reached the ${maxRssBytes / 1024 ** 3} GiB guard.`,
+  );
   assert.match(memoryGuard({ ...safe, elapsedMs: 30 * 60 * 1000 }), /30 minute/);
   assert.match(memoryGuard({ ...safe, stageMs: 10 * 60 * 1000 }), /10 minute/);
   assert.match(memoryGuard({ ...safe, idleMs: 60000 }), /60 seconds/);
@@ -86,6 +98,7 @@ test('failed preflight never launches its requested command', async () => {
   });
   assert.equal(result.status, 'aborted');
   assert.equal(result.samples.length, 0);
+  assert.equal(result.guards.maxRssBytes, lowerGuardLimits().maxRssBytes);
   assert.match(result.reason, /30%/);
 });
 
