@@ -112,8 +112,9 @@ Dated experiments in `output/docs/performance/` describe historical source layou
 - Keep profiling reports and recordings in ignored local output. Never commit
   them to the repository.
 - Keep benchmark measurements, experiment histories and optimisation target notes
-  in ignored local documentation, including summaries used by skills. Tracked
-  skills may contain reusable procedures and correctness rules, not run results.
+  in ignored local documentation, including summaries used by skills. Maintain
+  reusable skill procedures and correctness rules in the personal Tabernacle
+  skills directory outside the checkout.
 - Existing tools may continue using their ignored `test-results/`, `dist/` and
   `firefox/` directories for test evidence, build packages and test profiles.
 - Do not create a parallel `outputs/` directory or put experiments in `design/`,

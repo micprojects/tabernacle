@@ -53,27 +53,5 @@ __pycache__/
 # Retired exploratory previews.
 /preview/activity-mockups.*
 
-# Reviewed project instructions and reusable skills; generated skill notes stay local.
+# Reviewed project instructions.
 !/AGENTS.md
-!/.agents/
-/.agents/*
-!/.agents/skills/
-/.agents/skills/*
-!/.agents/skills/tabernacle-benchmark/
-/.agents/skills/tabernacle-benchmark/*
-!/.agents/skills/tabernacle-benchmark/SKILL.md
-!/.agents/skills/tabernacle-optimise/
-/.agents/skills/tabernacle-optimise/*
-!/.agents/skills/tabernacle-optimise/SKILL.md
-!/.agents/skills/tabernacle-optimise/agents/
-/.agents/skills/tabernacle-optimise/agents/*
-!/.agents/skills/tabernacle-optimise/agents/openai.yaml
-!/.agents/skills/tabernacle-release/
-/.agents/skills/tabernacle-release/*
-!/.agents/skills/tabernacle-release/SKILL.md
-!/.agents/skills/tabernacle-release/agents/
-/.agents/skills/tabernacle-release/agents/*
-!/.agents/skills/tabernacle-release/agents/openai.yaml
-!/.agents/skills/tabernacle-release/references/
-/.agents/skills/tabernacle-release/references/*
-!/.agents/skills/tabernacle-release/references/mozilla.md
