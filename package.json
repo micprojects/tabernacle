@@ -45,14 +45,14 @@
     "benchmark:memory:firefox:stress": "node scripts/benchmark-memory-firefox.js --stress --tabs 100 --windows 2"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.65.0",
     "@stylistic/eslint-plugin": "5.10.0",
-    "eslint": "10.11.0",
-    "geckodriver": "7.0.0",
-    "prettier": "3.9.9",
-    "selenium-webdriver": "4.49.0",
-    "sharp": "0.35.4",
-    "web-ext": "10.7.0"
+    "eslint": "10.14.0",
+    "geckodriver": "8.0.0",
+    "prettier": "3.9.10",
+    "selenium-webdriver": "4.52.0",
+    "sharp": "0.35.5",
+    "web-ext": "10.8.0"
   },
   "license": "MIT",
   "author": {
@@ -70,6 +70,6 @@
     "email": "tabernacle@michaelprojects.com"
   },
   "engines": {
-    "node": "^22.13.0 || >=24.0.0"
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   }
 }
